@@ -1,0 +1,120 @@
+# 🗃️ Database Seed Generator Plugin (IntelliJ IDEA).
+
+**db-seed-plugin** is a plugin for **IntelliJ IDEA** that generates synthetic data to populate database schemas.
+It automatically introspects a schema, analyzes dependencies between tables, and produces a consistent SQL script, respecting primary keys,
+foreign keys, and complex cycles. It is ideal for developers who need realistic and repeatable seeds for testing, demos, or development
+environments.
+
+This project is developed in **Java 17** with **Gradle 8.14**, applying a modern programming style: `record`, `switch` with `yield`, pattern
+matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (`@Builder`, `@Slf4j`,
+`@UtilityClass`), and Javadoc documentation in Spanish. The architecture is organized into clear layers:
+
+- **action**: IntelliJ actions (`SeedDatabaseAction`, `GenerateSeedAction`).
+- **config**: configuration persistence (`GenerationConfig`, `ConnectionConfigPersistence`).
+- **db**: main engine with introspection (`SchemaIntrospector`), topological sorting (`TopologicalSorter`), data generation (
+  `DataGenerator`), and SQL construction (`SqlGenerator`).
+- **model**: immutable models (`Table`, `Column`, `ForeignKey`).
+- **schema**: DSL for manually defining schemas (`SchemaDsl`, `SqlType`).
+- **ui**: Swing/IntelliJ dialogs and screens (`SeedDialog`, `PkUuidSelectionDialog`, `SchemaDesigner`).
+
+---
+
+### 🚀 New Feature: Dynamic Drivers
+
+In previous versions, the plugin only included fixed support for PostgreSQL or loaded many drivers into memory.
+Now, when running the **Seed Database** action, the user can select the database engine from a configurable list in `drivers.json`.
+
+- If the driver is not installed, the plugin automatically downloads it from **Maven Central** to `~/.dbseed-drivers/`.
+- It is dynamically registered in the `DriverManager`, avoiding memory saturation with dozens of unnecessary JARs.
+- Each driver comes with sample values for the JDBC URL, which speeds up the initial configuration.
+
+Example of `drivers.json`:
+
+```json
+[
+  {
+    "name": "PostgreSQL",
+    "mavenGroupId": "org.postgresql",
+    "mavenArtifactId": "postgresql",
+    "version": "42.7.3",
+    "driverClass": "org.postgresql.Driver",
+    "sampleUrl": "jdbc:postgresql://localhost:5432/dbname"
+  },
+  {
+    "name": "MySQL",
+    "mavenGroupId": "com.mysql",
+    "mavenArtifactId": "mysql-connector-j",
+    "version": "8.3.0",
+    "driverClass": "com.mysql.cj.jdbc.Driver",
+    "sampleUrl": "jdbc:mysql://localhost:3306/dbname"
+  },
+  {
+    "name": "SQL Server",
+    "mavenGroupId": "com.microsoft.sqlserver",
+    "mavenArtifactId": "mssql-jdbc",
+    "version": "12.6.0.jre11",
+    "driverClass": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+    "sampleUrl": "jdbc:sqlserver://localhost:1433;databaseName=dbname"
+  }
+]
+```
+
+This way, the plugin is **lighter, more extensible, and always uses the correct driver**.
+
+---
+
+### 🔧 Main Functionality
+
+- Schema introspection via `DatabaseMetaData`.
+- Table sorting with Tarjan's algorithm to detect cycles.
+- Synthetic data generation with [DataFaker](https://www.datafaker.net/) respecting PKs, FKs, uniqueness, and nullability.
+- Heuristics to recognize column names like `email`, `name`, or `uuid`.
+- Cycle handling with deferred constraints (`SET CONSTRAINTS ALL DEFERRED`) or updates (`PendingUpdate`).
+- Interactive selection of UUIDs in PKs through a UI dialog.
+- Automatic opening of the generated SQL in the IntelliJ editor.
+- Standalone visual schema designer to prototype tables and generate creation SQL.
+
+---
+
+### ⚙️ Build and Distribution
+
+The build is done with Gradle:
+
+```bash
+./gradlew clean buildPlugin
+```
+
+The plugin is packaged as a `.zip` in `build/distributions/`, which is the installable artifact in IntelliJ via **Settings → Plugins →
+Install plugin from disk...**.
+
+The **GitHub Actions** pipeline compiles the project on JDK 17/21, runs the tests, and automatically attaches the `.zip` as a downloadable
+artifact in each published release.
+
+---
+
+### 📋 Quick Example
+
+1. Select the database driver from the list (PostgreSQL, MySQL, SQL Server, etc.).
+    - If it is not installed, the plugin will download it automatically.
+2. Configure the connection in the **SeedDialog** (JDBC URL, user, password, schema).
+3. Mark the PKs you want to treat as UUIDs in the **PkUuidSelectionDialog**.
+4. The plugin introspects the schema, generates data, and builds an SQL script like:
+
+```sql
+BEGIN;
+SET CONSTRAINTS ALL DEFERRED;
+
+INSERT INTO "users" ("id", "name", "email")
+VALUES ('9f1c...uuid...', 'Alice Doe', 'alice@example.com');
+INSERT INTO "orders" ("id", "user_id", "amount")
+VALUES ('c7a3...uuid...', '9f1c...uuid...', 42.50);
+
+COMMIT;
+```
+
+The file is automatically opened in an editor within IntelliJ, ready to be executed or exported.
+
+---
+
+👨‍💻 Project created by **Luis Pepe** ([@luisppb16](https://github.com/luisppb16)), a Java developer specializing in backend, microservices,
+and development tooling.

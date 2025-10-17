@@ -1,3 +1,10 @@
+/*
+ *
+ *  * Copyright (c) 2025 Luis Pepe.
+ *  * All rights reserved.
+ *
+ */
+
 package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.model.ForeignKey;

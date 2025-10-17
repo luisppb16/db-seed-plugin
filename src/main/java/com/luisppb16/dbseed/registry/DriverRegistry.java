@@ -1,3 +1,10 @@
+/*
+ *
+ *  * Copyright (c) 2025 Luis Pepe.
+ *  * All rights reserved.
+ *
+ */
+
 package com.luisppb16.dbseed.registry;
 
 import com.fasterxml.jackson.core.type.TypeReference;

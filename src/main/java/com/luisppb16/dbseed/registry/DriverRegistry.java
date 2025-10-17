@@ -1,8 +1,6 @@
 /*
- *
- *  * Copyright (c) 2025 Luis Pepe.
- *  * All rights reserved.
- *
+ *  Copyright (c) 2025 Luis Pepe.
+ *  All rights reserved.
  */
 
 package com.luisppb16.dbseed.registry;

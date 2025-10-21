@@ -33,6 +33,8 @@ import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
@@ -171,8 +173,10 @@ public class SeedDatabaseAction extends AnAction {
               info.version(),
               jarName);
       log.info("Downloading driver {} from {}", info.name(), url);
-      try (var in = new URL(url).openStream()) {
+      try (var in = new URI(url).toURL().openStream()) {
         Files.copy(in, jarPath);
+      } catch (URISyntaxException e) {
+        throw new RuntimeException(e);
       }
     }
 

@@ -7,6 +7,8 @@ package com.luisppb16.dbseed.util;
 
 import com.luisppb16.dbseed.config.DriverInfo;
 import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.*;
@@ -30,13 +32,18 @@ public class DriverLoader {
     Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
     if (!Files.exists(jarPath)) {
-      downloadDriver(info, jarPath);
+      try {
+        downloadDriver(info, jarPath);
+      } catch (URISyntaxException e) {
+        throw new RuntimeException(e);
+      }
     }
 
     loadDriver(jarPath.toUri().toURL(), info.driverClass());
   }
 
-  private static void downloadDriver(DriverInfo info, Path target) throws IOException {
+  private static void downloadDriver(DriverInfo info, Path target)
+      throws IOException, URISyntaxException {
     String base = "https://repo1.maven.org/maven2/";
     String groupPath = info.mavenGroupId().replace('.', '/');
     String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";
@@ -44,7 +51,7 @@ public class DriverLoader {
     String url =
         base + groupPath + "/" + info.mavenArtifactId() + "/" + info.version() + "/" + jarFile;
 
-    try (InputStream in = new URL(url).openStream()) {
+    try (InputStream in = new URI(url).toURL().openStream()) {
       Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
     }
   }

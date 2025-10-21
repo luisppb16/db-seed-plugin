@@ -4,7 +4,7 @@ plugins {
 }
 
 group 'com.LuisPPB16'
-version '1.0.0'
+version '1.0.1'
 
 intellij {
     version = '2024.1'

@@ -5,8 +5,11 @@
     <vendor email="ironkrozz@gmail.com">LuisPPB16</vendor>
     <description>
         <![CDATA[
-            Database Seed Generator is a plugin that generates synthetic data to populate database schemas. It automatically introspects a schema, analyzes table dependencies, and produces a consistent SQL script, respecting primary keys, foreign keys, and complex cycles.
+            A smart SQL seed generator that respects your schema's integrity.
 
+            This plugin generates synthetic data by introspects your database's `DatabaseMetaData`.
+            It automatically analyzes table dependencies, manages foreign keys, and resolves complex cycles using Tarjan's algorithm.
+            Stop writing manual insert scripts for your test environments.
             <h2>Main Features</h2>
               <li>Schema introspection via DatabaseMetaData.</li>
               <li>Table sorting using Tarjan's algorithm to detect cycles.</li>

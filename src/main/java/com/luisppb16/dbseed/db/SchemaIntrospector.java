@@ -10,7 +10,6 @@ import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -19,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.experimental.UtilityClass;
 
@@ -33,7 +33,7 @@ public class SchemaIntrospector {
       while (rs.next()) {
         String tableName = rs.getString("TABLE_NAME");
 
-        List<Column> columns = loadColumns(conn, meta, schema, tableName);
+        List<Column> columns = loadColumns(meta, schema, tableName);
         List<String> pkCols = loadPrimaryKeys(meta, schema, tableName);
         List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName);
 
@@ -44,9 +44,10 @@ public class SchemaIntrospector {
   }
 
   private static List<Column> loadColumns(
-      Connection conn, DatabaseMetaData meta, String schema, String table) throws SQLException {
+      DatabaseMetaData meta, String schema, String table) throws SQLException {
     List<Column> columns = new ArrayList<>();
     Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
+    List<String> checkConstraints = loadTableCheckConstraints(meta, schema, table);
 
     try (ResultSet rs = meta.getColumns(null, schema, table, "%")) {
       while (rs.next()) {
@@ -58,7 +59,13 @@ public class SchemaIntrospector {
         int minValue = 0;
         int maxValue = 0;
 
-        Set<String> allowedValues = loadAllowedValues(conn, schema, table, name);
+        int[] bounds = inferBoundsFromChecks(checkConstraints, name);
+        if (bounds.length == 2) {
+          minValue = bounds[0];
+          maxValue = bounds[1];
+        }
+
+        Set<String> allowedValues = loadAllowedValues();
 
         columns.add(
             new Column(
@@ -66,7 +73,6 @@ public class SchemaIntrospector {
                 type,
                 nullable,
                 pkCols.contains(name),
-                // Heuristic: if the name ends with "guid", we treat the column as a UUID.
                 name.toLowerCase(Locale.ROOT).endsWith("guid"),
                 length,
                 minValue,
@@ -104,69 +110,75 @@ public class SchemaIntrospector {
     return fks;
   }
 
-  private static Set<String> loadAllowedValues(
-      Connection conn, String schema, String table, String column) throws SQLException {
-    Set<String> result = new LinkedHashSet<>();
+  private static Set<String> loadAllowedValues() {
+    return new LinkedHashSet<>();
+  }
 
-    // 1. ENUM types.
-    try (PreparedStatement ps =
-        conn.prepareStatement(
-            """
-                         SELECT e.enumlabel
-                         FROM pg_type t
-                         JOIN pg_enum e ON t.oid = e.enumtypid
-                         JOIN pg_attribute a ON a.atttypid = t.oid
-                         JOIN pg_class c ON c.oid = a.attrelid
-                         JOIN pg_namespace n ON n.oid = c.relnamespace
-                         WHERE n.nspname = ? AND c.relname = ? AND a.attname = ?
-                         ORDER BY e.enumsortorder
-                         """)) {
-      ps.setString(1, schema);
-      ps.setString(2, table);
-      ps.setString(3, column);
-      try (ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) {
-          result.add(rs.getString(1));
+  private static List<String> loadTableCheckConstraints(
+      DatabaseMetaData meta, String schema, String table) throws SQLException {
+    List<String> checks = new ArrayList<>();
+
+    try (ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
+      while (trs.next()) {
+        String remarks = safe(trs.getString("REMARKS"));
+        if (!remarks.isEmpty()) {
+          extractChecksFromText(remarks, checks);
         }
       }
     }
 
-    // 2. CHECK constraints with IN (...) translated as ARRAY[...] in PostgreSQL.
-    if (result.isEmpty()) {
-      try (PreparedStatement ps =
-          conn.prepareStatement(
-              """
-                           SELECT pg_get_expr(co.conbin, co.conrelid) as expr
-                           FROM pg_constraint co
-                           JOIN pg_class c ON c.oid = co.conrelid
-                           JOIN pg_namespace n ON n.oid = c.relnamespace
-                           WHERE n.nspname = ? AND c.relname = ?
-                             AND array_position(co.conkey, (
-                                 SELECT attnum
-                                 FROM pg_attribute
-                                 WHERE attrelid = c.oid AND attname = ?
-                             )) IS NOT NULL
-                             AND contype = 'c'
-                           """)) {
-        ps.setString(1, schema);
-        ps.setString(2, table);
-        ps.setString(3, column);
-        try (ResultSet rs = ps.executeQuery()) {
-          while (rs.next()) {
-            String expr = rs.getString("expr");
-            if (expr == null) continue;
-            var matcher = Pattern.compile("ARRAY\\[(.*?)\\]").matcher(expr);
-            if (matcher.find()) {
-              String inside = matcher.group(1);
-              for (String val : inside.split(",")) {
-                result.add(val.replace("::text", "").replace("'", "").trim());
-              }
-            }
-          }
+    try (ResultSet crs = meta.getColumns(null, schema, table, "%")) {
+      while (crs.next()) {
+        String remarks = safe(crs.getString("REMARKS"));
+        if (!remarks.isEmpty()) {
+          extractChecksFromText(remarks, checks);
         }
       }
     }
 
-    return result;
+    return checks;
+  }
+
+  private static void extractChecksFromText(String text, List<String> out) {
+    Pattern pattern = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
+    Matcher matcher = pattern.matcher(text);
+    while (matcher.find()) {
+      out.add(matcher.group(1));
+    }
+  }
+
+  private static String safe(String s) {
+    return s == null ? "" : s;
+  }
+
+  private static int[] inferBoundsFromChecks(List<String> checks, String columnName) {
+    for (String expr : checks) {
+      if (expr == null || expr.isBlank()) continue;
+
+      Pattern pBetween =
+          Pattern.compile(
+              "(?i)\\b" + Pattern.quote(columnName) + "\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)");
+      Matcher mBetween = pBetween.matcher(expr);
+      if (mBetween.find()) {
+        int min = Integer.parseInt(mBetween.group(1));
+        int max = Integer.parseInt(mBetween.group(2));
+        return new int[] {min, max};
+      }
+
+      Pattern pGteLte =
+          Pattern.compile(
+              "(?i)\\b"
+                  + Pattern.quote(columnName)
+                  + "\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b"
+                  + Pattern.quote(columnName)
+                  + "\\b\\s*<=\\s*(\\d+)");
+      Matcher mGteLte = pGteLte.matcher(expr);
+      if (mGteLte.find()) {
+        int min = Integer.parseInt(mGteLte.group(1));
+        int max = Integer.parseInt(mGteLte.group(2));
+        return new int[] {min, max};
+      }
+    }
+    return new int[0];
   }
 }

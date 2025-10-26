@@ -22,7 +22,7 @@
     <depends>com.intellij.modules.platform</depends>
 
     <actions>
-        <action id="com.luisppb16.dbseed.SeedDatabaseAction"
+        <action id="SeedDatabaseAction"
                 class="com.luisppb16.dbseed.action.SeedDatabaseAction"
                 text="Database Seed Generator"
                 description="Generates SQL seed script with Primary Key and Foreign Key restrictions, and realistic data.">

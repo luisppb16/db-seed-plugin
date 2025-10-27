@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -65,22 +66,13 @@ public class DataGenerator {
                   c -> {
                     boolean forceUuid = set.contains(c.name());
                     if (forceUuid && !c.uuid()) {
-                      newCols.add(
-                          new Column(
-                              c.name(),
-                              c.jdbcType(),
-                              c.nullable(),
-                              c.primaryKey(),
-                              true,
-                              c.length(),
-                              c.minValue(),
-                              c.maxValue(),
-                              c.allowedValues()));
+                      newCols.add(c.toBuilder().uuid(true).build());
                     } else {
                       newCols.add(c);
                     }
                   });
-          overridden.put(t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys()));
+          overridden.put(
+              t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks()));
         });
 
     List<Table> list = new ArrayList<>(overridden.values());
@@ -101,8 +93,19 @@ public class DataGenerator {
     Set<UUID> usedUuids = new HashSet<>();
 
     // Generate rows
+    Map<String, Map<String, ParsedConstraint>> tableConstraints = new HashMap<>();
     orderedTables.forEach(
         table -> {
+          // parse checks for this table into per-column constraints
+          Map<String, ParsedConstraint> constraints = new HashMap<>();
+          table
+              .columns()
+              .forEach(
+                  col ->
+                      constraints.put(
+                          col.name(),
+                          parseConstraintsForColumn(table.checks(), col.name(), col.length())));
+          tableConstraints.put(table.name(), constraints);
           List<Row> rows = new ArrayList<>();
           Predicate<Column> isFkColumn = column -> table.fkColumnNames().contains(column.name());
           Set<String> seenPrimaryKeys = new HashSet<>();
@@ -118,8 +121,20 @@ public class DataGenerator {
                               if (isFkColumn.test(column)) {
                                 values.put(column.name(), null);
                               } else {
-                                values.put(
-                                    column.name(), generateValue(faker, column, i, usedUuids));
+                                ParsedConstraint pc = constraints.get(column.name());
+                                Object gen = generateValue(faker, column, i, usedUuids, pc);
+                                // if numeric and there are parsed bounds, ensure generated value
+                                // respects them
+                                if (isNumericJdbc(column.jdbcType())
+                                    && pc != null
+                                    && (pc.min() != null || pc.max() != null)) {
+                                  int attempts = 0;
+                                  while (!numericWithin(gen, pc) && attempts < 10) {
+                                    gen = generateNumericWithinBounds(column, pc);
+                                    attempts++;
+                                  }
+                                }
+                                values.put(column.name(), gen);
                               }
                             });
 
@@ -136,6 +151,30 @@ public class DataGenerator {
           data.put(table.name(), rows);
           log.debug("Generated {} rows for table {}.", rows.size(), table.name());
         });
+
+    // Validation pass: ensure numeric values satisfy parsed CHECK bounds; if not, replace them.
+    for (Table table : orderedTables) {
+      Map<String, ParsedConstraint> constraints =
+          tableConstraints.getOrDefault(table.name(), Map.of());
+      List<Row> rows = data.get(table.name());
+      if (rows == null) continue;
+      for (Row row : rows) {
+        for (var col : table.columns()) {
+          ParsedConstraint pc = constraints.get(col.name());
+          Object val = row.values().get(col.name());
+          if (isNumericJdbc(col.jdbcType())
+              && pc != null
+              && (pc.min() != null || pc.max() != null)) {
+            int attempts = 0;
+            while (!numericWithin(val, pc) && attempts < 10) {
+              val = generateNumericWithinBounds(col, pc);
+              attempts++;
+            }
+            row.values().put(col.name(), val);
+          }
+        }
+      }
+    }
 
     Map<String, Deque<Row>> uniqueFkParentQueues = new HashMap<>();
     List<PendingUpdate> updates = new ArrayList<>();
@@ -250,55 +289,342 @@ public class DataGenerator {
     return new GenerationResult(data, updates);
   }
 
-  private static Object generateValue(Faker faker, Column column, int index, Set<UUID> usedUuids) {
+  private static Object generateValue(
+      Faker faker, Column column, int index, Set<UUID> usedUuids, ParsedConstraint pc) {
+    // 1) explicit allowed values on Column take precedence
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
-      List<String> vals = new ArrayList<>(column.allowedValues());
-      return vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
-    }
-    if (column.uuid()) {
-      for (int i = 0; i < 10; i++) {
-        UUID u = UUID.randomUUID();
-        if (usedUuids.add(u)) return u;
-      }
-      UUID u = UUID.randomUUID();
-      usedUuids.add(u);
-      return u;
+      return pickRandom(new ArrayList<>(column.allowedValues()), column.jdbcType());
     }
 
-    return switch (column.jdbcType()) {
+    // 2) allowed values from CHECK
+    if (pc != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()) {
+      return pickRandom(new ArrayList<>(pc.allowedValues()), column.jdbcType());
+    }
+
+    // 3) uuid
+    if (column.uuid()) return generateUuid(usedUuids);
+
+    // 4) numeric bounds: combine parsed constraint with Column min/max as fallback
+    Double pcMin = pc != null ? pc.min() : null;
+    Double pcMax = pc != null ? pc.max() : null;
+    Double cmin = column.minValue() != 0 ? Double.valueOf(column.minValue()) : null;
+    Double cmax = column.maxValue() != 0 ? Double.valueOf(column.maxValue()) : null;
+    Double effectiveMin = (pcMin != null) ? pcMin : cmin;
+    Double effectiveMax = (pcMax != null) ? pcMax : cmax;
+    ParsedConstraint effectivePc =
+        new ParsedConstraint(
+            effectiveMin,
+            effectiveMax,
+            pc != null ? pc.allowedValues() : Collections.emptySet(),
+            pc != null ? pc.maxLength() : null);
+    if (effectivePc.min() != null || effectivePc.max() != null) {
+      Object bounded = generateNumericWithinBounds(column, effectivePc);
+      if (bounded != null) return bounded;
+    }
+
+    // 5) string length constraints
+    Integer maxLen = pc != null ? pc.maxLength() : null;
+    if (maxLen == null || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
+
+    // 6) type-specific default generation
+    switch (column.jdbcType()) {
       case Types.CHAR,
-          Types.VARCHAR,
-          Types.NCHAR,
-          Types.NVARCHAR,
-          Types.LONGVARCHAR,
-          Types.LONGNVARCHAR -> {
-        int len = Math.max(column.length(), 0);
+      Types.VARCHAR,
+      Types.NCHAR,
+      Types.NVARCHAR,
+      Types.LONGVARCHAR,
+      Types.LONGNVARCHAR:
+        return generateString(faker, maxLen, column.jdbcType());
+      case Types.INTEGER:
+      case Types.SMALLINT:
+      case Types.TINYINT:
+        return boundedInt(column);
+      case Types.BIGINT:
+        return boundedLong(column);
+      case Types.BOOLEAN:
+      case Types.BIT:
+        return faker.bool().bool();
+      case Types.DATE:
+        return Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
+      case Types.TIMESTAMP:
+      case Types.TIMESTAMP_WITH_TIMEZONE:
+        return Timestamp.from(
+            Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
+      case Types.DECIMAL:
+      case Types.NUMERIC:
+      case Types.FLOAT:
+      case Types.DOUBLE:
+      case Types.REAL:
+        return boundedDecimal(column);
+      default:
+        return index;
+    }
+  }
 
-        if (len == 2) {
-          yield faker.country().countryCode2();
-        } else if (len == 3) {
-          yield faker.country().countryCode3();
-        } else if (len == 24) {
-          String iban = "ES" + faker.number().digits(22);
-          yield normalizeToLength(iban, len, column.jdbcType());
+  private static Object pickRandom(List<String> vals, int jdbcType) {
+    String v = vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
+    if (v == null) return null;
+    v = v.trim();
+    if (v.isEmpty()) return "";
+    try {
+      switch (jdbcType) {
+        case Types.INTEGER:
+        case Types.SMALLINT:
+        case Types.TINYINT:
+          return Integer.parseInt(v);
+        case Types.BIGINT:
+          return Long.parseLong(v);
+        case Types.DECIMAL:
+        case Types.NUMERIC:
+        case Types.FLOAT:
+        case Types.DOUBLE:
+        case Types.REAL:
+          return Double.parseDouble(v);
+        case Types.BOOLEAN:
+        case Types.BIT:
+          return Boolean.parseBoolean(v);
+        default:
+          return v;
+      }
+    } catch (Exception e) {
+      return v;
+    }
+  }
+
+  private static UUID generateUuid(Set<UUID> usedUuids) {
+    for (int i = 0; i < 10; i++) {
+      UUID u = UUID.randomUUID();
+      if (usedUuids.add(u)) return u;
+    }
+    UUID u = UUID.randomUUID();
+    usedUuids.add(u);
+    return u;
+  }
+
+  private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc) {
+    boolean hasMin = pc.min() != null;
+    boolean hasMax = pc.max() != null;
+    switch (column.jdbcType()) {
+      case Types.INTEGER:
+      case Types.SMALLINT:
+      case Types.TINYINT:
+        {
+          int min = hasMin ? pc.min().intValue() : (column.minValue() != 0 ? column.minValue() : 1);
+          int max =
+              hasMax ? pc.max().intValue() : (column.maxValue() != 0 ? column.maxValue() : 10_000);
+          if (min > max) {
+            int t = min;
+            min = max;
+            max = t;
+          }
+          return ThreadLocalRandom.current().nextInt(min, max + 1);
         }
+      case Types.BIGINT:
+        {
+          long min =
+              hasMin ? pc.min().longValue() : (column.minValue() != 0 ? column.minValue() : 1);
+          long max =
+              hasMax
+                  ? pc.max().longValue()
+                  : (column.maxValue() != 0 ? column.maxValue() : 1_000_000);
+          if (min > max) {
+            long t = min;
+            min = max;
+            max = t;
+          }
+          return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
+        }
+      case Types.DECIMAL:
+      case Types.NUMERIC:
+      case Types.FLOAT:
+      case Types.DOUBLE:
+      case Types.REAL:
+        {
+          double min = hasMin ? pc.min() : (column.minValue() != 0 ? column.minValue() : 1);
+          double max = hasMax ? pc.max() : (column.maxValue() != 0 ? column.maxValue() : 1_000);
+          if (min > max) {
+            double t = min;
+            min = max;
+            max = t;
+          }
+          return min + (max - min) * ThreadLocalRandom.current().nextDouble();
+        }
+      default:
+        return null;
+    }
+  }
 
-        int numWords = ThreadLocalRandom.current().nextInt(3, 11);
-        String phrase = String.join(" ", faker.lorem().words(numWords));
-        yield normalizeToLength(phrase, len, column.jdbcType());
+  private static String generateString(Faker faker, Integer maxLen, int jdbcType) {
+    int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
+    if (len == 2) return faker.country().countryCode2();
+    if (len == 3) return faker.country().countryCode3();
+    if (len == 24) return normalizeToLength("ES" + faker.number().digits(22), len, jdbcType);
+    int numWords = ThreadLocalRandom.current().nextInt(1, Math.max(2, Math.min(10, len / 5)));
+    String phrase = String.join(" ", faker.lorem().words(numWords));
+    return normalizeToLength(phrase, len, jdbcType);
+  }
+
+  private static boolean isNumericJdbc(int jdbcType) {
+    return switch (jdbcType) {
+      case Types.INTEGER,
+          Types.SMALLINT,
+          Types.TINYINT,
+          Types.BIGINT,
+          Types.DECIMAL,
+          Types.NUMERIC,
+          Types.FLOAT,
+          Types.DOUBLE,
+          Types.REAL ->
+          true;
+      default -> false;
+    };
+  }
+
+  private static boolean numericWithin(Object value, ParsedConstraint pc) {
+    if (value == null || pc == null) return true;
+    try {
+      double v;
+      if (value instanceof Number) v = ((Number) value).doubleValue();
+      else v = Double.parseDouble(value.toString());
+      if (pc.min() != null && v < pc.min()) return false;
+      if (pc.max() != null && v > pc.max()) return false;
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  // Parse checks for a given column: supports BETWEEN, numeric ranges (>=, <=, >, <), IN lists,
+  // equality checks and simple length checks (char_length/length).
+  private static ParsedConstraint parseConstraintsForColumn(
+      List<String> checks, String columnName, int columnLength) {
+    if (checks == null || checks.isEmpty())
+      return new ParsedConstraint(null, null, Collections.emptySet(), null);
+
+    Double lower = null; // inclusive lower bound
+    Double upper = null; // inclusive upper bound
+    Set<String> allowed = new HashSet<>();
+    Integer maxLen = null;
+
+    // allow optional qualifiers and optional quotes around column name
+    String colPattern = "(?i)(?:[A-Za-z0-9_]+\\.)*\"?" + Pattern.quote(columnName) + "\"?";
+
+    Pattern betweenPattern =
+        Pattern.compile(
+            colPattern
+                + "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)",
+            Pattern.CASE_INSENSITIVE);
+    Pattern rangePattern =
+        Pattern.compile(
+            colPattern + "\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)",
+            Pattern.CASE_INSENSITIVE);
+    Pattern inPattern =
+        Pattern.compile(colPattern + "\\s+IN\\s*\\(([^)]+)\\)", Pattern.CASE_INSENSITIVE);
+    Pattern eqPattern =
+        Pattern.compile(
+            colPattern + "\\s*=\\s*('.*?'|\".*?\"|[0-9A-ZaZ_+-]+)", Pattern.CASE_INSENSITIVE);
+    Pattern lenPattern =
+        Pattern.compile(
+            "(?i)(?:char_length|length)\\s*\\(\\s*" + colPattern + "\\s*\\)\\s*(<=|<|=)\\s*(\\d+)");
+
+    for (String check : checks) {
+      if (check == null || check.isBlank()) continue;
+      String expr = check;
+      // remove parentheses for numeric/range matching (many DBs wrap subexpressions in parentheses)
+      String exprNoParens = expr.replaceAll("[()]+", " ");
+
+      // BETWEEN: set lower = max(lower, min(a,b)), upper = min(upper, max(a,b))
+      Matcher mb = betweenPattern.matcher(exprNoParens);
+      while (mb.find()) {
+        try {
+          double a = Double.parseDouble(mb.group(1));
+          double b = Double.parseDouble(mb.group(2));
+          double lo = Math.min(a, b);
+          double hi = Math.max(a, b);
+          lower = (lower == null) ? lo : Math.max(lower, lo);
+          upper = (upper == null) ? hi : Math.min(upper, hi);
+        } catch (NumberFormatException ignored) {
+        }
       }
 
-      case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);
-      case Types.BIGINT -> boundedLong(column);
-      case Types.BOOLEAN, Types.BIT -> faker.bool().bool();
-      case Types.DATE ->
-          Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
-      case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
-          Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
-      case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL ->
-          boundedDecimal(column);
-      default -> index;
-    };
+      // ranges and equality
+      Matcher mr = rangePattern.matcher(exprNoParens);
+      while (mr.find()) {
+        String op = mr.group(1);
+        String num = mr.group(2);
+        try {
+          double val = Double.parseDouble(num);
+          switch (op) {
+            case ">": // exclusive lower -> next representable
+              val = Math.nextUp(val);
+              lower = (lower == null) ? val : Math.max(lower, val);
+              break;
+            case ">=":
+              lower = (lower == null) ? val : Math.max(lower, val);
+              break;
+            case "<": // exclusive upper
+              val = Math.nextDown(val);
+              upper = (upper == null) ? val : Math.min(upper, val);
+              break;
+            case "<=":
+              upper = (upper == null) ? val : Math.min(upper, val);
+              break;
+            case "=":
+              lower = (lower == null) ? val : Math.max(lower, val);
+              upper = (upper == null) ? val : Math.min(upper, val);
+              break;
+            default:
+              break;
+          }
+        } catch (NumberFormatException ignored) {
+        }
+      }
+
+      // IN lists (must use original expr because IN(...) needs parentheses)
+      Matcher mi = inPattern.matcher(expr);
+      while (mi.find()) {
+        String inside = mi.group(1);
+        String[] parts = inside.split("\\s*,\\s*");
+        for (String p : parts) {
+          String s = p.trim();
+          if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith("\"") && s.endsWith("\""))) {
+            s = s.substring(1, s.length() - 1);
+          }
+          if (!s.isEmpty()) allowed.add(s);
+        }
+      }
+
+      // equality patterns (use expression without parens to match variants)
+      Matcher me = eqPattern.matcher(exprNoParens);
+      while (me.find()) {
+        String raw = me.group(1).trim();
+        String s = raw;
+        if (s.startsWith("'") && s.endsWith("'")) s = s.substring(1, s.length() - 1);
+        if (s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
+        if (!s.isEmpty()) allowed.add(s);
+      }
+
+      // length constraints
+      Matcher ml = lenPattern.matcher(expr);
+      while (ml.find()) {
+        String op = ml.group(1);
+        String num = ml.group(2);
+        try {
+          int v = Integer.parseInt(num);
+          if ("<".equals(op) || "<=".equals(op) || "=".equals(op)) {
+            maxLen = (maxLen == null) ? v : Math.min(maxLen, v);
+          }
+        } catch (NumberFormatException ignored) {
+        }
+      }
+    }
+
+    // prefer column declared length if smaller
+    if (columnLength > 0) {
+      if (maxLen == null || columnLength < maxLen) maxLen = columnLength;
+    }
+
+    return new ParsedConstraint(lower, upper, Set.copyOf(allowed), maxLen);
   }
 
   private static String normalizeToLength(String value, int length, int jdbcType) {
@@ -369,6 +695,10 @@ public class DataGenerator {
             .thenComparing(Table::name, String.CASE_INSENSITIVE_ORDER));
     return List.copyOf(ordered);
   }
+
+  // Small container for parsed constraints for a single column.
+  private record ParsedConstraint(
+      Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
 
   public record GenerationResult(Map<String, List<Row>> rows, List<PendingUpdate> updates) {}
 }

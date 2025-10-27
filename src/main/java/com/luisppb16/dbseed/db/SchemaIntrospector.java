@@ -10,6 +10,7 @@ import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -33,21 +34,22 @@ public class SchemaIntrospector {
       while (rs.next()) {
         String tableName = rs.getString("TABLE_NAME");
 
-        List<Column> columns = loadColumns(meta, schema, tableName);
+        // load checks once and pass them to column loader and Table constructor
+        List<String> checks = loadTableCheckConstraints(conn, meta, schema, tableName);
+        List<Column> columns = loadColumns(meta, schema, tableName, checks);
         List<String> pkCols = loadPrimaryKeys(meta, schema, tableName);
         List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName);
 
-        tables.add(new Table(tableName, columns, pkCols, fks));
+        tables.add(new Table(tableName, columns, pkCols, fks, checks));
       }
     }
     return tables;
   }
 
   private static List<Column> loadColumns(
-      DatabaseMetaData meta, String schema, String table) throws SQLException {
+      DatabaseMetaData meta, String schema, String table, List<String> checkConstraints) throws SQLException {
     List<Column> columns = new ArrayList<>();
     Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
-    List<String> checkConstraints = loadTableCheckConstraints(meta, schema, table);
 
     try (ResultSet rs = meta.getColumns(null, schema, table, "%")) {
       while (rs.next()) {
@@ -115,9 +117,41 @@ public class SchemaIntrospector {
   }
 
   private static List<String> loadTableCheckConstraints(
-      DatabaseMetaData meta, String schema, String table) throws SQLException {
+      Connection conn, DatabaseMetaData meta, String schema, String table) throws SQLException {
     List<String> checks = new ArrayList<>();
 
+    String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
+    if (product.contains("postgres")) {
+      // Query pg_constraint for check constraints (Postgres-specific)
+      String sql =
+          "SELECT conname, pg_get_constraintdef(con.oid) as condef "
+              + "FROM pg_constraint con "
+              + "JOIN pg_class rel ON rel.oid = con.conrelid "
+              + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
+              + "WHERE con.contype = 'c' AND nsp.nspname = ? AND rel.relname = ?";
+      try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setString(1, schema == null ? "public" : schema);
+        ps.setString(2, table);
+        try (ResultSet rs = ps.executeQuery()) {
+          while (rs.next()) {
+            String def = rs.getString("condef");
+            if (def != null && !def.isBlank()) {
+              // pg_get_constraintdef returns strings like "CHECK ((rating >= 1) AND (rating <= 5))"
+              // extract expression inside first CHECK(...)
+              Matcher m = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)").matcher(def);
+              if (m.find()) {
+                checks.add(m.group(1));
+              } else {
+                checks.add(def);
+              }
+            }
+          }
+        }
+      }
+      return checks;
+    }
+
+    // Fallback: try to extract from REMARKS (JDBC metadata)
     try (ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
       while (trs.next()) {
         String remarks = safe(trs.getString("REMARKS"));

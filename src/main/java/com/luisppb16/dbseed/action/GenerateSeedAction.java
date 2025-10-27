@@ -28,11 +28,9 @@ import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.Table;
-import com.luisppb16.dbseed.schema.SchemaDsl;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -101,8 +99,7 @@ public final class GenerateSeedAction extends AnAction {
                     DriverManager.getConnection(config.url(), config.user(), config.password())) {
 
                   indicator.setText("Introspecting schema...");
-                  SchemaDsl.Schema schema = SchemaIntrospector.introspect(conn, config.schema());
-                  List<Table> tables = SchemaDsl.toTableList(schema);
+                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
                   log.debug("Schema introspected with {} tables.", tables.size());
 
                   indicator.setText("Sorting tables...");

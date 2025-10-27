@@ -41,7 +41,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   pkCol -> {
                     boolean preselect = false;
                     var col = t.column(pkCol);
-                    if (col != null && col.isGuid()) {
+                    if (col != null && col.uuid()) {
                       preselect = true;
                     }
                     String lower = pkCol.toLowerCase(Locale.ROOT);

@@ -72,7 +72,7 @@ public class DataGenerator {
                     }
                   });
           overridden.put(
-              t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks()));
+              t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
         });
 
     List<Table> list = new ArrayList<>(overridden.values());
@@ -176,6 +176,9 @@ public class DataGenerator {
       }
     }
 
+    // Ensure UUID uniqueness across generated rows (fast check/reparations)
+    ensureUuidUniqueness(data, orderedTables, usedUuids);
+
     Map<String, Deque<Row>> uniqueFkParentQueues = new HashMap<>();
     List<PendingUpdate> updates = new ArrayList<>();
     Set<String> inserted = new HashSet<>();
@@ -185,7 +188,7 @@ public class DataGenerator {
         table -> {
           List<Row> rows = Objects.requireNonNull(data.get(table.name()));
 
-          Function<ForeignKey, Boolean> fkIsNullable =
+          Predicate<ForeignKey> fkIsNullable =
               fk ->
                   fk.columnMapping().keySet().stream()
                       .map(col -> table.column(col).nullable())
@@ -212,7 +215,7 @@ public class DataGenerator {
 
                             List<Row> parentRows = data.get(parent.name());
                             boolean parentInserted = inserted.contains(parent.name());
-                            boolean fkNullable = fkIsNullable.apply(fk);
+                            boolean fkNullable = fkIsNullable.test(fk);
 
                             Row parentRow;
                             if (fk.uniqueOnFk()) {
@@ -291,18 +294,51 @@ public class DataGenerator {
 
   private static Object generateValue(
       Faker faker, Column column, int index, Set<UUID> usedUuids, ParsedConstraint pc) {
-    // 1) explicit allowed values on Column take precedence
+    // 1) If the column is a UUID column, treat it specially to guarantee uniqueness.
+    if (column.uuid()) {
+      // If allowed values exist on the column use them (parse as UUID)
+      if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
+        List<String> vals = new ArrayList<>(column.allowedValues());
+        for (int i = 0; i < vals.size(); i++) {
+          String s = vals.get(ThreadLocalRandom.current().nextInt(vals.size())).trim();
+          try {
+            UUID u = UUID.fromString(s);
+            if (usedUuids.add(u)) return u;
+          } catch (IllegalArgumentException ignored) {
+            // ignore invalid UUID string
+          }
+        }
+        // fallback to random UUID if none of the allowed values are usable
+        return generateUuid(usedUuids);
+      }
+
+      // If CHECK provided allowed values, try to parse them as UUIDs
+      if (pc != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()) {
+        List<String> vals = new ArrayList<>(pc.allowedValues());
+        for (int i = 0; i < vals.size(); i++) {
+          String s = vals.get(ThreadLocalRandom.current().nextInt(vals.size())).trim();
+          try {
+            UUID u = UUID.fromString(s);
+            if (usedUuids.add(u)) return u;
+          } catch (IllegalArgumentException ignored) {
+          }
+        }
+        return generateUuid(usedUuids);
+      }
+
+      // Otherwise generate a new unique UUID
+      return generateUuid(usedUuids);
+    }
+
+    // 2) explicit allowed values on Column take precedence (non-UUID columns)
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
       return pickRandom(new ArrayList<>(column.allowedValues()), column.jdbcType());
     }
 
-    // 2) allowed values from CHECK
+    // 3) allowed values from CHECK
     if (pc != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()) {
       return pickRandom(new ArrayList<>(pc.allowedValues()), column.jdbcType());
     }
-
-    // 3) uuid
-    if (column.uuid()) return generateUuid(usedUuids);
 
     // 4) numeric bounds: combine parsed constraint with Column min/max as fallback
     Double pcMin = pc != null ? pc.min() : null;
@@ -392,13 +428,13 @@ public class DataGenerator {
   }
 
   private static UUID generateUuid(Set<UUID> usedUuids) {
-    for (int i = 0; i < 10; i++) {
+    // Loop until a unique UUID is found (with a generous safety limit). This prevents accidental duplicates.
+    final int LIMIT = 1_000_000;
+    for (int i = 0; i < LIMIT; i++) {
       UUID u = UUID.randomUUID();
       if (usedUuids.add(u)) return u;
     }
-    UUID u = UUID.randomUUID();
-    usedUuids.add(u);
-    return u;
+    throw new IllegalStateException("Unable to generate a unique UUID after " + LIMIT + " attempts");
   }
 
   private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc) {
@@ -701,4 +737,55 @@ public class DataGenerator {
       Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
 
   public record GenerationResult(Map<String, List<Row>> rows, List<PendingUpdate> updates) {}
+
+  private static void ensureUuidUniqueness(
+      Map<String, List<Row>> data, List<Table> orderedTables, Set<UUID> usedUuids) {
+    // Ensure UUID columns contain unique UUIDs (per column and globally). If duplicates are found,
+    // replace them with new unique UUIDs and record them in usedUuids.
+    Map<String, Set<UUID>> seenPerColumn = new HashMap<>();
+    for (Table table : orderedTables) {
+      List<Row> rows = data.get(table.name());
+      if (rows == null) continue;
+      for (var col : table.columns()) {
+        if (!col.uuid()) continue;
+        String key = table.name() + "." + col.name();
+        Set<UUID> seen = seenPerColumn.computeIfAbsent(key, k -> new HashSet<>());
+        for (Row row : rows) {
+          Object v = row.values().get(col.name());
+          UUID u = null;
+          if (v instanceof UUID) u = (UUID) v;
+          else if (v instanceof String) {
+            try {
+              u = UUID.fromString(((String) v).trim());
+            } catch (Exception ignored) {
+              // ignore invalid UUID string
+            }
+          }
+          if (u == null) {
+            // generate a new unique UUID and set it
+            u = generateUuid(usedUuids);
+            row.values().put(col.name(), u);
+            seen.add(u);
+            continue;
+          }
+          if (seen.contains(u)) {
+            // duplicate detected for this column -> replace
+            UUID newU = generateUuid(usedUuids);
+            row.values().put(col.name(), newU);
+            seen.add(newU);
+            log.warn(
+                "Replaced duplicate UUID for {}.{}: {} -> {}",
+                table.name(),
+                col.name(),
+                u,
+                newU);
+          } else {
+            // record and also add to global used set in case it wasn't present
+            seen.add(u);
+            usedUuids.add(u);
+          }
+        }
+      }
+    }
+  }
 }

@@ -14,6 +14,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,9 +40,10 @@ public class SchemaIntrospector {
         List<String> checks = loadTableCheckConstraints(conn, meta, schema, tableName);
         List<Column> columns = loadColumns(meta, schema, tableName, checks);
         List<String> pkCols = loadPrimaryKeys(meta, schema, tableName);
-        List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName);
+        List<List<String>> uniqueKeys = loadUniqueKeys(meta, schema, tableName);
+        List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName, uniqueKeys);
 
-        tables.add(new Table(tableName, columns, pkCols, fks, checks));
+        tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
       }
     }
     return tables;
@@ -97,19 +100,52 @@ public class SchemaIntrospector {
   }
 
   private static List<ForeignKey> loadForeignKeys(
-      DatabaseMetaData meta, String schema, String table) throws SQLException {
+      DatabaseMetaData meta, String schema, String table, List<List<String>> uniqueKeys) throws SQLException {
     List<ForeignKey> fks = new ArrayList<>();
     try (ResultSet rs = meta.getImportedKeys(null, schema, table)) {
+      // JDBC returns one row per FK column; group by FK_NAME
+      Map<String, Map<String, String>> grouped = new LinkedHashMap<>();
+      Map<String, String> fkToPkTable = new HashMap<>();
       while (rs.next()) {
         String fkName = rs.getString("FK_NAME");
+        String fkCol = rs.getString("FKCOLUMN_NAME");
+        String pkCol = rs.getString("PKCOLUMN_NAME");
         String pkTableName = rs.getString("PKTABLE_NAME");
-        Map<String, String> mapping =
-            Map.of(rs.getString("FKCOLUMN_NAME"), rs.getString("PKCOLUMN_NAME"));
+        fkToPkTable.put(fkName, pkTableName);
+        grouped.computeIfAbsent(fkName, k -> new LinkedHashMap<>()).put(fkCol, pkCol);
+      }
 
-        fks.add(new ForeignKey(fkName, pkTableName, mapping, false));
+      for (Map.Entry<String, Map<String, String>> e : grouped.entrySet()) {
+        String fkName = e.getKey();
+        Map<String, String> mapping = Map.copyOf(e.getValue());
+        String pkTableName = fkToPkTable.get(fkName);
+        boolean uniqueOnFk = false;
+        // check if mapping's FK columns correspond to any unique key on this table
+        Set<String> fkCols = mapping.keySet();
+        for (List<String> uk : uniqueKeys) {
+          if (uk.size() == fkCols.size() && fkCols.containsAll(uk)) {
+            uniqueOnFk = true;
+            break;
+          }
+        }
+        fks.add(new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk));
       }
     }
     return fks;
+  }
+
+  private static List<List<String>> loadUniqueKeys(DatabaseMetaData meta, String schema, String table) throws SQLException {
+    // Use getIndexInfo to find unique indexes (excluding statistics)
+    Map<String, List<String>> idxCols = new LinkedHashMap<>();
+    try (ResultSet rs = meta.getIndexInfo(null, schema, table, true, false)) {
+      while (rs.next()) {
+        String idxName = rs.getString("INDEX_NAME");
+        String colName = rs.getString("COLUMN_NAME");
+        if (idxName == null || colName == null) continue;
+        idxCols.computeIfAbsent(idxName, k -> new ArrayList<>()).add(colName);
+      }
+    }
+    return idxCols.values().stream().map(List::copyOf).toList();
   }
 
   private static Set<String> loadAllowedValues() {

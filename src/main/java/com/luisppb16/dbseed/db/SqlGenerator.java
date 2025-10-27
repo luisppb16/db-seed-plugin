@@ -5,6 +5,7 @@
 
 package com.luisppb16.dbseed.db;
 
+import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -64,7 +65,7 @@ public class SqlGenerator {
       }
 
       List<String> columnOrder =
-          table.columns().stream().map(c -> c.name()).collect(Collectors.toList());
+          table.columns().stream().map(Column::name).toList();
 
       String tableName = qualified(opts, table.name());
       String columnList =

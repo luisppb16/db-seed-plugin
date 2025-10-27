@@ -17,7 +17,8 @@ public record Table(
     List<Column> columns,
     List<String> primaryKey,
     List<ForeignKey> foreignKeys,
-    List<String> checks) {
+    List<String> checks,
+    List<List<String>> uniqueKeys) {
 
   public Table {
     Objects.requireNonNull(name, "Table name cannot be null.");
@@ -25,11 +26,13 @@ public record Table(
     Objects.requireNonNull(primaryKey, "The list of PK columns cannot be null.");
     Objects.requireNonNull(foreignKeys, "The list of foreign keys cannot be null.");
     Objects.requireNonNull(checks, "The list of checks cannot be null.");
+    Objects.requireNonNull(uniqueKeys, "The list of unique keys cannot be null.");
 
     columns = List.copyOf(columns);
     primaryKey = List.copyOf(primaryKey);
     foreignKeys = List.copyOf(foreignKeys);
     checks = List.copyOf(checks);
+    uniqueKeys = List.copyOf(uniqueKeys.stream().map(List::copyOf).collect(Collectors.toUnmodifiableList()));
   }
 
   public Column column(String columnName) {

@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.schema;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.experimental.UtilityClass;
 
@@ -21,20 +22,51 @@ public class SchemaDsl {
     return new Table(name, List.of(columns));
   }
 
-  public static Column column(String name, SqlType type) {
-    return new Column(name, type, false, null);
+  public static Column column(String name, SqlType type, CheckConstraint... checks) {
+    return new Column(name, type, false, null, List.of(checks));
   }
 
-  public static Column pk(String name, SqlType type) {
-    return new Column(name, type, true, null);
+  public static Column pk(String name, SqlType type, CheckConstraint... checks) {
+    return new Column(name, type, true, null, List.of(checks));
   }
 
-  public static Column fk(String name, SqlType type, String refTable, String refColumn) {
-    return new Column(name, type, false, new ForeignKeyReference(refTable, refColumn));
+  public static Column fk(
+      String name,
+      SqlType type,
+      String refTable,
+      String refColumn,
+      CheckConstraint... checks) {
+    return new Column(name, type, false, new ForeignKeyReference(refTable, refColumn), List.of(checks));
   }
 
   public static String toSql(Schema schema) {
     return schema.tables().stream().map(SchemaDsl::tableSql).collect(Collectors.joining());
+  }
+
+  public static List<com.luisppb16.dbseed.model.Table> toTableList(Schema schema) {
+    return schema.tables().stream().map(SchemaDsl::toTableModel).collect(Collectors.toList());
+  }
+
+  private static com.luisppb16.dbseed.model.Table toTableModel(Table table) {
+    return new com.luisppb16.dbseed.model.Table(
+        table.name(),
+        table.columns().stream()
+            .map(
+                c ->
+                    new com.luisppb16.dbseed.model.Column(
+                        c.name(),
+                        0,
+                        false,
+                        c.primaryKey(),
+                        false,
+                        0,
+                        0,
+                        0,
+                        Set.of(),
+                        List.of()))
+            .collect(Collectors.toList()),
+        List.of(),
+        List.of());
   }
 
   private static String tableSql(Table table) {
@@ -54,7 +86,37 @@ public class SchemaDsl {
       ForeignKeyReference fk = column.foreignKey();
       sql.append(" REFERENCES ").append(fk.table()).append('(').append(fk.column()).append(')');
     }
+    for (CheckConstraint check : column.checks()) {
+      sql.append(" ").append(check.toSql());
+    }
     return sql.toString();
+  }
+
+  public sealed interface CheckConstraint {
+    String toSql();
+
+    record In(List<String> values) implements CheckConstraint {
+      @Override
+      public String toSql() {
+        return "CHECK (value IN ("
+            + values.stream().map(v -> "'" + v + "'").collect(Collectors.joining(", "))
+            + "))";
+      }
+    }
+
+    record Between(String min, String max) implements CheckConstraint {
+      @Override
+      public String toSql() {
+        return "CHECK (value BETWEEN '" + min + "' AND '" + max + "')";
+      }
+    }
+
+    record Expression(String expression) implements CheckConstraint {
+      @Override
+      public String toSql() {
+        return "CHECK (" + expression + ")";
+      }
+    }
   }
 
   public enum SqlType {
@@ -89,10 +151,15 @@ public class SchemaDsl {
   }
 
   public record Column(
-      String name, SqlType type, boolean primaryKey, ForeignKeyReference foreignKey) {
+      String name,
+      SqlType type,
+      boolean primaryKey,
+      ForeignKeyReference foreignKey,
+      List<CheckConstraint> checks) {
     public Column {
       Objects.requireNonNull(name, "The column name cannot be null.");
       Objects.requireNonNull(type, "The SQL type cannot be null.");
+      checks = List.copyOf(checks);
     }
 
     public boolean isForeignKey() {

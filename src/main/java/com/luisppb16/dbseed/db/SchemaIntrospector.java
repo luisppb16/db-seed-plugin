@@ -8,6 +8,8 @@ package com.luisppb16.dbseed.db;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.schema.SchemaDsl;
+import com.luisppb16.dbseed.util.SqlStandardizer;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -25,7 +27,7 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class SchemaIntrospector {
 
-  public static List<Table> introspect(Connection conn, String schema) throws SQLException {
+  public static SchemaDsl.Schema introspect(Connection conn, String schema) throws SQLException {
     DatabaseMetaData meta = conn.getMetaData();
     List<Table> tables = new ArrayList<>();
 
@@ -40,7 +42,7 @@ public class SchemaIntrospector {
         tables.add(new Table(tableName, columns, pkCols, fks));
       }
     }
-    return tables;
+    return toSchema(tables);
   }
 
   private static List<Column> loadColumns(
@@ -65,7 +67,7 @@ public class SchemaIntrospector {
           maxValue = bounds[1];
         }
 
-        Set<String> allowedValues = loadAllowedValues();
+        Set<String> allowedValues = SqlStandardizer.loadAllowedValues();
 
         columns.add(
             new Column(
@@ -77,7 +79,8 @@ public class SchemaIntrospector {
                 length,
                 minValue,
                 maxValue,
-                allowedValues));
+                allowedValues,
+                checkConstraints));
       }
     }
     return columns;
@@ -110,41 +113,24 @@ public class SchemaIntrospector {
     return fks;
   }
 
-  private static Set<String> loadAllowedValues() {
-    return new LinkedHashSet<>();
-  }
-
   private static List<String> loadTableCheckConstraints(
       DatabaseMetaData meta, String schema, String table) throws SQLException {
     List<String> checks = new ArrayList<>();
+    String sql =
+        "SELECT CHECK_CLAUSE FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS "
+            + "WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME = ?";
 
-    try (ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
-      while (trs.next()) {
-        String remarks = safe(trs.getString("REMARKS"));
-        if (!remarks.isEmpty()) {
-          extractChecksFromText(remarks, checks);
+    try (var conn = meta.getConnection();
+        var ps = conn.prepareStatement(sql)) {
+      ps.setString(1, schema);
+      ps.setString(2, table);
+      try (var rs = ps.executeQuery()) {
+        while (rs.next()) {
+          checks.add(rs.getString("CHECK_CLAUSE"));
         }
       }
     }
-
-    try (ResultSet crs = meta.getColumns(null, schema, table, "%")) {
-      while (crs.next()) {
-        String remarks = safe(crs.getString("REMARKS"));
-        if (!remarks.isEmpty()) {
-          extractChecksFromText(remarks, checks);
-        }
-      }
-    }
-
     return checks;
-  }
-
-  private static void extractChecksFromText(String text, List<String> out) {
-    Pattern pattern = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
-    Matcher matcher = pattern.matcher(text);
-    while (matcher.find()) {
-      out.add(matcher.group(1));
-    }
   }
 
   private static String safe(String s) {
@@ -180,5 +166,14 @@ public class SchemaIntrospector {
       }
     }
     return new int[0];
+  }
+
+  private static SchemaDsl.Schema toSchema(List<Table> tables) {
+    return new SchemaDsl.Schema(tables.stream().map(SchemaIntrospector::toDsl).toList());
+  }
+
+  private static SchemaDsl.Table toDsl(Table table) {
+    return new SchemaDsl.Table(
+        table.name(), table.columns().stream().map(Column::toDsl).toList());
   }
 }

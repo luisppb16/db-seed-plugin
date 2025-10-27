@@ -29,6 +29,7 @@ import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.schema.SchemaDsl;
 import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
@@ -44,6 +45,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,7 +113,8 @@ public class SeedDatabaseAction extends AnAction {
 
                   indicator.setText("Introspecting schema...");
                   indicator.setFraction(0.2);
-                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
+                  SchemaDsl.Schema schema = SchemaIntrospector.introspect(conn, config.schema());
+                  List<Table> tables = SchemaDsl.toTableList(schema);
 
                   indicator.setText("Sorting tables...");
                   indicator.setFraction(0.4);

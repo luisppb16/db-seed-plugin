@@ -64,18 +64,19 @@ public class DataGenerator {
               .forEach(
                   c -> {
                     boolean forceUuid = set.contains(c.name());
-                    if (forceUuid && !c.uuid()) {
+                    if (forceUuid && !c.isGuid()) {
                       newCols.add(
                           new Column(
                               c.name(),
-                              c.jdbcType(),
+                              c.type(),
                               c.nullable(),
                               c.primaryKey(),
                               true,
                               c.length(),
                               c.minValue(),
                               c.maxValue(),
-                              c.allowedValues()));
+                              c.allowedValues(),
+                              List.of()));
                     } else {
                       newCols.add(c);
                     }
@@ -255,7 +256,7 @@ public class DataGenerator {
       List<String> vals = new ArrayList<>(column.allowedValues());
       return vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
     }
-    if (column.uuid()) {
+    if (column.isGuid()) {
       for (int i = 0; i < 10; i++) {
         UUID u = UUID.randomUUID();
         if (usedUuids.add(u)) return u;
@@ -265,7 +266,7 @@ public class DataGenerator {
       return u;
     }
 
-    return switch (column.jdbcType()) {
+    return switch (column.type()) {
       case Types.CHAR,
           Types.VARCHAR,
           Types.NCHAR,
@@ -280,12 +281,12 @@ public class DataGenerator {
           yield faker.country().countryCode3();
         } else if (len == 24) {
           String iban = "ES" + faker.number().digits(22);
-          yield normalizeToLength(iban, len, column.jdbcType());
+          yield normalizeToLength(iban, len, column.type());
         }
 
         int numWords = ThreadLocalRandom.current().nextInt(3, 11);
         String phrase = String.join(" ", faker.lorem().words(numWords));
-        yield normalizeToLength(phrase, len, column.jdbcType());
+        yield normalizeToLength(phrase, len, column.type());
       }
 
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);

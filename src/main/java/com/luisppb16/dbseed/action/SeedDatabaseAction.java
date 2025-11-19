@@ -44,13 +44,13 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -96,63 +96,71 @@ public class SeedDatabaseAction extends AnAction {
   }
 
   private void runSeedGeneration(Project project, GenerationConfig config) {
+    final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
+
     ProgressManager.getInstance()
         .run(
-            new Task.Backgroundable(project, "Generate seed", false) {
+            new Task.Backgroundable(project, "Introspecting schema", false) {
               @Override
               public void run(@NotNull ProgressIndicator indicator) {
-                indicator.setIndeterminate(false);
-
+                indicator.setIndeterminate(true);
                 try (Connection conn =
                     DriverManager.getConnection(
                         config.url(),
                         Objects.requireNonNullElse(config.user(), ""),
                         Objects.requireNonNullElse(config.password(), ""))) {
-
-                  indicator.setText("Introspecting schema...");
-                  indicator.setFraction(0.2);
-                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
-
-                  indicator.setText("Sorting tables...");
-                  indicator.setFraction(0.4);
-                  TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
-
-                  Map<String, Table> tableByName =
-                      tables.stream().collect(Collectors.toMap(Table::name, Function.identity()));
-
-                  List<Table> ordered =
-                      sort.ordered().stream()
-                          .map(tableByName::get)
-                          .filter(Objects::nonNull)
-                          .toList();
-
-                  indicator.setText("Generating data...");
-                  indicator.setFraction(0.6);
-
-                  Map<String, Set<String>> overrides = new LinkedHashMap<>();
-                  ApplicationManager.getApplication()
-                      .invokeAndWait(
-                          () ->
-                              Optional.of(new PkUuidSelectionDialog(ordered))
-                                  .filter(PkUuidSelectionDialog::showAndGet)
-                                  .ifPresent(d -> overrides.putAll(d.getSelectionByTable())));
-
-                  DataGenerator.GenerationResult gen =
-                      DataGenerator.generate(
-                          ordered, config.rowsPerTable(), config.deferred(), overrides);
-
-                  indicator.setText("Building SQL...");
-                  indicator.setFraction(0.85);
-                  String sql =
-                      SqlGenerator.generate(ordered, gen.rows(), gen.updates(), config.deferred());
-
-                  indicator.setText("Opening editor...");
-                  indicator.setFraction(1.0);
-                  ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
+                  tablesRef.set(SchemaIntrospector.introspect(conn, config.schema()));
                 } catch (SQLException ex) {
-                  log.warn("Error generating seed SQL.", ex);
-                  notifyError(project, "Error generating seed SQL: " + ex.getMessage());
+                  log.warn("Error introspecting schema.", ex);
+                  notifyError(project, "Error introspecting schema: " + ex.getMessage());
                 }
+              }
+
+              @Override
+              public void onSuccess() {
+                Optional.ofNullable(tablesRef.get())
+                    .ifPresent(
+                        tables ->
+                            ApplicationManager.getApplication()
+                                .invokeLater(() -> continueGeneration(project, config, tables)));
+              }
+            });
+  }
+
+  private void continueGeneration(
+      Project project, GenerationConfig config, List<Table> tables) {
+    TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
+    Map<String, Table> tableByName =
+        tables.stream().collect(Collectors.toMap(Table::name, Function.identity()));
+    List<Table> ordered =
+        sort.ordered().stream().map(tableByName::get).filter(Objects::nonNull).toList();
+
+    final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(ordered);
+    if (!pkDialog.showAndGet()) {
+      return;
+    }
+    Map<String, Set<String>> overrides = pkDialog.getSelectionByTable();
+
+    ProgressManager.getInstance()
+        .run(
+            new Task.Backgroundable(project, "Generating SQL", false) {
+              @Override
+              public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setIndeterminate(false);
+                indicator.setText("Generating data...");
+                indicator.setFraction(0.3);
+                DataGenerator.GenerationResult gen =
+                    DataGenerator.generate(
+                        ordered, config.rowsPerTable(), config.deferred(), overrides);
+
+                indicator.setText("Building SQL...");
+                indicator.setFraction(0.8);
+                String sql =
+                    SqlGenerator.generate(ordered, gen.rows(), gen.updates(), config.deferred());
+
+                indicator.setText("Opening editor...");
+                indicator.setFraction(1.0);
+                ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
               }
             });
   }

@@ -28,6 +28,7 @@ import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.ColumnCustomizationDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -35,6 +36,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -102,6 +105,22 @@ public final class GenerateSeedAction extends AnAction {
                   List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
                   log.debug("Schema introspected with {} tables.", tables.size());
 
+                  // Show column customization dialog
+                  AtomicReference<Map<String, Set<String>>> excludedColumns =
+                      new AtomicReference<>(Collections.emptyMap());
+                  AtomicReference<Map<String, Set<String>>> pkUuidOverrides =
+                      new AtomicReference<>(Collections.emptyMap());
+                  ApplicationManager.getApplication()
+                      .invokeAndWait(
+                          () -> {
+                            ColumnCustomizationDialog customizationDialog =
+                                new ColumnCustomizationDialog(tables);
+                            if (customizationDialog.showAndGet()) {
+                              excludedColumns.set(customizationDialog.getExcludedColumns());
+                              pkUuidOverrides.set(customizationDialog.getSelectionByTable());
+                            }
+                          });
+
                   indicator.setText("Sorting tables...");
                   TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
 
@@ -123,7 +142,8 @@ public final class GenerateSeedAction extends AnAction {
                           ordered,
                           config.rowsPerTable(),
                           effectiveDeferred,
-                          Collections.emptyMap());
+                          pkUuidOverrides.get(),
+                          excludedColumns.get());
 
                   indicator.setText("Building SQL...");
                   String sql =

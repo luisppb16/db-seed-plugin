@@ -50,7 +50,8 @@ public class DataGenerator {
       List<Table> tables,
       int rowsPerTable,
       boolean deferred,
-      Map<String, Set<String>> pkUuidOverrides) {
+      Map<String, Set<String>> pkUuidOverrides,
+      Map<String, Set<String>> excludedColumns) {
 
     Map<String, Table> overridden = new LinkedHashMap<>();
     tables.forEach(
@@ -76,11 +77,14 @@ public class DataGenerator {
         });
 
     List<Table> list = new ArrayList<>(overridden.values());
-    return generateInternal(list, rowsPerTable, deferred);
+    return generateInternal(list, rowsPerTable, deferred, excludedColumns);
   }
 
   private static GenerationResult generateInternal(
-      List<Table> tables, int rowsPerTable, boolean deferred) {
+      List<Table> tables,
+      int rowsPerTable,
+      boolean deferred,
+      Map<String, Set<String>> excludedColumns) {
 
     Instant start = Instant.now();
 
@@ -109,13 +113,17 @@ public class DataGenerator {
           List<Row> rows = new ArrayList<>();
           Predicate<Column> isFkColumn = column -> table.fkColumnNames().contains(column.name());
           Set<String> seenPrimaryKeys = new HashSet<>();
+          Set<String> excluded =
+              excludedColumns != null
+                  ? excludedColumns.getOrDefault(table.name(), Collections.emptySet())
+                  : Collections.emptySet();
 
           IntStream.range(0, rowsPerTable)
               .forEach(
                   i -> {
                     Map<String, Object> values = new LinkedHashMap<>();
-                    table
-                        .columns()
+                    table.columns().stream()
+                        .filter(c -> !excluded.contains(c.name()))
                         .forEach(
                             column -> {
                               if (isFkColumn.test(column)) {

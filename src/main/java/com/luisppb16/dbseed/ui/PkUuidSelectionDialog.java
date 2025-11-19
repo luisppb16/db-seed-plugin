@@ -6,6 +6,7 @@
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.*;
@@ -27,7 +28,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public PkUuidSelectionDialog(@NotNull List<Table> tables) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
-    setTitle("Select PKs for UUID generation");
+    setTitle("Select PKs for UUID Generation");
     initDefaults();
     init();
   }
@@ -98,7 +99,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   });
         });
 
-    JScrollPane scroll = new JScrollPane(listPanel);
+    JScrollPane scroll = new JBScrollPane(listPanel);
     JPanel content = new JPanel(new BorderLayout());
     content.add(scroll, BorderLayout.CENTER);
     return content;

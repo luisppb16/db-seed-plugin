@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 

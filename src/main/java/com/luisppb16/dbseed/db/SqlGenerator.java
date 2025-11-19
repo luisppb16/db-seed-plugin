@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
@@ -64,8 +64,7 @@ public class SqlGenerator {
         continue;
       }
 
-      List<String> columnOrder =
-          table.columns().stream().map(Column::name).toList();
+      List<String> columnOrder = table.columns().stream().map(Column::name).toList();
 
       String tableName = qualified(opts, table.name());
       String columnList =

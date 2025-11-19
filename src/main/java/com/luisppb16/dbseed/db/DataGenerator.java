@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
@@ -29,7 +29,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -73,7 +72,9 @@ public class DataGenerator {
                     }
                   });
           overridden.put(
-              t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
+              t.name(),
+              new Table(
+                  t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
         });
 
     List<Table> list = new ArrayList<>(overridden.values());
@@ -436,13 +437,15 @@ public class DataGenerator {
   }
 
   private static UUID generateUuid(Set<UUID> usedUuids) {
-    // Loop until a unique UUID is found (with a generous safety limit). This prevents accidental duplicates.
+    // Loop until a unique UUID is found (with a generous safety limit). This prevents accidental
+    // duplicates.
     final int LIMIT = 1_000_000;
     for (int i = 0; i < LIMIT; i++) {
       UUID u = UUID.randomUUID();
       if (usedUuids.add(u)) return u;
     }
-    throw new IllegalStateException("Unable to generate a unique UUID after " + LIMIT + " attempts");
+    throw new IllegalStateException(
+        "Unable to generate a unique UUID after " + LIMIT + " attempts");
   }
 
   private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc) {
@@ -531,8 +534,7 @@ public class DataGenerator {
       if (value instanceof Number) v = ((Number) value).doubleValue();
       else v = Double.parseDouble(value.toString());
       if (pc.min() != null && v < pc.min()) return false;
-      if (pc.max() != null && v > pc.max()) return false;
-      return true;
+      return pc.max() == null || !(v > pc.max());
     } catch (Exception e) {
       return false;
     }
@@ -740,12 +742,6 @@ public class DataGenerator {
     return List.copyOf(ordered);
   }
 
-  // Small container for parsed constraints for a single column.
-  private record ParsedConstraint(
-      Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
-
-  public record GenerationResult(Map<String, List<Row>> rows, List<PendingUpdate> updates) {}
-
   private static void ensureUuidUniqueness(
       Map<String, List<Row>> data, List<Table> orderedTables, Set<UUID> usedUuids) {
     // Ensure UUID columns contain unique UUIDs (per column and globally). If duplicates are found,
@@ -782,11 +778,7 @@ public class DataGenerator {
             row.values().put(col.name(), newU);
             seen.add(newU);
             log.warn(
-                "Replaced duplicate UUID for {}.{}: {} -> {}",
-                table.name(),
-                col.name(),
-                u,
-                newU);
+                "Replaced duplicate UUID for {}.{}: {} -> {}", table.name(), col.name(), u, newU);
           } else {
             // record and also add to global used set in case it wasn't present
             seen.add(u);
@@ -796,4 +788,10 @@ public class DataGenerator {
       }
     }
   }
+
+  // Small container for parsed constraints for a single column.
+  private record ParsedConstraint(
+      Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
+
+  public record GenerationResult(Map<String, List<Row>> rows, List<PendingUpdate> updates) {}
 }

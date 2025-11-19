@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
@@ -32,7 +32,8 @@ public record Table(
     primaryKey = List.copyOf(primaryKey);
     foreignKeys = List.copyOf(foreignKeys);
     checks = List.copyOf(checks);
-    uniqueKeys = List.copyOf(uniqueKeys.stream().map(List::copyOf).collect(Collectors.toUnmodifiableList()));
+    uniqueKeys =
+        List.copyOf(uniqueKeys.stream().map(List::copyOf).collect(Collectors.toUnmodifiableList()));
   }
 
   public Column column(String columnName) {

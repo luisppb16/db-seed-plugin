@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
@@ -9,10 +9,19 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.luisppb16.dbseed.config.DriverInfo;
-import java.awt.*;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
 import java.util.List;
 import java.util.Optional;
-import javax.swing.*;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+import javax.swing.UIManager;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;

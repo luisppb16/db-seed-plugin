@@ -1,11 +1,9 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
 package com.luisppb16.dbseed.action;
-
-import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationGroupManager;
@@ -30,9 +28,12 @@ import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.registry.DriverRegistry;
+import com.luisppb16.dbseed.ui.ColumnCustomizationDialog;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
-import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.NotNull;
+
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -54,8 +55,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import lombok.extern.slf4j.Slf4j;
-import org.jetbrains.annotations.NotNull;
+
+import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
 @Slf4j
 public class SeedDatabaseAction extends AnAction {
@@ -130,16 +131,25 @@ public class SeedDatabaseAction extends AnAction {
                   indicator.setFraction(0.6);
 
                   Map<String, Set<String>> overrides = new LinkedHashMap<>();
+                  Map<String, Set<String>> excludedColumns = new LinkedHashMap<>();
                   ApplicationManager.getApplication()
                       .invokeAndWait(
                           () ->
-                              Optional.of(new PkUuidSelectionDialog(ordered))
-                                  .filter(PkUuidSelectionDialog::showAndGet)
-                                  .ifPresent(d -> overrides.putAll(d.getSelectionByTable())));
+                              Optional.of(new ColumnCustomizationDialog(ordered))
+                                  .filter(ColumnCustomizationDialog::showAndGet)
+                                  .ifPresent(
+                                      d -> {
+                                        overrides.putAll(d.getSelectionByTable());
+                                        excludedColumns.putAll(d.getExcludedColumns());
+                                      }));
 
                   DataGenerator.GenerationResult gen =
                       DataGenerator.generate(
-                          ordered, config.rowsPerTable(), config.deferred(), overrides);
+                          ordered,
+                          config.rowsPerTable(),
+                          config.deferred(),
+                          overrides,
+                          excludedColumns);
 
                   indicator.setText("Building SQL...");
                   indicator.setFraction(0.85);

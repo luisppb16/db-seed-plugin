@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
@@ -50,7 +50,8 @@ public class SchemaIntrospector {
   }
 
   private static List<Column> loadColumns(
-      DatabaseMetaData meta, String schema, String table, List<String> checkConstraints) throws SQLException {
+      DatabaseMetaData meta, String schema, String table, List<String> checkConstraints)
+      throws SQLException {
     List<Column> columns = new ArrayList<>();
     Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
 
@@ -100,7 +101,8 @@ public class SchemaIntrospector {
   }
 
   private static List<ForeignKey> loadForeignKeys(
-      DatabaseMetaData meta, String schema, String table, List<List<String>> uniqueKeys) throws SQLException {
+      DatabaseMetaData meta, String schema, String table, List<List<String>> uniqueKeys)
+      throws SQLException {
     List<ForeignKey> fks = new ArrayList<>();
     try (ResultSet rs = meta.getImportedKeys(null, schema, table)) {
       // JDBC returns one row per FK column; group by FK_NAME
@@ -134,7 +136,8 @@ public class SchemaIntrospector {
     return fks;
   }
 
-  private static List<List<String>> loadUniqueKeys(DatabaseMetaData meta, String schema, String table) throws SQLException {
+  private static List<List<String>> loadUniqueKeys(
+      DatabaseMetaData meta, String schema, String table) throws SQLException {
     // Use getIndexInfo to find unique indexes (excluding statistics)
     Map<String, List<String>> idxCols = new LinkedHashMap<>();
     try (ResultSet rs = meta.getIndexInfo(null, schema, table, true, false)) {

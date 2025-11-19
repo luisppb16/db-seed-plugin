@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
@@ -9,10 +9,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luisppb16.dbseed.config.DriverInfo;
 import java.io.InputStream;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @UtilityClass
 public class DriverRegistry {
 
@@ -27,7 +30,7 @@ public class DriverRegistry {
       ObjectMapper mapper = new ObjectMapper();
       temp = mapper.readValue(in, new TypeReference<>() {});
     } catch (Exception e) {
-      e.printStackTrace();
+      log.error(Arrays.toString(e.getStackTrace()));
       temp = Collections.emptyList();
     }
     DRIVERS = List.copyOf(temp);

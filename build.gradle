@@ -16,7 +16,7 @@ sourceSets {
 
 
 group 'com.LuisPPB16'
-version '1.0.1'
+version '1.0.2'
 
 intellij {
     version = '2024.1'

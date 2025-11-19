@@ -1,34 +1,65 @@
 /*
- *  Copyright (c) 2025 Luis Pepe.
+ *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
  *  All rights reserved.
  */
 
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Table;
-
-import javax.swing.*;
-import java.awt.*;
-import java.util.*;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTabbedPane;
 import org.jetbrains.annotations.NotNull;
 
 public final class ColumnCustomizationDialog extends DialogWrapper {
 
   private final List<Table> tables;
+
+  // Final state - only updated on OK
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
+  private final Map<String, Set<String>> excludedColumns = new LinkedHashMap<>();
+
+  // Working copies for the UI
+  private final Map<String, Set<String>> workingSelectionByTable;
+  private final Map<String, Set<String>> workingExcludedColumns;
+
   private final ColumnExclusionPanel columnExclusionPanel;
 
   public ColumnCustomizationDialog(@NotNull List<Table> tables) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
-    this.columnExclusionPanel = new ColumnExclusionPanel(tables);
-    setTitle("Select PKs for UUID generation");
-    initDefaults();
-    init();
+
+    // 1. Initialize the base state
+    initDefaults(); // This populates the final selectionByTable
+
+    // 2. Create deep copies for the UI to work with
+    this.workingSelectionByTable = deepCopyMap(this.selectionByTable);
+    this.workingExcludedColumns = deepCopyMap(this.excludedColumns);
+
+    // 3. Pass the working copies to the UI panels
+    this.columnExclusionPanel = new ColumnExclusionPanel(tables, workingExcludedColumns);
+
+    setTitle("Select PKs for UUID Generation");
+    init(); // This calls createCenterPanel which creates PkUuidPanel
   }
 
   private void initDefaults() {
@@ -63,19 +94,46 @@ public final class ColumnCustomizationDialog extends DialogWrapper {
     return tabbedPane;
   }
 
+  @Override
+  protected void doOKAction() {
+    // Commit the changes from the working copies to the final state
+    this.selectionByTable.clear();
+    this.selectionByTable.putAll(deepCopyMap(this.workingSelectionByTable));
+
+    this.excludedColumns.clear();
+    this.excludedColumns.putAll(deepCopyMap(this.workingExcludedColumns));
+
+    super.doOKAction();
+  }
+
   public Map<String, Set<String>> getSelectionByTable() {
-    Map<String, Set<String>> out = new LinkedHashMap<>();
-    selectionByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
-    return out;
+    return deepCopyMap(selectionByTable);
   }
 
   public Map<String, Set<String>> getExcludedColumns() {
-    return columnExclusionPanel.getExcludedColumns();
+    return deepCopyMap(excludedColumns);
+  }
+
+  private Map<String, Set<String>> deepCopyMap(Map<String, Set<String>> original) {
+    Map<String, Set<String>> copy = new LinkedHashMap<>();
+    original.forEach((key, value) -> copy.put(key, new LinkedHashSet<>(value)));
+    return copy;
   }
 
   private class PkUuidPanel extends JPanel {
+    private final List<JCheckBox> checkBoxes = new ArrayList<>();
+
     PkUuidPanel() {
       super(new BorderLayout());
+
+      JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+      buttonPanel.setBorder(JBUI.Borders.empty(0, 8));
+      JButton selectAllButton = new JButton("Select All");
+      JButton deselectAllButton = new JButton("Deselect All");
+      buttonPanel.add(selectAllButton);
+      buttonPanel.add(deselectAllButton);
+      add(buttonPanel, BorderLayout.NORTH);
+
       JPanel listPanel = new JPanel(new GridBagLayout());
       listPanel.setBorder(JBUI.Borders.empty(8));
 
@@ -100,23 +158,43 @@ public final class ColumnCustomizationDialog extends DialogWrapper {
                     pkCol -> {
                       JCheckBox box = new JCheckBox("Treat as UUID: " + pkCol);
                       box.setSelected(
-                          selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
+                          workingSelectionByTable
+                              .getOrDefault(table.name(), Set.of())
+                              .contains(pkCol));
                       box.addActionListener(
                           e -> {
-                            selectionByTable.computeIfAbsent(
+                            workingSelectionByTable.computeIfAbsent(
                                 table.name(), k -> new LinkedHashSet<>());
                             if (box.isSelected()) {
-                              selectionByTable.get(table.name()).add(pkCol);
+                              workingSelectionByTable.get(table.name()).add(pkCol);
                             } else {
-                              selectionByTable.get(table.name()).remove(pkCol);
+                              workingSelectionByTable.get(table.name()).remove(pkCol);
                             }
                           });
                       listPanel.add(box, c);
                       c.gridy++;
+                      checkBoxes.add(box);
                     });
           });
 
-      JScrollPane scroll = new JScrollPane(listPanel);
+      selectAllButton.addActionListener(
+          e -> {
+            tables.forEach(
+                table -> {
+                  Set<String> pkCols = new LinkedHashSet<>(table.primaryKey());
+                  workingSelectionByTable.put(table.name(), pkCols);
+                });
+            checkBoxes.forEach(box -> box.setSelected(true));
+          });
+
+      deselectAllButton.addActionListener(
+          e -> {
+            workingSelectionByTable.values().forEach(Set::clear);
+            checkBoxes.forEach(box -> box.setSelected(false));
+          });
+
+      JBScrollPane scroll = new JBScrollPane(listPanel);
+      scroll.setPreferredSize(JBUI.size(600, 400));
       add(scroll, BorderLayout.CENTER);
     }
   }

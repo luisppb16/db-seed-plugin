@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.luisppb16.dbseed</id>
     <name>Database Seed Generator</name>
-    <version>1.1.0</version>
+    <version>1.1.1</version>
     <vendor email="ironkrozz@gmail.com">LuisPPB16</vendor>
     <description>
         <![CDATA[
@@ -18,6 +18,19 @@
               <li>Support for multiple databases with dynamic driver downloads.</li>
         ]]>
     </description>
+
+    <change-notes>
+        <![CDATA[
+            <ul>
+              <li><b>Migrate to Java 21:</b> The plugin has been fully migrated to Java 21, ensuring compatibility with the latest Java features and better performance.</li>
+              <li><b>Select All Primary Keys Feature:</b> The PK selection dialog now allows selecting all primary keys at once, streamlining workflows when working with complex schemas.</li>
+              <li><b>Exclude Columns Tab:</b> Added a user interface tab that lets users exclude specific columns from synthetic data generation, offering increased flexibility and customization for testing scenarios.</li>
+              <li><b>UI Fixes and Improvements:</b> The cancel button in dialogs now works reliably. Minor interface enhancements and wording improvements were also made for better usability.</li>
+              <li><b>Copyright and Minor Enhancements:</b> Copyright statements have been updated and minor bugs have been fixed for a smoother experience.</li>
+              <li><b>Primary Key Selection Bug Fixes:</b> Several fixes were applied to the <code>PK Selection Dialog</code>, addressing stability and functional issues.</li>
+            </ul>
+        ]]>
+    </change-notes>
 
     <depends>com.intellij.modules.platform</depends>
 

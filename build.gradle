@@ -1,14 +1,8 @@
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.1.0'
+    id 'org.jetbrains.intellij.platform' version '2.10.4'
     id "jacoco"
     id "org.sonarqube" version "7.0.1.6134"
-}
-
-jacocoTestReport {
-    reports {
-        xml.required = true
-    }
 }
 
 sourceSets {
@@ -69,16 +63,20 @@ intellijPlatform {
     }
 }
 
-tasks {
-    buildSearchableOptions {
-        enabled = false
-    }
-}
-
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
-test {
+tasks.named('test', Test) {
     useJUnitPlatform()
+}
+
+tasks.named('jacocoTestReport', JacocoReport) {
+    reports {
+        xml.getRequired().set(true)
+    }
+}
+
+tasks.named('buildSearchableOptions') {
+    enabled = false
 }

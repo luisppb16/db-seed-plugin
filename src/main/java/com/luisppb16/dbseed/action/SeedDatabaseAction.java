@@ -140,6 +140,7 @@ public class SeedDatabaseAction extends AnAction {
       return;
     }
     Map<String, Set<String>> overrides = pkDialog.getSelectionByTable();
+    Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
 
     ProgressManager.getInstance()
         .run(
@@ -151,7 +152,11 @@ public class SeedDatabaseAction extends AnAction {
                 indicator.setFraction(0.3);
                 DataGenerator.GenerationResult gen =
                     DataGenerator.generate(
-                        ordered, config.rowsPerTable(), config.deferred(), overrides);
+                        ordered,
+                        config.rowsPerTable(),
+                        config.deferred(),
+                        overrides,
+                        excludedColumns);
 
                 indicator.setText("Building SQL...");
                 indicator.setFraction(0.8);

@@ -7,7 +7,9 @@ package com.luisppb16.dbseed.ui;
 
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.ui.JBUI;
+import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.*;
 import java.util.LinkedHashMap;
@@ -24,6 +26,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private final List<Table> tables;
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
+  private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
 
   public PkUuidSelectionDialog(@NotNull List<Table> tables) {
     super(true);
@@ -41,7 +44,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
               .forEach(
                   pkCol -> {
                     boolean preselect = false;
-                    var col = t.column(pkCol);
+                    Column col = t.column(pkCol);
                     if (col != null && col.uuid()) {
                       preselect = true;
                     }
@@ -59,6 +62,16 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   @Override
   protected @NotNull JComponent createCenterPanel() {
+    JTabbedPane tabbedPane = new JBTabbedPane();
+    tabbedPane.addTab("Select PKs for UUID Generation", createPkSelectionPanel());
+    tabbedPane.addTab("Exclude Columns", createColumnExclusionPanel());
+
+    JPanel content = new JPanel(new BorderLayout());
+    content.add(tabbedPane, BorderLayout.CENTER);
+    return content;
+  }
+
+  private JComponent createPkSelectionPanel() {
     JPanel listPanel = new JPanel(new GridBagLayout());
     listPanel.setBorder(JBUI.Borders.empty(8));
 
@@ -99,15 +112,64 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   });
         });
 
-    JScrollPane scroll = new JBScrollPane(listPanel);
-    JPanel content = new JPanel(new BorderLayout());
-    content.add(scroll, BorderLayout.CENTER);
-    return content;
+    return new JBScrollPane(listPanel);
+  }
+
+  private JComponent createColumnExclusionPanel() {
+    JPanel listPanel = new JPanel(new GridBagLayout());
+    listPanel.setBorder(JBUI.Borders.empty(8));
+
+    GridBagConstraints c = new GridBagConstraints();
+    c.gridx = 0;
+    c.gridy = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.fill = GridBagConstraints.HORIZONTAL;
+    c.insets = JBUI.insets(4);
+    c.weightx = 1.0;
+
+    tables.forEach(
+        table -> {
+          JLabel tblLabel = new JLabel(table.name());
+          tblLabel.setBorder(BorderFactory.createEmptyBorder(8, 0, 4, 0));
+          listPanel.add(tblLabel, c);
+          c.gridy++;
+
+          table
+              .columns()
+              .forEach(
+                  column -> {
+                    JCheckBox box = new JCheckBox("Exclude: " + column.name());
+                    box.setSelected(
+                        excludedColumnsByTable
+                            .getOrDefault(table.name(), Set.of())
+                            .contains(column.name()));
+                    box.addActionListener(
+                        e -> {
+                          excludedColumnsByTable.computeIfAbsent(
+                              table.name(), k -> new LinkedHashSet<>());
+                          if (box.isSelected()) {
+                            excludedColumnsByTable.get(table.name()).add(column.name());
+                          } else {
+                            excludedColumnsByTable.get(table.name()).remove(column.name());
+                          }
+                        });
+                    listPanel.add(box, c);
+                    c.gridy++;
+                  });
+        });
+
+    return new JBScrollPane(listPanel);
   }
 
   public Map<String, Set<String>> getSelectionByTable() {
     Map<String, Set<String>> out = new LinkedHashMap<>();
     selectionByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
+    return out;
+  }
+
+  public Map<String, Set<String>> getExcludedColumnsByTable() {
+    Map<String, Set<String>> out = new LinkedHashMap<>();
+    excludedColumnsByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
     return out;
   }
 }

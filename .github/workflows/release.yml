@@ -37,12 +37,12 @@ jobs:
       - name: Run Gradle build, tests, and JaCoCo report
         run: gradle clean buildPlugin jacocoTestReport
 
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@master
+      - name: Build, test and analyze
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}  # Add this line
+        run: gradle clean buildPlugin jacocoTestReport sonarqube
 
       - name: Snyk Security Scan
         uses: snyk/actions/gradle@master

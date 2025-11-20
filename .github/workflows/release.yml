@@ -26,12 +26,12 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.8'
+          gradle-version: '8.14'
 
       # Run tests to generate JaCoCo reports for SonarCloud
       - name: Run Tests with JaCoCo

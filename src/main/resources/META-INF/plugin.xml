@@ -1,7 +1,7 @@
 <idea-plugin>
     <id>com.luisppb16.dbseed</id>
     <name>Database Seed Generator</name>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
     <vendor email="ironkrozz@gmail.com">LuisPPB16</vendor>
     <description>
         <![CDATA[

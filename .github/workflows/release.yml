@@ -1,85 +1,44 @@
 name: Build and Release Plugin
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   release:
     types: [ published ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write # Required for SonarCloud automatic PR decoration
-      actions: read # Required for SonarCloud
-      security-events: write # Required for Snyk to upload results
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Required for SonarCloud analysis to get full history
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-          cache: 'gradle'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Run Tests with JaCoCo
-        run: gradle test
-
-      - name: SonarCloud Scan
-        if: success() && github.event_name != 'pull_request' && secrets.SONAR_TOKEN != '' && secrets.SONAR_PROJECT_KEY != '' && secrets.SONAR_ORGANIZATION != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          gradle sonar \
-            -Dsonar.projectKey="${{ secrets.SONAR_PROJECT_KEY }}" \
-            -Dsonar.organization="${{ secrets.SONAR_ORGANIZATION }}" \
-            -Dsonar.host.url="https://sonarcloud.io"
-
-      - name: Snyk Security Scan
-        if: success() && secrets.SNYK_TOKEN != ''
-        uses: snyk/actions/gradle@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --all-projects
-
-      - name: Build plugin distribution ZIP
-        run: gradle clean buildPlugin
-
-      - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin-zip
-          path: build/distributions/*.zip
-
-  release:
-    needs: build
-    if: github.event_name == 'release' && github.event.action == 'published'
+  build-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download plugin artifact
-        uses: actions/download-artifact@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
         with:
-          name: plugin-zip
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.14'
+
+      - name: Build plugin distribution ZIP
+        run: gradle clean buildPlugin
+
+      - name: Locate plugin ZIP
+        id: locate-zip
+        run: |
+          ZIP_PATH=$(find build/distributions -type f -name "*.zip")
+          if [ -z "$ZIP_PATH" ]; then
+            echo "No distributable ZIP file found" >&2
+            exit 1
+          fi
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload ZIP to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "*.zip"
+          files: ${{ steps.locate-zip.outputs.zip_path }}

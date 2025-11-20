@@ -123,6 +123,7 @@ public final class GenerateSeedAction extends AnAction {
                           ordered,
                           config.rowsPerTable(),
                           effectiveDeferred,
+                          Collections.emptyMap(),
                           Collections.emptyMap());
 
                   indicator.setText("Building SQL...");

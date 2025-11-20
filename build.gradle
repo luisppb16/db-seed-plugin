@@ -27,7 +27,7 @@ group 'com.LuisPPB16'
 version '1.1.0'
 
 intellij {
-    version = '2024.1'
+    version = '2024.2'
     type = 'IC'
 }
 
@@ -39,10 +39,10 @@ dependencies {
     implementation 'net.datafaker:datafaker:2.0.2'
     implementation 'org.postgresql:postgresql:42.7.3'
     implementation 'com.h2database:h2:2.2.224'
-    compileOnly 'org.projectlombok:lombok:1.18.24'
-    annotationProcessor 'org.projectlombok:lombok:1.18.24'
-    testCompileOnly 'org.projectlombok:lombok:1.18.24'
-    testAnnotationProcessor 'org.projectlombok:lombok:1.18.24'
+    compileOnly 'org.projectlombok:lombok:1.18.32'
+    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+    testCompileOnly 'org.projectlombok:lombok:1.18.32'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.32'
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.3'
     testImplementation 'org.junit.jupiter:junit-jupiter-params:5.10.3'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.3'
@@ -52,12 +52,12 @@ dependencies {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 
 patchPluginXml {
-    sinceBuild = '241'
+    sinceBuild = '242'
     untilBuild = '252.*'
 }
 

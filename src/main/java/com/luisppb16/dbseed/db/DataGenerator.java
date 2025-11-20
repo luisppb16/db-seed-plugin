@@ -525,7 +525,7 @@ public class DataGenerator {
     if (value == null || pc == null) return true;
     try {
       double v;
-      if (value instanceof Number) v = ((Number) value).doubleValue();
+      if (value instanceof Number n) v = n.doubleValue();
       else v = Double.parseDouble(value.toString());
       if (pc.min() != null && v < pc.min()) return false;
       if (pc.max() != null && v > pc.max()) return false;

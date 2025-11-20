@@ -59,7 +59,10 @@ public class DriverLoader {
   private static void loadDriver(URL jarUrl, String driverClass) throws Exception {
     URLClassLoader cl = new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
     Class<?> clazz = Class.forName(driverClass, true, cl);
-    Driver driver = (Driver) clazz.getDeclaredConstructor().newInstance();
-    DriverManager.registerDriver(new DriverShim(driver));
+    if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
+      DriverManager.registerDriver(new DriverShim(driver));
+    } else {
+      throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
+    }
   }
 }

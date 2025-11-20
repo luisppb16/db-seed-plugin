@@ -11,41 +11,44 @@ on:
     types: [ published ]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: read
-      checks: write
+      contents: read
+      pull-requests: write # Required for SonarCloud automatic PR decoration
+      actions: read # Required for SonarCloud
+      security-events: write # Required for Snyk to upload results
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'gradle'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Run Gradle build, tests, and JaCoCo report
-        run: gradle clean build jacocoTestReport
+      - name: Run Tests with JaCoCo
+        run: gradle test
 
-      - name: SonarQube Scan
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
-        uses: sonarsource/sonarqube-scan-action@master
+      - name: SonarCloud Scan
+        if: success() && github.event_name != 'pull_request' && secrets.SONAR_TOKEN != '' && secrets.SONAR_PROJECT_KEY != '' && secrets.SONAR_ORGANIZATION != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          gradle sonar \
+            -Dsonar.projectKey="${{ secrets.SONAR_PROJECT_KEY }}" \
+            -Dsonar.organization="${{ secrets.SONAR_ORGANIZATION }}" \
+            -Dsonar.host.url="https://sonarcloud.io"
 
       - name: Snyk Security Scan
-        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        if: success() && secrets.SNYK_TOKEN != ''
         uses: snyk/actions/gradle@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -56,19 +59,27 @@ jobs:
         if: github.event_name == 'release'
         run: gradle clean buildPlugin
 
-      - name: Locate plugin ZIP
-        if: github.event_name == 'release'
-        id: locate-zip
-        run: |
-          ZIP_PATH=$(find build/distributions -type f -name "*.zip")
-          if [ -z "$ZIP_PATH" ]; then
-            echo "No distributable ZIP file found" >&2
-            exit 1
-          fi
-          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-zip
+          path: build/distributions/*.zip
+
+  release:
+    needs: build
+    if: github.event_name == 'release' && github.event.action == 'published'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-zip
 
       - name: Upload ZIP to GitHub Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.locate-zip.outputs.zip_path }}
+          files: "*.zip"

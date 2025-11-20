@@ -12,6 +12,7 @@ import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -63,7 +64,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   @Override
   protected @NotNull JComponent createCenterPanel() {
     JTabbedPane tabbedPane = new JBTabbedPane();
-    tabbedPane.addTab("Select PKs for UUID Generation", createPkSelectionPanel());
+    tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
     tabbedPane.addTab("Exclude Columns", createColumnExclusionPanel());
 
     JPanel content = new JPanel(new BorderLayout());
@@ -72,10 +73,13 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return content;
   }
 
-  private JComponent createPkSelectionPanel() {
+  private JPanel createConfiguredListPanel() {
     JPanel listPanel = new JPanel(new GridBagLayout());
     listPanel.setBorder(JBUI.Borders.empty(8));
+    return listPanel;
+  }
 
+  private GridBagConstraints createDefaultGridBagConstraints() {
     GridBagConstraints c = new GridBagConstraints();
     c.gridx = 0;
     c.gridy = 0;
@@ -83,7 +87,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     c.fill = GridBagConstraints.HORIZONTAL;
     c.insets = JBUI.insets(4);
     c.weightx = 1.0;
+    return c;
+  }
 
+  private JComponent createPkSelectionPanel() {
+    JPanel listPanel = createConfiguredListPanel();
+    GridBagConstraints c = createDefaultGridBagConstraints();
+
+    List<JCheckBox> checkBoxes = new ArrayList<>();
     tables.forEach(
         table -> {
           JLabel tblLabel = new JLabel(table.name());
@@ -110,24 +121,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                         });
                     listPanel.add(box, c);
                     c.gridy++;
+                    checkBoxes.add(box);
                   });
         });
 
-    return new JBScrollPane(listPanel);
+    return createTogglableListPanel(listPanel, checkBoxes);
   }
 
   private JComponent createColumnExclusionPanel() {
-    JPanel listPanel = new JPanel(new GridBagLayout());
-    listPanel.setBorder(JBUI.Borders.empty(8));
+    JPanel listPanel = createConfiguredListPanel();
+    GridBagConstraints c = createDefaultGridBagConstraints();
 
-    GridBagConstraints c = new GridBagConstraints();
-    c.gridx = 0;
-    c.gridy = 0;
-    c.anchor = GridBagConstraints.NORTHWEST;
-    c.fill = GridBagConstraints.HORIZONTAL;
-    c.insets = JBUI.insets(4);
-    c.weightx = 1.0;
-
+    List<JCheckBox> checkBoxes = new ArrayList<>();
     tables.forEach(
         table -> {
           JLabel tblLabel = new JLabel(table.name());
@@ -156,10 +161,61 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                         });
                     listPanel.add(box, c);
                     c.gridy++;
+                    checkBoxes.add(box);
                   });
         });
 
-    return new JBScrollPane(listPanel);
+    return createTogglableListPanel(listPanel, checkBoxes);
+  }
+
+  private JComponent createTogglableListPanel(JPanel listPanel, List<JCheckBox> checkBoxes) {
+    final JButton toggleButton = new JButton();
+    // Use a mutable wrapper for the flag to be used in lambda
+    final boolean[] isBulkUpdating = {false};
+
+    final Runnable updateButtonState =
+        () -> {
+          boolean allSelected = checkBoxes.stream().allMatch(AbstractButton::isSelected);
+          toggleButton.setText(allSelected ? "Deselect All" : "Select All");
+        };
+
+    // Add listener to each checkbox to update the button state, but only if not in bulk mode
+    checkBoxes.forEach(
+        box ->
+            box.addActionListener(
+                e -> {
+                  if (!isBulkUpdating[0]) {
+                    updateButtonState.run();
+                  }
+                }));
+    updateButtonState.run(); // Set initial button text
+
+    toggleButton.addActionListener(
+        e -> {
+          try {
+            isBulkUpdating[0] = true; // Enter bulk update mode
+            boolean selectAll = "Select All".equals(toggleButton.getText());
+            checkBoxes.forEach(
+                box -> {
+                  if (box.isSelected() != selectAll) {
+                    // doClick triggers the checkbox's own action listener, which updates the model
+                    box.doClick();
+                  }
+                });
+          } finally {
+            isBulkUpdating[0] = false; // Exit bulk update mode
+            updateButtonState.run(); // Update button text once after all changes
+          }
+        });
+
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
+    buttonPanel.add(toggleButton);
+
+    JPanel mainPanel = new JPanel(new BorderLayout());
+    mainPanel.add(buttonPanel, BorderLayout.NORTH);
+    mainPanel.add(new JBScrollPane(listPanel), BorderLayout.CENTER);
+
+    return mainPanel;
   }
 
   public Map<String, Set<String>> getSelectionByTable() {

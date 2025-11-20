@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import org.jetbrains.annotations.NotNull;
 
 public final class PkUuidSelectionDialog extends DialogWrapper {
@@ -125,7 +127,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   });
         });
 
-    return createTogglableListPanel(listPanel, checkBoxes);
+    return createTogglableListPanel(listPanel, checkBoxes, false);
   }
 
   private JComponent createColumnExclusionPanel() {
@@ -165,12 +167,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   });
         });
 
-    return createTogglableListPanel(listPanel, checkBoxes);
+    return createTogglableListPanel(listPanel, checkBoxes, true);
   }
 
-  private JComponent createTogglableListPanel(JPanel listPanel, List<JCheckBox> checkBoxes) {
+  private JComponent createTogglableListPanel(
+      JPanel listPanel, List<JCheckBox> checkBoxes, boolean withSearch) {
     final JButton toggleButton = new JButton();
-    // Use a mutable wrapper for the flag to be used in lambda
     final boolean[] isBulkUpdating = {false};
 
     final Runnable updateButtonState =
@@ -179,7 +181,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           toggleButton.setText(allSelected ? "Deselect All" : "Select All");
         };
 
-    // Add listener to each checkbox to update the button state, but only if not in bulk mode
     checkBoxes.forEach(
         box ->
             box.addActionListener(
@@ -188,34 +189,112 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                     updateButtonState.run();
                   }
                 }));
-    updateButtonState.run(); // Set initial button text
+    updateButtonState.run();
 
     toggleButton.addActionListener(
         e -> {
           try {
-            isBulkUpdating[0] = true; // Enter bulk update mode
+            isBulkUpdating[0] = true;
             boolean selectAll = "Select All".equals(toggleButton.getText());
             checkBoxes.forEach(
                 box -> {
                   if (box.isSelected() != selectAll) {
-                    // doClick triggers the checkbox's own action listener, which updates the model
                     box.doClick();
                   }
                 });
           } finally {
-            isBulkUpdating[0] = false; // Exit bulk update mode
-            updateButtonState.run(); // Update button text once after all changes
+            isBulkUpdating[0] = false;
+            updateButtonState.run();
           }
         });
 
-    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));
-    buttonPanel.add(toggleButton);
+    JPanel topPanel = new JPanel(new BorderLayout(8, 8));
+    topPanel.add(toggleButton, BorderLayout.WEST);
+
+    if (withSearch) {
+      addSearchFunctionality(topPanel, listPanel);
+    }
 
     JPanel mainPanel = new JPanel(new BorderLayout());
-    mainPanel.add(buttonPanel, BorderLayout.NORTH);
+    mainPanel.add(topPanel, BorderLayout.NORTH);
     mainPanel.add(new JBScrollPane(listPanel), BorderLayout.CENTER);
 
     return mainPanel;
+  }
+
+  private void addSearchFunctionality(JPanel topPanel, JPanel listPanel) {
+    JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+    JTextField searchField = new JTextField(20);
+    searchField.getDocument().addDocumentListener(createFilterListener(searchField, listPanel));
+    searchPanel.add(new JLabel("Search:"));
+    searchPanel.add(Box.createHorizontalStrut(4));
+    searchPanel.add(searchField);
+    topPanel.add(searchPanel, BorderLayout.EAST);
+  }
+
+  private DocumentListener createFilterListener(JTextField searchField, JPanel listPanel) {
+    return new DocumentListener() {
+      @Override
+      public void insertUpdate(DocumentEvent e) {
+        filter();
+      }
+
+      @Override
+      public void removeUpdate(DocumentEvent e) {
+        filter();
+      }
+
+      @Override
+      public void changedUpdate(DocumentEvent e) {
+        filter();
+      }
+
+      private void filter() {
+        filterPanelComponents(listPanel, searchField.getText());
+      }
+    };
+  }
+
+  private void filterPanelComponents(JPanel listPanel, String searchText) {
+    final String lowerSearchText = searchText.toLowerCase(Locale.ROOT);
+    final Map<JLabel, List<JCheckBox>> tableMapping = new LinkedHashMap<>();
+
+    buildTableColumnMapping(listPanel, tableMapping);
+
+    tableMapping.forEach(
+        (tableLabel, checkBoxes) -> {
+          boolean isTableLabelVisible =
+              tableLabel.getText().toLowerCase(Locale.ROOT).contains(lowerSearchText);
+
+          if (isTableLabelVisible) {
+            tableLabel.setVisible(true);
+            checkBoxes.forEach(c -> c.setVisible(true));
+          } else {
+            boolean anyChildVisible = false;
+            for (JCheckBox checkBox : checkBoxes) {
+              boolean isCheckBoxVisible =
+                  checkBox.getText().toLowerCase(Locale.ROOT).contains(lowerSearchText);
+              checkBox.setVisible(isCheckBoxVisible);
+              if (isCheckBoxVisible) {
+                anyChildVisible = true;
+              }
+            }
+            tableLabel.setVisible(anyChildVisible);
+          }
+        });
+  }
+
+  private void buildTableColumnMapping(
+      JPanel listPanel, Map<JLabel, List<JCheckBox>> tableMapping) {
+    JLabel currentLabel = null;
+    for (Component component : listPanel.getComponents()) {
+      if (component instanceof JLabel label) {
+        currentLabel = label;
+        tableMapping.put(currentLabel, new ArrayList<>());
+      } else if (component instanceof JCheckBox checkBox && currentLabel != null) {
+        tableMapping.get(currentLabel).add(checkBox);
+      }
+    }
   }
 
   public Map<String, Set<String>> getSelectionByTable() {

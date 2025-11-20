@@ -14,6 +14,7 @@ import java.net.URLClassLoader;
 import java.nio.file.*;
 import java.sql.Driver;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 
 public class DriverLoader {
 
@@ -28,15 +29,12 @@ public class DriverLoader {
     }
   }
 
-  public static void ensureDriverPresent(DriverInfo info) throws Exception {
-    Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
+  public static void ensureDriverPresent(DriverInfo info)
+      throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
+    Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId().concat("-").concat(info.version()).concat(".jar"));
 
     if (!Files.exists(jarPath)) {
-      try {
-        downloadDriver(info, jarPath);
-      } catch (URISyntaxException e) {
-        throw new RuntimeException(e);
-      }
+      downloadDriver(info, jarPath);
     }
 
     loadDriver(jarPath.toUri().toURL(), info.driverClass());
@@ -46,23 +44,24 @@ public class DriverLoader {
       throws IOException, URISyntaxException {
     String base = "https://repo1.maven.org/maven2/";
     String groupPath = info.mavenGroupId().replace('.', '/');
-    String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";
+    String jarFile = info.mavenArtifactId().concat("-").concat(info.version()).concat(".jar");
 
     String url =
-        base + groupPath + "/" + info.mavenArtifactId() + "/" + info.version() + "/" + jarFile;
+        base.concat(groupPath).concat("/").concat(info.mavenArtifactId()).concat("/").concat(info.version()).concat("/").concat(jarFile);
 
     try (InputStream in = new URI(url).toURL().openStream()) {
       Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
     }
   }
 
-  private static void loadDriver(URL jarUrl, String driverClass) throws Exception {
+  private static void loadDriver(URL jarUrl, String driverClass)
+      throws ReflectiveOperationException, java.sql.SQLException {
     URLClassLoader cl = new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
     Class<?> clazz = Class.forName(driverClass, true, cl);
     if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
       DriverManager.registerDriver(new DriverShim(driver));
     } else {
-      throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
+      throw new IllegalArgumentException("Class ".concat(driverClass).concat(" is not a Driver"));
     }
   }
 }

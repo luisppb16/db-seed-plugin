@@ -89,7 +89,7 @@ public class SeedDatabaseAction extends AnAction {
                 }
 
               } catch (Exception ex) {
-                notifyError(project, "Error preparing driver: " + ex.getMessage());
+                notifyError(project, "Error preparing driver: ".concat(ex.getMessage()));
               }
             },
             () -> log.debug("Action canceled: no active project."));
@@ -112,7 +112,7 @@ public class SeedDatabaseAction extends AnAction {
                   tablesRef.set(SchemaIntrospector.introspect(conn, config.schema()));
                 } catch (SQLException ex) {
                   log.warn("Error introspecting schema.", ex);
-                  notifyError(project, "Error introspecting schema: " + ex.getMessage());
+                  notifyError(project, "Error introspecting schema: ".concat(ex.getMessage()));
                 }
               }
 
@@ -174,7 +174,7 @@ public class SeedDatabaseAction extends AnAction {
     Path libDir = Path.of(System.getProperty("user.home"), ".dbseed-drivers");
     Files.createDirectories(libDir);
 
-    String jarName = info.mavenArtifactId() + "-" + info.version() + ".jar";
+    String jarName = info.mavenArtifactId().concat("-").concat(info.version()).concat(".jar");
     Path jarPath = libDir.resolve(jarName);
 
     if (!Files.exists(jarPath)) {

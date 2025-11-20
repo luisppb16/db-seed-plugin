@@ -45,6 +45,11 @@ public class DataGenerator {
 
   private static final Pattern SINGLE_WORD_PATTERN =
       Pattern.compile("^(?<word>[\\p{L}][\\p{L}\\p{N}]*)$");
+  private static final int MAX_GENERATE_ATTEMPTS = 10;
+  private static final int DEFAULT_INT_MAX = 10_000;
+  private static final int DEFAULT_LONG_MAX = 1_000_000;
+  private static final int DEFAULT_DECIMAL_MAX = 1_000;
+  private static final int UUID_GENERATION_LIMIT = 1_000_000;
 
   public static GenerationResult generate(
       List<Table> tables,
@@ -134,7 +139,7 @@ public class DataGenerator {
                                     && pc != null
                                     && (pc.min() != null || pc.max() != null)) {
                                   int attempts = 0;
-                                  while (!numericWithin(gen, pc) && attempts < 10) {
+                                  while (!numericWithin(gen, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
                                     gen = generateNumericWithinBounds(column, pc);
                                     attempts++;
                                   }
@@ -164,14 +169,14 @@ public class DataGenerator {
       List<Row> rows = data.get(table.name());
       if (rows == null) continue;
       for (Row row : rows) {
-        for (var col : table.columns()) {
+        for (Column col : table.columns()) {
           ParsedConstraint pc = constraints.get(col.name());
           Object val = row.values().get(col.name());
           if (isNumericJdbc(col.jdbcType())
               && pc != null
               && (pc.min() != null || pc.max() != null)) {
             int attempts = 0;
-            while (!numericWithin(val, pc) && attempts < 10) {
+            while (!numericWithin(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
               val = generateNumericWithinBounds(col, pc);
               attempts++;
             }
@@ -224,7 +229,7 @@ public class DataGenerator {
 
                             Row parentRow;
                             if (fk.uniqueOnFk()) {
-                              String key = table.name() + "|" + fk.name();
+                              String key = table.name().concat("|").concat(fk.name());
                               Deque<Row> queue =
                                   uniqueFkParentQueues.computeIfAbsent(
                                       key,
@@ -237,9 +242,9 @@ public class DataGenerator {
                                 if (!fkNullable) {
                                   throw new IllegalStateException(
                                       "Not enough rows in "
-                                          + parent.name()
-                                          + " for non-nullable 1:1 FK from "
-                                          + table.name());
+                                          .concat(parent.name())
+                                          .concat(" for non-nullable 1:1 FK from ")
+                                          .concat(table.name()));
                                 }
                                 fk.columnMapping()
                                     .keySet()
@@ -262,9 +267,9 @@ public class DataGenerator {
                               if (!fkNullable) {
                                 throw new IllegalStateException(
                                     "Cycle with non-nullable FK: "
-                                        + table.name()
-                                        + " -> "
-                                        + parent.name());
+                                        .concat(table.name())
+                                        .concat(" -> ")
+                                        .concat(parent.name()));
                               }
                               Map<String, Object> fkVals = new LinkedHashMap<>();
                               fk.columnMapping()
@@ -427,19 +432,18 @@ public class DataGenerator {
         default:
           return v;
       }
-    } catch (Exception e) {
+    } catch (NumberFormatException e) {
       return v;
     }
   }
 
   private static UUID generateUuid(Set<UUID> usedUuids) {
     // Loop until a unique UUID is found (with a generous safety limit). This prevents accidental duplicates.
-    final int LIMIT = 1_000_000;
-    for (int i = 0; i < LIMIT; i++) {
+    for (int i = 0; i < UUID_GENERATION_LIMIT; i++) {
       UUID u = UUID.randomUUID();
       if (usedUuids.add(u)) return u;
     }
-    throw new IllegalStateException("Unable to generate a unique UUID after " + LIMIT + " attempts");
+    throw new IllegalStateException("Unable to generate a unique UUID after ".concat(String.valueOf(UUID_GENERATION_LIMIT)).concat(" attempts"));
   }
 
   private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc) {
@@ -499,7 +503,7 @@ public class DataGenerator {
     int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
     if (len == 2) return faker.country().countryCode2();
     if (len == 3) return faker.country().countryCode3();
-    if (len == 24) return normalizeToLength("ES" + faker.number().digits(22), len, jdbcType);
+    if (len == 24) return normalizeToLength("ES".concat(faker.number().digits(22)), len, jdbcType);
     int numWords = ThreadLocalRandom.current().nextInt(1, Math.max(2, Math.min(10, len / 5)));
     String phrase = String.join(" ", faker.lorem().words(numWords));
     return normalizeToLength(phrase, len, jdbcType);
@@ -530,7 +534,7 @@ public class DataGenerator {
       if (pc.min() != null && v < pc.min()) return false;
       if (pc.max() != null && v > pc.max()) return false;
       return true;
-    } catch (Exception e) {
+    } catch (NumberFormatException e) {
       return false;
     }
   }
@@ -548,25 +552,24 @@ public class DataGenerator {
     Integer maxLen = null;
 
     // allow optional qualifiers and optional quotes around column name
-    String colPattern = "(?i)(?:[A-Za-z0-9_]+\\.)*\"?" + Pattern.quote(columnName) + "\"?";
+    String colPattern = "(?i)(?:[A-Za-z0-9_]+\\.)*\"?".concat(Pattern.quote(columnName)).concat("\"?");
 
     Pattern betweenPattern =
         Pattern.compile(
-            colPattern
-                + "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)",
+            colPattern.concat("\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
     Pattern rangePattern =
         Pattern.compile(
-            colPattern + "\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)",
+            colPattern.concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
     Pattern inPattern =
-        Pattern.compile(colPattern + "\\s+IN\\s*\\(([^)]+)\\)", Pattern.CASE_INSENSITIVE);
+        Pattern.compile(colPattern.concat("\\s+IN\\s*\\(([^)]+)\\)"), Pattern.CASE_INSENSITIVE);
     Pattern eqPattern =
         Pattern.compile(
-            colPattern + "\\s*=\\s*('.*?'|\".*?\"|[0-9A-ZaZ_+-]+)", Pattern.CASE_INSENSITIVE);
+            colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-ZaZ_+-]+)"), Pattern.CASE_INSENSITIVE);
     Pattern lenPattern =
         Pattern.compile(
-            "(?i)(?:char_length|length)\\s*\\(\\s*" + colPattern + "\\s*\\)\\s*(<=|<|=)\\s*(\\d+)");
+            "(?i)(?:char_length|length)\\s*\\(\\s*".concat(colPattern).concat("\\s*\\)\\s*(<=|<|=)\\s*(\\d+)"));
 
     for (String check : checks) {
       if (check == null || check.isBlank()) continue;
@@ -674,7 +677,7 @@ public class DataGenerator {
       return value.substring(0, length);
     }
     if (jdbcType == Types.CHAR && value.length() < length) {
-      return String.format("%-" + length + "s", value);
+      return String.format("%-".concat(String.valueOf(length)).concat("s"), value);
     }
     return value;
   }
@@ -682,7 +685,7 @@ public class DataGenerator {
   private static Integer boundedInt(Column column) {
     ThreadLocalRandom r = ThreadLocalRandom.current();
     int min = (column.minValue() != 0) ? column.minValue() : 1;
-    int max = (column.maxValue() != 0) ? column.maxValue() : 10_000;
+    int max = (column.maxValue() != 0) ? column.maxValue() : DEFAULT_INT_MAX;
     if (min > max) {
       int t = min;
       min = max;
@@ -695,7 +698,7 @@ public class DataGenerator {
   private static Long boundedLong(Column column) {
     ThreadLocalRandom r = ThreadLocalRandom.current();
     int min = (column.minValue() != 0) ? column.minValue() : 1;
-    int max = (column.maxValue() != 0) ? column.maxValue() : 1_000_000;
+    int max = (column.maxValue() != 0) ? column.maxValue() : DEFAULT_LONG_MAX;
     if (min > max) {
       int t = min;
       min = max;
@@ -707,7 +710,7 @@ public class DataGenerator {
   private static Double boundedDecimal(Column column) {
     ThreadLocalRandom r = ThreadLocalRandom.current();
     int min = (column.minValue() != 0) ? column.minValue() : 1;
-    int max = (column.maxValue() != 0) ? column.maxValue() : 1_000;
+    int max = (column.maxValue() != 0) ? column.maxValue() : DEFAULT_DECIMAL_MAX;
     if (min > max) {
       int t = min;
       min = max;
@@ -751,9 +754,9 @@ public class DataGenerator {
     for (Table table : orderedTables) {
       List<Row> rows = data.get(table.name());
       if (rows == null) continue;
-      for (var col : table.columns()) {
+      for (Column col : table.columns()) {
         if (!col.uuid()) continue;
-        String key = table.name() + "." + col.name();
+        String key = table.name().concat(".").concat(col.name());
         Set<UUID> seen = seenPerColumn.computeIfAbsent(key, k -> new HashSet<>());
         for (Row row : rows) {
           Object v = row.values().get(col.name());
@@ -762,7 +765,7 @@ public class DataGenerator {
           else if (v instanceof String) {
             try {
               u = UUID.fromString(((String) v).trim());
-            } catch (Exception ignored) {
+            } catch (IllegalArgumentException ignored) {
               // ignore invalid UUID string
             }
           }

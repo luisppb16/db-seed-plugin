@@ -108,7 +108,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
               .primaryKey()
               .forEach(
                   pkCol -> {
-                    JCheckBox box = new JCheckBox("Treat as UUID: " + pkCol);
+                    JCheckBox box = new JCheckBox("Treat as UUID: ".concat(pkCol));
                     box.setSelected(
                         selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
                     box.addActionListener(
@@ -146,7 +146,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
               .columns()
               .forEach(
                   column -> {
-                    JCheckBox box = new JCheckBox("Exclude: " + column.name());
+                    JCheckBox box = new JCheckBox("Exclude: ".concat(column.name()));
                     box.setSelected(
                         excludedColumnsByTable
                             .getOrDefault(table.name(), Set.of())

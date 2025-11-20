@@ -22,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0 # Required for SonarCloud analysis to get full history
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -41,11 +41,12 @@ jobs:
       # Ensure you have configured the SonarQube plugin in your build.gradle
       # and set SONAR_TOKEN, SONAR_PROJECT_KEY, and SONAR_ORGANIZATION secrets in your GitHub repository.
       - name: SonarCloud Scan
+        if: secrets.SONAR_TOKEN != '' && secrets.SONAR_PROJECT_KEY != '' && secrets.SONAR_ORGANIZATION != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Your SonarCloud token
         run: |
-          gradle sonarqube \
+          gradle sonar \
             -Dsonar.projectKey="${{ secrets.SONAR_PROJECT_KEY }}" \
             -Dsonar.organization="${{ secrets.SONAR_ORGANIZATION }}" \
             -Dsonar.host.url="https://sonarcloud.io"
@@ -53,6 +54,7 @@ jobs:
       # Snyk Security Scan
       # Ensure you have set SNYK_TOKEN secret in your GitHub repository.
       - name: Snyk Security Scan
+        if: secrets.SNYK_TOKEN != ''
         uses: snyk/actions/gradle@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} # Your Snyk token
@@ -73,6 +75,7 @@ jobs:
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload ZIP to GitHub Release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.locate-zip.outputs.zip_path }}

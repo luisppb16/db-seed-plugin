@@ -1,6 +1,14 @@
 plugins {
     id 'java'
     id 'org.jetbrains.intellij' version '1.17.3'
+    id "jacoco"
+    id "org.sonarqube" version "7.0.1.6134"
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+    }
 }
 
 sourceSets {

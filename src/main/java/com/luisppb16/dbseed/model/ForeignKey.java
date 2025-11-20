@@ -23,7 +23,7 @@ public record ForeignKey(
     // If the name was not provided, one is generated based on the PK and child columns.
     if (name == null || name.isBlank()) {
       String cols = String.join("__", columnMapping.keySet());
-      name = "fk_" + pkTable + (cols.isEmpty() ? "" : "_" + cols);
+      name = "fk_".concat(pkTable).concat(cols.isEmpty() ? "" : "_".concat(cols));
     }
   }
 }

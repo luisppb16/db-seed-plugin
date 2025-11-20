@@ -161,10 +161,10 @@ public class SchemaIntrospector {
       // Query pg_constraint for check constraints (Postgres-specific)
       String sql =
           "SELECT conname, pg_get_constraintdef(con.oid) as condef "
-              + "FROM pg_constraint con "
-              + "JOIN pg_class rel ON rel.oid = con.conrelid "
-              + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
-              + "WHERE con.contype = 'c' AND nsp.nspname = ? AND rel.relname = ?";
+              .concat("FROM pg_constraint con ")
+              .concat("JOIN pg_class rel ON rel.oid = con.conrelid ")
+              .concat("JOIN pg_namespace nsp ON nsp.oid = con.connamespace ")
+              .concat("WHERE con.contype = 'c' AND nsp.nspname = ? AND rel.relname = ?");
       try (PreparedStatement ps = conn.prepareStatement(sql)) {
         ps.setString(1, schema == null ? "public" : schema);
         ps.setString(2, table);
@@ -227,7 +227,7 @@ public class SchemaIntrospector {
 
       Pattern pBetween =
           Pattern.compile(
-              "(?i)\\b" + Pattern.quote(columnName) + "\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)");
+              "(?i)\\b".concat(Pattern.quote(columnName)).concat("\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)"));
       Matcher mBetween = pBetween.matcher(expr);
       if (mBetween.find()) {
         int min = Integer.parseInt(mBetween.group(1));
@@ -238,10 +238,10 @@ public class SchemaIntrospector {
       Pattern pGteLte =
           Pattern.compile(
               "(?i)\\b"
-                  + Pattern.quote(columnName)
-                  + "\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b"
-                  + Pattern.quote(columnName)
-                  + "\\b\\s*<=\\s*(\\d+)");
+                  .concat(Pattern.quote(columnName))
+                  .concat("\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b")
+                  .concat(Pattern.quote(columnName))
+                  .concat("\\b\\s*<=\\s*(\\d+)"));
       Matcher mGteLte = pGteLte.matcher(expr);
       if (mGteLte.find()) {
         int min = Integer.parseInt(mGteLte.group(1));

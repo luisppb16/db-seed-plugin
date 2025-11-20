@@ -40,7 +40,7 @@ public class SchemaDsl {
   private static String tableSql(Table table) {
     String cols =
         table.columns().stream().map(SchemaDsl::columnSql).collect(Collectors.joining(",\n"));
-    return "CREATE TABLE " + table.name() + " (\n" + cols + "\n);\n\n";
+    return "CREATE TABLE ".concat(table.name()).concat(" (\n").concat(cols).concat("\n);\n\n");
   }
 
   private static String columnSql(Column column) {

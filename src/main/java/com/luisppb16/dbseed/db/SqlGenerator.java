@@ -93,12 +93,12 @@ public class SqlGenerator {
 
         String setPart =
             update.fkValues().entrySet().stream()
-                .map(e -> qualified(opts, e.getKey()) + "=" + formatValue(e.getValue()))
+                .map(e -> qualified(opts, e.getKey()).concat("=").concat(formatValue(e.getValue())))
                 .collect(Collectors.joining(", "));
 
         String wherePart =
             update.pkValues().entrySet().stream()
-                .map(e -> qualified(opts, e.getKey()) + "=" + formatValue(e.getValue()))
+                .map(e -> qualified(opts, e.getKey()).concat("=").concat(formatValue(e.getValue())))
                 .collect(Collectors.joining(" AND "));
 
         sb.append("UPDATE ")
@@ -121,7 +121,7 @@ public class SqlGenerator {
   private static String qualified(SqlOptions opts, String identifier) {
     boolean forceQuote = opts.quoteIdentifiers() || needsQuoting(identifier);
     String safe = identifier.replace("\"", "\"\"");
-    return forceQuote ? "\"" + safe + "\"" : identifier;
+    return forceQuote ? "\"".concat(safe).concat("\"") : identifier;
   }
 
   private static boolean needsQuoting(String identifier) {
@@ -139,10 +139,10 @@ public class SqlGenerator {
       return "NULL";
     }
 
-    if (value instanceof String s) return "'" + escapeSql(s) + "'";
-    if (value instanceof UUID u) return "'" + u + "'";
-    if (value instanceof Date d) return "'" + d + "'";
-    if (value instanceof Timestamp t) return "'" + t + "'";
+    if (value instanceof String s) return "'".concat(escapeSql(s)).concat("'");
+    if (value instanceof UUID u) return "'".concat(u.toString()).concat("'");
+    if (value instanceof Date d) return "'".concat(d.toString()).concat("'");
+    if (value instanceof Timestamp t) return "'".concat(t.toString()).concat("'");
     if (value instanceof Boolean b) return b ? "TRUE" : "FALSE";
 
     return Objects.toString(value, "NULL");

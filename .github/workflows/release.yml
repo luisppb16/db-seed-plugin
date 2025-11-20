@@ -3,16 +3,24 @@ name: Build and Release Plugin
 on:
   release:
     types: [ published ]
+  push:
+    branches:
+      - main
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write # Required for SonarCloud automatic PR decoration
+      actions: read # Required for SonarCloud
+      security-events: write # Required for Snyk to upload results
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for SonarCloud analysis to get full history
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -24,6 +32,32 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.8'
+
+      # Run tests to generate JaCoCo reports for SonarCloud
+      - name: Run Tests with JaCoCo
+        run: gradle test
+
+      # SonarCloud Scan
+      # Ensure you have configured the SonarQube plugin in your build.gradle
+      # and set SONAR_TOKEN, SONAR_PROJECT_KEY, and SONAR_ORGANIZATION secrets in your GitHub repository.
+      - name: SonarCloud Scan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Your SonarCloud token
+        run: |
+          gradle sonarqube \
+            -Dsonar.projectKey="${{ secrets.SONAR_PROJECT_KEY }}" \
+            -Dsonar.organization="${{ secrets.SONAR_ORGANIZATION }}" \
+            -Dsonar.host.url="https://sonarcloud.io"
+
+      # Snyk Security Scan
+      # Ensure you have set SNYK_TOKEN secret in your GitHub repository.
+      - name: Snyk Security Scan
+        uses: snyk/actions/gradle@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }} # Your Snyk token
+        with:
+          args: --all-projects
 
       - name: Build plugin distribution ZIP
         run: gradle clean buildPlugin

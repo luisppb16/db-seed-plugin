@@ -26,10 +26,6 @@ repositories {
     }
 }
 
-//intellijPlatform {
-//    buildSearchableOptions.set(false)
-//}
-
 dependencies {
     intellijPlatform {
         intellijIdeaCommunity '2024.2'
@@ -84,4 +80,8 @@ tasks.named('jacocoTestReport', JacocoReport) {
         xml.getRequired().set(true)
         html.getRequired().set(true)
     }
+}
+
+tasks.named('buildSearchableOptions') {
+    enabled = false
 }

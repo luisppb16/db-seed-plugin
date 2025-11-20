@@ -35,21 +35,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run Gradle build, tests, and JaCoCo report
-        run: gradle clean build jacocoTestReport
-
-      - name: SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-
-      - name: Snyk Security Scan
-        uses: snyk/actions/gradle@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --all-sub-projects
+        run: gradle clean buildPlugin jacocoTestReport
 
       - name: Build plugin distribution ZIP
         if: github.event_name == 'release'

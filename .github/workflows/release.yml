@@ -34,7 +34,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Run Gradle build, tests, and JaCoCo report
-        run: gradle clean build jacocoTestReport
+        run: gradle clean buildPlugin jacocoTestReport
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master

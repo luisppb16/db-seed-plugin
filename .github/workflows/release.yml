@@ -1,4 +1,4 @@
-name: Build and Release Plugin
+name: Build, Test and Release Plugin
 
 on:
   push:
@@ -53,9 +53,10 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --all-projects
+          args: --all-sub-projects
 
       - name: Build plugin distribution ZIP
+        if: github.event_name == 'release'
         run: gradle clean buildPlugin
 
       - name: Upload plugin artifact
@@ -78,6 +79,7 @@ jobs:
           name: plugin-zip
 
       - name: Upload ZIP to GitHub Release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: "*.zip"

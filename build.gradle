@@ -55,11 +55,12 @@ java {
     }
 }
 
-intellijPlatform {
-    pluginVerification {
-        ides {
-            recommended()
-        }
+sonarqube {
+    properties {
+        property "sonar.projectKey", "com.LuisPPB16_db-seed-plugin"
+        property "sonar.organization", "luisppb16-github"
+        property "sonar.host.url", "https://sonarcloud.io"
+        property "sonar.coverage.jacoco.xmlReportPaths", "${project.buildDir}/reports/jacoco/test/jacocoTestReport.xml"
     }
 }
 
@@ -69,11 +70,14 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('test', Test) {
     useJUnitPlatform()
+    finalizedBy jacocoTestReport
 }
 
 tasks.named('jacocoTestReport', JacocoReport) {
+    dependsOn tasks.named('test')
     reports {
         xml.getRequired().set(true)
+        html.getRequired().set(true)
     }
 }
 

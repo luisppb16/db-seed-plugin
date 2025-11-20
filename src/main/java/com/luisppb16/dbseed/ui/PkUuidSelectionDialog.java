@@ -169,26 +169,43 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private JComponent createTogglableListPanel(JPanel listPanel, List<JCheckBox> checkBoxes) {
-    JButton toggleButton = new JButton();
+    final JButton toggleButton = new JButton();
+    // Use a mutable wrapper for the flag to be used in lambda
+    final boolean[] isBulkUpdating = {false};
 
-    Runnable updateButtonState =
+    final Runnable updateButtonState =
         () -> {
           boolean allSelected = checkBoxes.stream().allMatch(AbstractButton::isSelected);
           toggleButton.setText(allSelected ? "Deselect All" : "Select All");
         };
 
-    checkBoxes.forEach(box -> box.addActionListener(e -> updateButtonState.run()));
-    updateButtonState.run(); // Set initial text
+    // Add listener to each checkbox to update the button state, but only if not in bulk mode
+    checkBoxes.forEach(
+        box ->
+            box.addActionListener(
+                e -> {
+                  if (!isBulkUpdating[0]) {
+                    updateButtonState.run();
+                  }
+                }));
+    updateButtonState.run(); // Set initial button text
 
     toggleButton.addActionListener(
         e -> {
-          boolean selectAll = "Select All".equals(toggleButton.getText());
-          checkBoxes.forEach(
-              box -> {
-                if (box.isSelected() != selectAll) {
-                  box.doClick(); // Triggers the action listener to update the model and button text
-                }
-              });
+          try {
+            isBulkUpdating[0] = true; // Enter bulk update mode
+            boolean selectAll = "Select All".equals(toggleButton.getText());
+            checkBoxes.forEach(
+                box -> {
+                  if (box.isSelected() != selectAll) {
+                    // doClick triggers the checkbox's own action listener, which updates the model
+                    box.doClick();
+                  }
+                });
+          } finally {
+            isBulkUpdating[0] = false; // Exit bulk update mode
+            updateButtonState.run(); // Update button text once after all changes
+          }
         });
 
     JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 8));

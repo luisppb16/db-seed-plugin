@@ -6,16 +6,24 @@
 package com.luisppb16.dbseed.util;
 
 import com.luisppb16.dbseed.config.DriverInfo;
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
+@UtilityClass
 public class DriverLoader {
 
   private static final Path DRIVER_DIR =
@@ -24,14 +32,16 @@ public class DriverLoader {
   static {
     try {
       Files.createDirectories(DRIVER_DIR);
-    } catch (IOException e) {
-      throw new RuntimeException("Could not create driver folder", e);
+    } catch (final IOException e) {
+      log.error("Could not create driver folder: {}", DRIVER_DIR, e);
+      throw new DriverInitializationException("Could not create driver folder: " + DRIVER_DIR, e);
     }
   }
 
-  public static void ensureDriverPresent(DriverInfo info)
+  public static void ensureDriverPresent(final DriverInfo info)
       throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
-    Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId().concat("-").concat(info.version()).concat(".jar"));
+    final Path jarPath =
+        DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
     if (!Files.exists(jarPath)) {
       downloadDriver(info, jarPath);
@@ -40,28 +50,33 @@ public class DriverLoader {
     loadDriver(jarPath.toUri().toURL(), info.driverClass());
   }
 
-  private static void downloadDriver(DriverInfo info, Path target)
+  private static void downloadDriver(final DriverInfo info, final Path target)
       throws IOException, URISyntaxException {
-    String base = "https://repo1.maven.org/maven2/";
-    String groupPath = info.mavenGroupId().replace('.', '/');
-    String jarFile = info.mavenArtifactId().concat("-").concat(info.version()).concat(".jar");
+    final String groupPath = info.mavenGroupId().replace('.', '/');
+    final String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";
+    final String url = "https://repo1.maven.org/maven2/%s/%s/%s/%s".formatted(
+        groupPath, info.mavenArtifactId(), info.version(), jarFile);
 
-    String url =
-        base.concat(groupPath).concat("/").concat(info.mavenArtifactId()).concat("/").concat(info.version()).concat("/").concat(jarFile);
-
-    try (InputStream in = new URI(url).toURL().openStream()) {
+    log.info("Downloading driver from: {}", url);
+    try (final InputStream in = new URI(url).toURL().openStream()) {
       Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+      log.info("Driver downloaded to: {}", target);
     }
   }
 
-  private static void loadDriver(URL jarUrl, String driverClass)
-      throws ReflectiveOperationException, java.sql.SQLException {
-    URLClassLoader cl = new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
-    Class<?> clazz = Class.forName(driverClass, true, cl);
-    if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
-      DriverManager.registerDriver(new DriverShim(driver));
-    } else {
-      throw new IllegalArgumentException("Class ".concat(driverClass).concat(" is not a Driver"));
+  private static void loadDriver(final URL jarUrl, final String driverClass)
+      throws ReflectiveOperationException, SQLException {
+    try (final URLClassLoader cl = new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader())) {
+      final Class<?> clazz = Class.forName(driverClass, true, cl);
+      if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
+        DriverManager.registerDriver(new DriverShim(driver));
+        log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
+      } else {
+        throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
+      }
+    } catch (final IOException e) {
+      log.error("Error closing URLClassLoader for driver {}: {}", driverClass, e.getMessage(), e);
+      throw new DriverLoadingException("Error closing URLClassLoader for driver " + driverClass, e);
     }
   }
 }

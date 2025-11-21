@@ -30,7 +30,8 @@ import org.jetbrains.annotations.NotNull;
 
 public final class SeedDialog extends DialogWrapper {
 
-  private final JTextField urlField = new JTextField("jdbc:postgresql://localhost:5432/postgres");
+  private final JTextField urlField = new JTextField("jdbc:postgresql://localhost:5432/");
+  private final JTextField databaseField = new JTextField("postgres");
   private final JTextField userField = new JTextField("postgres");
   private final JPasswordField passwordField = new JPasswordField();
   private final JTextField schemaField = new JTextField("public");
@@ -82,8 +83,16 @@ public final class SeedDialog extends DialogWrapper {
     if (project != null) {
       final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      urlField.setText(
-          Objects.requireNonNullElse(config.url(), "jdbc:postgresql://localhost:5432/postgres"));
+      final String url =
+          Objects.requireNonNullElse(config.url(), "jdbc:postgresql://localhost:5432/postgres");
+      final int lastSlashIndex = url.lastIndexOf('/');
+      if (lastSlashIndex > 0 && lastSlashIndex < url.length() - 1) {
+        urlField.setText(url.substring(0, lastSlashIndex + 1));
+        databaseField.setText(url.substring(lastSlashIndex + 1));
+      } else {
+        urlField.setText(url);
+      }
+
       userField.setText(Objects.requireNonNullElse(config.user(), "postgres"));
       passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
       schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
@@ -123,6 +132,7 @@ public final class SeedDialog extends DialogWrapper {
     addRow(panel, c, row++, "JDBC URL:", urlField);
     addRow(panel, c, row++, "User:", userField);
     addRow(panel, c, row++, "Password:", passwordField);
+    addRow(panel, c, row++, "Database:", databaseField);
     addRow(panel, c, row++, "Schema:", schemaField);
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
 
@@ -136,8 +146,10 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   public GenerationConfig getConfiguration() {
+    final String url = urlField.getText().trim();
+    final String database = databaseField.getText().trim();
     return GenerationConfig.builder()
-        .url(urlField.getText().trim())
+        .url(url.endsWith("/") ? url + database : url + "/" + database)
         .user(userField.getText().trim())
         .password(new String(passwordField.getPassword()))
         .schema(schemaField.getText().trim())

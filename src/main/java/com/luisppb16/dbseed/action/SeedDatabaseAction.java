@@ -54,6 +54,30 @@ public class SeedDatabaseAction extends AnAction {
   private static final String NOTIFICATION_TITLE = "DB Seed Generator";
   private static final String SQL_FILE_NAME = "seed.sql";
 
+  private static boolean hasNonNullableForeignKeyInCycle(
+      final Table table, final Set<String> cycle) {
+    return table.foreignKeys().stream()
+        .filter(fk -> cycle.contains(fk.pkTable())) // Foreign key points to a table within the cycle
+        .anyMatch(
+            fk ->
+                fk.columnMapping().keySet().stream()
+                    .map(table::column)
+                    .filter(Objects::nonNull)
+                    .anyMatch(c -> !c.nullable())); // At least one column in the FK is non-nullable
+  }
+
+  private static boolean requiresDeferredDueToNonNullableCycles(
+      final TopologicalSorter.SortResult sort, final Map<String, Table> tableMap) {
+
+    return sort.cycles().stream()
+        .anyMatch(
+            cycle ->
+                cycle.stream()
+                    .map(tableMap::get)
+                    .filter(Objects::nonNull)
+                    .anyMatch(table -> hasNonNullableForeignKeyInCycle(table, cycle)));
+  }
+
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
@@ -141,8 +165,25 @@ public class SeedDatabaseAction extends AnAction {
       log.debug("PK UUID selection canceled.");
       return;
     }
-    final Map<String, Set<String>> overrides = pkDialog.getSelectionByTable();
-    final Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
+    final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
+    final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
+
+    // Convert Map<String, Set<String>> to Map<String, Map<String, String>> for pkUuidOverrides
+    final Map<String, Map<String, String>> pkUuidOverrides =
+        selectedPkUuidColumns.entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    entry ->
+                        entry.getValue().stream()
+                            .collect(Collectors.toMap(Function.identity(), col -> ""))));
+
+    // Convert Map<String, Set<String>> to Map<String, List<String>> for excludedColumns
+    final Map<String, List<String>> excludedColumns =
+        excludedColumnsSet.entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
     ProgressManager.getInstance()
         .run(
@@ -162,7 +203,7 @@ public class SeedDatabaseAction extends AnAction {
                         ordered,
                         config.rowsPerTable(),
                         effectiveDeferred,
-                        overrides,
+                        pkUuidOverrides,
                         excludedColumns);
                 log.info("Data generation completed for {} rows per table.", config.rowsPerTable());
 
@@ -183,30 +224,6 @@ public class SeedDatabaseAction extends AnAction {
                 notifyError(project, "Error during SQL generation: " + error.getMessage());
               }
             });
-  }
-
-  private static boolean hasNonNullableForeignKeyInCycle(
-      final Table table, final Set<String> cycle) {
-    return table.foreignKeys().stream()
-        .filter(fk -> cycle.contains(fk.pkTable())) // Foreign key points to a table within the cycle
-        .anyMatch(
-            fk ->
-                fk.columnMapping().keySet().stream()
-                    .map(table::column)
-                    .filter(Objects::nonNull)
-                    .anyMatch(c -> !c.nullable())); // At least one column in the FK is non-nullable
-  }
-
-  private static boolean requiresDeferredDueToNonNullableCycles(
-      final TopologicalSorter.SortResult sort, final Map<String, Table> tableMap) {
-
-    return sort.cycles().stream()
-        .anyMatch(
-            cycle ->
-                cycle.stream()
-                    .map(tableMap::get)
-                    .filter(Objects::nonNull)
-                    .anyMatch(table -> hasNonNullableForeignKeyInCycle(table, cycle)));
   }
 
   private void openEditor(final Project project, final String sql) {

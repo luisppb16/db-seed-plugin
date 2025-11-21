@@ -35,8 +35,8 @@
     <depends>com.intellij.modules.platform</depends>
 
     <actions>
-        <action id="SeedDatabaseAction"
-                class="com.luisppb16.dbseed.action.SeedDatabaseAction"
+        <action id="GenerateSeedAction"
+                class="com.luisppb16.dbseed.action.GenerateSeedAction"
                 text="Database Seed Generator"
                 description="Generates SQL seed script with Primary Key and Foreign Key restrictions, and realistic data.">
             <add-to-group group-id="ToolsMenu" anchor="last"/>

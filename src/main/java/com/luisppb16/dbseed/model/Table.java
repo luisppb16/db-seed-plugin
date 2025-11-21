@@ -32,10 +32,10 @@ public record Table(
     primaryKey = List.copyOf(primaryKey);
     foreignKeys = List.copyOf(foreignKeys);
     checks = List.copyOf(checks);
-    uniqueKeys = List.copyOf(uniqueKeys.stream().map(List::copyOf).collect(Collectors.toUnmodifiableList()));
+    uniqueKeys = uniqueKeys.stream().map(List::copyOf).toList();
   }
 
-  public Column column(String columnName) {
+  public Column column(final String columnName) {
     return columns.stream()
         .filter(c -> c.name().equalsIgnoreCase(columnName))
         .findFirst()

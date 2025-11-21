@@ -9,10 +9,19 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.luisppb16.dbseed.config.DriverInfo;
-import java.awt.*;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
 import java.util.List;
 import java.util.Optional;
-import javax.swing.*;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+import javax.swing.UIManager;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -29,21 +38,38 @@ public class DriverSelectionDialog extends DialogWrapper {
   private final JTextField projectIdField;
   private String currentProjectId = "";
 
-  public DriverSelectionDialog(@Nullable Project project, List<DriverInfo> drivers) {
+  public DriverSelectionDialog(@Nullable final Project project, final List<DriverInfo> drivers) {
     super(project);
     this.drivers = drivers;
     setTitle("Select Database Driver");
 
-    comboBox =
+    comboBox = createDriverComboBox(drivers);
+    projectIdField = createProjectIdField();
+    bigQueryPanel = createBigQueryPanel(projectIdField);
+    mainPanel = createMainPanel(comboBox, bigQueryPanel);
+
+    final FontMetrics fm = mainPanel.getFontMetrics(UIManager.getFont("Label.font"));
+    final int titleWidth = fm.stringWidth(getTitle()) + 120;
+    mainPanel.setPreferredSize(new Dimension(titleWidth, mainPanel.getPreferredSize().height));
+
+    comboBox.addActionListener(e -> updateProjectIdVisibility((String) comboBox.getSelectedItem()));
+    updateProjectIdVisibility((String) comboBox.getSelectedItem());
+
+    init();
+  }
+
+  private JComboBox<String> createDriverComboBox(final List<DriverInfo> drivers) {
+    final var box =
         new ComboBox<>(
             new DefaultComboBoxModel<>(
                 drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
-    comboBox.setSelectedIndex(0);
+    box.setSelectedIndex(0);
+    return box;
+  }
 
-    projectIdField = new JTextField(getTitle().length());
-
-    // DocumentListener to update the value on the fly
-    projectIdField
+  private JTextField createProjectIdField() {
+    final var field = new JTextField(getTitle().length());
+    field
         .getDocument()
         .addDocumentListener(
             new DocumentListener() {
@@ -62,27 +88,25 @@ public class DriverSelectionDialog extends DialogWrapper {
                 updateProjectId();
               }
             });
+    return field;
+  }
 
-    bigQueryPanel = new JPanel();
-    bigQueryPanel.setLayout(new BoxLayout(bigQueryPanel, BoxLayout.Y_AXIS));
-    bigQueryPanel.setBorder(new TitledBorder("Google BigQuery ProjectId"));
-    bigQueryPanel.add(projectIdField);
-    bigQueryPanel.setVisible(false);
+  private JPanel createBigQueryPanel(final JTextField projectIdField) {
+    final var panel = new JPanel();
+    panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+    panel.setBorder(new TitledBorder("Google BigQuery ProjectId"));
+    panel.add(projectIdField);
+    panel.setVisible(false);
+    return panel;
+  }
 
-    mainPanel = new JPanel();
-    mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-    mainPanel.add(comboBox);
-    mainPanel.add(Box.createVerticalStrut(10));
-    mainPanel.add(bigQueryPanel);
-
-    FontMetrics fm = mainPanel.getFontMetrics(UIManager.getFont("Label.font"));
-    int titleWidth = fm.stringWidth(getTitle()) + 120;
-    mainPanel.setPreferredSize(new Dimension(titleWidth, mainPanel.getPreferredSize().height));
-
-    comboBox.addActionListener(e -> updateProjectIdVisibility((String) comboBox.getSelectedItem()));
-    updateProjectIdVisibility((String) comboBox.getSelectedItem());
-
-    init();
+  private JPanel createMainPanel(final JComboBox<String> comboBox, final JPanel bigQueryPanel) {
+    final var panel = new JPanel();
+    panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+    panel.add(comboBox);
+    panel.add(Box.createVerticalStrut(10));
+    panel.add(bigQueryPanel);
+    return panel;
   }
 
   @Override
@@ -95,35 +119,36 @@ public class DriverSelectionDialog extends DialogWrapper {
       return Optional.empty();
     }
 
-    DriverInfo selected = drivers.get(comboBox.getSelectedIndex());
-    log.info("getSelectedDriver: {}", selected);
+    var selected = drivers.get(comboBox.getSelectedIndex());
 
-    if ("Google BigQuery".equalsIgnoreCase(selected.name())) {
-      if (currentProjectId.isEmpty()) {
-        JOptionPane.showMessageDialog(
-            mainPanel,
-            "Please enter a ProjectId for Google BigQuery.",
-            "Google BigQuery ProjectId",
-            JOptionPane.WARNING_MESSAGE);
-        return Optional.empty();
-      }
-      String url = selected.urlTemplate().replace("%your_project_id%", currentProjectId);
-      selected =
-          new DriverInfo(
-              selected.name(),
-              selected.mavenGroupId(),
-              selected.mavenArtifactId(),
-              selected.version(),
-              selected.driverClass(),
-              url);
-      log.info("Generated BigQuery URL: {}", url);
-    }
-
-    return Optional.of(selected);
+    return Optional.of(selected)
+        .filter(driver -> "Google BigQuery".equalsIgnoreCase(driver.name()))
+        .map(this::configureBigQueryDriver)
+        .or(() -> Optional.of(selected));
   }
 
-  private void updateProjectIdVisibility(String selected) {
-    boolean isBigQuery = "Google BigQuery".equalsIgnoreCase(selected);
+  private DriverInfo configureBigQueryDriver(final DriverInfo selectedDriver) {
+    if (currentProjectId.isEmpty()) {
+      JOptionPane.showMessageDialog(
+          mainPanel,
+          "Please enter a ProjectId for Google BigQuery.",
+          "Google BigQuery ProjectId",
+          JOptionPane.WARNING_MESSAGE);
+      return null; // Return null to indicate configuration failure
+    }
+    final String url = selectedDriver.urlTemplate().replace("%your_project_id%", currentProjectId);
+    log.info("Generated BigQuery URL: {}", url);
+    return new DriverInfo(
+        selectedDriver.name(),
+        selectedDriver.mavenGroupId(),
+        selectedDriver.mavenArtifactId(),
+        selectedDriver.version(),
+        selectedDriver.driverClass(),
+        url);
+  }
+
+  private void updateProjectIdVisibility(final String selected) {
+    final boolean isBigQuery = "Google BigQuery".equalsIgnoreCase(selected);
     bigQueryPanel.setVisible(isBigQuery);
     mainPanel.revalidate();
     mainPanel.repaint();

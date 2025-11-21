@@ -28,20 +28,22 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class SchemaIntrospector {
 
-  public static List<Table> introspect(Connection conn, String schema) throws SQLException {
-    DatabaseMetaData meta = conn.getMetaData();
-    List<Table> tables = new ArrayList<>();
+  private static final String COLUMN_NAME = "COLUMN_NAME";
 
-    try (ResultSet rs = meta.getTables(null, schema, "%", new String[] {"TABLE"})) {
+  public static List<Table> introspect(final Connection conn, final String schema)
+      throws SQLException {
+    final DatabaseMetaData meta = conn.getMetaData();
+    final List<Table> tables = new ArrayList<>();
+
+    try (final ResultSet rs = meta.getTables(null, schema, "%", new String[] {"TABLE"})) {
       while (rs.next()) {
-        String tableName = rs.getString("TABLE_NAME");
+        final String tableName = rs.getString("TABLE_NAME");
 
-        // load checks once and pass them to column loader and Table constructor
-        List<String> checks = loadTableCheckConstraints(conn, meta, schema, tableName);
-        List<Column> columns = loadColumns(meta, schema, tableName, checks);
-        List<String> pkCols = loadPrimaryKeys(meta, schema, tableName);
-        List<List<String>> uniqueKeys = loadUniqueKeys(meta, schema, tableName);
-        List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName, uniqueKeys);
+        final List<String> checks = loadTableCheckConstraints(conn, meta, schema, tableName);
+        final List<Column> columns = loadColumns(meta, schema, tableName, checks);
+        final List<String> pkCols = loadPrimaryKeys(meta, schema, tableName);
+        final List<List<String>> uniqueKeys = loadUniqueKeys(meta, schema, tableName);
+        final List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName, uniqueKeys);
 
         tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
       }
@@ -50,27 +52,31 @@ public class SchemaIntrospector {
   }
 
   private static List<Column> loadColumns(
-      DatabaseMetaData meta, String schema, String table, List<String> checkConstraints) throws SQLException {
-    List<Column> columns = new ArrayList<>();
-    Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
+      final DatabaseMetaData meta,
+      final String schema,
+      final String table,
+      final List<String> checkConstraints)
+      throws SQLException {
+    final List<Column> columns = new ArrayList<>();
+    final Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
 
-    try (ResultSet rs = meta.getColumns(null, schema, table, "%")) {
+    try (final ResultSet rs = meta.getColumns(null, schema, table, "%")) {
       while (rs.next()) {
-        String name = rs.getString("COLUMN_NAME");
-        int type = rs.getInt("DATA_TYPE");
-        boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
-        int length = rs.getInt("COLUMN_SIZE");
+        final String name = rs.getString(COLUMN_NAME);
+        final int type = rs.getInt("DATA_TYPE");
+        final boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
+        final int length = rs.getInt("COLUMN_SIZE");
 
         int minValue = 0;
         int maxValue = 0;
 
-        int[] bounds = inferBoundsFromChecks(checkConstraints, name);
+        final int[] bounds = inferBoundsFromChecks(checkConstraints, name);
         if (bounds.length == 2) {
           minValue = bounds[0];
           maxValue = bounds[1];
         }
 
-        Set<String> allowedValues = loadAllowedValues();
+        final Set<String> allowedValues = loadAllowedValues();
 
         columns.add(
             new Column(
@@ -88,59 +94,64 @@ public class SchemaIntrospector {
     return columns;
   }
 
-  private static List<String> loadPrimaryKeys(DatabaseMetaData meta, String schema, String table)
-      throws SQLException {
-    List<String> pks = new ArrayList<>();
-    try (ResultSet rs = meta.getPrimaryKeys(null, schema, table)) {
+  private static List<String> loadPrimaryKeys(
+      final DatabaseMetaData meta, final String schema, final String table) throws SQLException {
+    final List<String> pks = new ArrayList<>();
+    try (final ResultSet rs = meta.getPrimaryKeys(null, schema, table)) {
       while (rs.next()) {
-        pks.add(rs.getString("COLUMN_NAME"));
+        pks.add(rs.getString(COLUMN_NAME));
       }
     }
     return pks;
   }
 
   private static List<ForeignKey> loadForeignKeys(
-      DatabaseMetaData meta, String schema, String table, List<List<String>> uniqueKeys) throws SQLException {
-    List<ForeignKey> fks = new ArrayList<>();
-    try (ResultSet rs = meta.getImportedKeys(null, schema, table)) {
-      // JDBC returns one row per FK column; group by FK_NAME
-      Map<String, Map<String, String>> grouped = new LinkedHashMap<>();
-      Map<String, String> fkToPkTable = new HashMap<>();
+      final DatabaseMetaData meta,
+      final String schema,
+      final String table,
+      final List<List<String>> uniqueKeys)
+      throws SQLException {
+    final List<ForeignKey> fks = new ArrayList<>();
+    try (final ResultSet rs = meta.getImportedKeys(null, schema, table)) {
+      final Map<String, Map<String, String>> grouped = new LinkedHashMap<>();
+      final Map<String, String> fkToPkTable = new HashMap<>();
       while (rs.next()) {
-        String fkName = rs.getString("FK_NAME");
-        String fkCol = rs.getString("FKCOLUMN_NAME");
-        String pkCol = rs.getString("PKCOLUMN_NAME");
-        String pkTableName = rs.getString("PKTABLE_NAME");
+        final String fkName = rs.getString("FK_NAME");
+        final String fkCol = rs.getString("FKCOLUMN_NAME");
+        final String pkCol = rs.getString("PKCOLUMN_NAME");
+        final String pkTableName = rs.getString("PKTABLE_NAME");
         fkToPkTable.put(fkName, pkTableName);
         grouped.computeIfAbsent(fkName, k -> new LinkedHashMap<>()).put(fkCol, pkCol);
       }
 
-      for (Map.Entry<String, Map<String, String>> e : grouped.entrySet()) {
-        String fkName = e.getKey();
-        Map<String, String> mapping = Map.copyOf(e.getValue());
-        String pkTableName = fkToPkTable.get(fkName);
-        boolean uniqueOnFk = false;
-        // check if mapping's FK columns correspond to any unique key on this table
-        Set<String> fkCols = mapping.keySet();
-        for (List<String> uk : uniqueKeys) {
-          if (uk.size() == fkCols.size() && fkCols.containsAll(uk)) {
-            uniqueOnFk = true;
-            break;
-          }
-        }
+      for (final Map.Entry<String, Map<String, String>> e : grouped.entrySet()) {
+        final String fkName = e.getKey();
+        final Map<String, String> mapping = Map.copyOf(e.getValue());
+        final String pkTableName = fkToPkTable.get(fkName);
+        boolean uniqueOnFk = isUniqueForeignKey(mapping.keySet(), uniqueKeys);
         fks.add(new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk));
       }
     }
     return fks;
   }
 
-  private static List<List<String>> loadUniqueKeys(DatabaseMetaData meta, String schema, String table) throws SQLException {
-    // Use getIndexInfo to find unique indexes (excluding statistics)
-    Map<String, List<String>> idxCols = new LinkedHashMap<>();
-    try (ResultSet rs = meta.getIndexInfo(null, schema, table, true, false)) {
+  private static boolean isUniqueForeignKey(
+      final Set<String> fkCols, final List<List<String>> uniqueKeys) {
+    for (final List<String> uk : uniqueKeys) {
+      if (uk.size() == fkCols.size() && fkCols.containsAll(uk)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static List<List<String>> loadUniqueKeys(
+      final DatabaseMetaData meta, final String schema, final String table) throws SQLException {
+    final Map<String, List<String>> idxCols = new LinkedHashMap<>();
+    try (final ResultSet rs = meta.getIndexInfo(null, schema, table, true, false)) {
       while (rs.next()) {
-        String idxName = rs.getString("INDEX_NAME");
-        String colName = rs.getString("COLUMN_NAME");
+        final String idxName = rs.getString("INDEX_NAME");
+        final String colName = rs.getString(COLUMN_NAME);
         if (idxName == null || colName == null) continue;
         idxCols.computeIfAbsent(idxName, k -> new ArrayList<>()).add(colName);
       }
@@ -153,101 +164,115 @@ public class SchemaIntrospector {
   }
 
   private static List<String> loadTableCheckConstraints(
-      Connection conn, DatabaseMetaData meta, String schema, String table) throws SQLException {
-    List<String> checks = new ArrayList<>();
+      final Connection conn, final DatabaseMetaData meta, final String schema, final String table)
+      throws SQLException {
+    final List<String> checks = new ArrayList<>();
 
-    String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
+    final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
     if (product.contains("postgres")) {
-      // Query pg_constraint for check constraints (Postgres-specific)
-      String sql =
-          "SELECT conname, pg_get_constraintdef(con.oid) as condef "
-              .concat("FROM pg_constraint con ")
-              .concat("JOIN pg_class rel ON rel.oid = con.conrelid ")
-              .concat("JOIN pg_namespace nsp ON nsp.oid = con.connamespace ")
-              .concat("WHERE con.contype = 'c' AND nsp.nspname = ? AND rel.relname = ?");
-      try (PreparedStatement ps = conn.prepareStatement(sql)) {
-        ps.setString(1, schema == null ? "public" : schema);
-        ps.setString(2, table);
-        try (ResultSet rs = ps.executeQuery()) {
-          while (rs.next()) {
-            String def = rs.getString("condef");
-            if (def != null && !def.isBlank()) {
-              // pg_get_constraintdef returns strings like "CHECK ((rating >= 1) AND (rating <= 5))"
-              // extract expression inside first CHECK(...)
-              Matcher m = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)").matcher(def);
-              if (m.find()) {
-                checks.add(m.group(1));
-              } else {
-                checks.add(def);
-              }
-            }
-          }
-        }
-      }
-      return checks;
-    }
-
-    // Fallback: try to extract from REMARKS (JDBC metadata)
-    try (ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
-      while (trs.next()) {
-        String remarks = safe(trs.getString("REMARKS"));
-        if (!remarks.isEmpty()) {
-          extractChecksFromText(remarks, checks);
-        }
-      }
-    }
-
-    try (ResultSet crs = meta.getColumns(null, schema, table, "%")) {
-      while (crs.next()) {
-        String remarks = safe(crs.getString("REMARKS"));
-        if (!remarks.isEmpty()) {
-          extractChecksFromText(remarks, checks);
-        }
-      }
+      loadPostgresCheckConstraints(conn, schema, table, checks);
+    } else {
+      loadGenericCheckConstraints(meta, schema, table, checks);
     }
 
     return checks;
   }
 
-  private static void extractChecksFromText(String text, List<String> out) {
-    Pattern pattern = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
-    Matcher matcher = pattern.matcher(text);
+  private static void loadPostgresCheckConstraints(
+      final Connection conn, final String schema, final String table, final List<String> checks)
+      throws SQLException {
+    final String sql =
+        "SELECT conname, pg_get_constraintdef(con.oid) as condef "
+            + "FROM pg_constraint con "
+            + "JOIN pg_class rel ON rel.oid = con.conrelid "
+            + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
+            + "WHERE con.contype = 'c' AND nsp.nspname = ? AND rel.relname = ?";
+    try (final PreparedStatement ps = conn.prepareStatement(sql)) {
+      ps.setString(1, schema == null ? "public" : schema);
+      ps.setString(2, table);
+      try (final ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) {
+          final String def = rs.getString("condef");
+          if (def != null && !def.isBlank()) {
+            final Matcher m = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)").matcher(def);
+            if (m.find()) {
+              checks.add(m.group(1));
+            } else {
+              checks.add(def);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private static void loadGenericCheckConstraints(
+      final DatabaseMetaData meta,
+      final String schema,
+      final String table,
+      final List<String> checks)
+      throws SQLException {
+    try (final ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
+      if (trs.next()) {
+        final String remarks = safe(trs.getString("REMARKS"));
+        if (!remarks.isEmpty()) {
+          extractChecksFromText(remarks, checks);
+        }
+      }
+    }
+
+    try (final ResultSet crs = meta.getColumns(null, schema, table, "%")) {
+      while (crs.next()) {
+        final String remarks = safe(crs.getString("REMARKS"));
+        if (!remarks.isEmpty()) {
+          extractChecksFromText(remarks, checks);
+        }
+      }
+    }
+  }
+
+  private static void extractChecksFromText(final String text, final List<String> out) {
+    final Pattern pattern = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
+    final Matcher matcher = pattern.matcher(text);
     while (matcher.find()) {
       out.add(matcher.group(1));
     }
   }
 
-  private static String safe(String s) {
+  private static String safe(final String s) {
     return s == null ? "" : s;
   }
 
-  private static int[] inferBoundsFromChecks(List<String> checks, String columnName) {
-    for (String expr : checks) {
+  private static int[] inferBoundsFromChecks(final List<String> checks, final String columnName) {
+    for (final String expr : checks) {
       if (expr == null || expr.isBlank()) continue;
 
-      Pattern pBetween =
-          Pattern.compile(
-              "(?i)\\b".concat(Pattern.quote(columnName)).concat("\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)"));
-      Matcher mBetween = pBetween.matcher(expr);
-      if (mBetween.find()) {
-        int min = Integer.parseInt(mBetween.group(1));
-        int max = Integer.parseInt(mBetween.group(2));
-        return new int[] {min, max};
-      }
+      final int[] betweenBounds =
+          parseBounds(
+              expr,
+              "(?i)\\b" + Pattern.quote(columnName) + "\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)");
+      if (betweenBounds.length == 2) return betweenBounds;
 
-      Pattern pGteLte =
-          Pattern.compile(
+      final int[] gteLteBounds =
+          parseBounds(
+              expr,
               "(?i)\\b"
-                  .concat(Pattern.quote(columnName))
-                  .concat("\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b")
-                  .concat(Pattern.quote(columnName))
-                  .concat("\\b\\s*<=\\s*(\\d+)"));
-      Matcher mGteLte = pGteLte.matcher(expr);
-      if (mGteLte.find()) {
-        int min = Integer.parseInt(mGteLte.group(1));
-        int max = Integer.parseInt(mGteLte.group(2));
-        return new int[] {min, max};
-      }
+                  + Pattern.quote(columnName)
+                  + "\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b"
+                  + Pattern.quote(columnName)
+                  + "\\b\\s*<=\\s*(\\d+)");
+      if (gteLteBounds.length == 2) return gteLteBounds;
+    }
+    return new int[0];
+  }
+
+  private static int[] parseBounds(final String expr, final String regex) {
+    final Pattern pattern = Pattern.compile(regex);
+    final Matcher matcher = pattern.matcher(expr);
+    if (matcher.find()) {
+      final int min = Integer.parseInt(matcher.group(1));
+      final int max = Integer.parseInt(matcher.group(2));
+      return new int[] {min, max};
     }
     return new int[0];
   }

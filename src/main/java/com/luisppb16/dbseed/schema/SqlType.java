@@ -8,6 +8,8 @@ package com.luisppb16.dbseed.schema;
 public enum SqlType {
   INT,
   VARCHAR,
+  TEXT,
+  DECIMAL,
   TIMESTAMP,
   BOOLEAN;
 
@@ -15,6 +17,8 @@ public enum SqlType {
     return switch (this) {
       case INT -> "INT";
       case VARCHAR -> "VARCHAR(255)";
+      case TEXT -> "TEXT";
+      case DECIMAL -> "DECIMAL(10, 2)";
       case TIMESTAMP -> "TIMESTAMP";
       case BOOLEAN -> "BOOLEAN";
     };

@@ -13,64 +13,70 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class SchemaDsl {
 
-  public static Schema schema(Table... tables) {
+  public static Schema schema(final Table... tables) {
     return new Schema(List.of(tables));
   }
 
-  public static Table table(String name, Column... columns) {
+  public static Table table(final String name, final Column... columns) {
     return new Table(name, List.of(columns));
   }
 
-  public static Column column(String name, SqlType type) {
-    return new Column(name, type, false, null);
+  public static Column column(final String name, final SqlType type) {
+    return new Column(name, type, false, false, null, false);
   }
 
-  public static Column pk(String name, SqlType type) {
-    return new Column(name, type, true, null);
+  public static Column column(
+      final String name,
+      final SqlType type,
+      final boolean notNull,
+      final String defaultValue,
+      final boolean unique) {
+    return new Column(name, type, false, notNull, defaultValue, unique);
   }
 
-  public static Column fk(String name, SqlType type, String refTable, String refColumn) {
-    return new Column(name, type, false, new ForeignKeyReference(refTable, refColumn));
+  public static Column pk(final String name, final SqlType type) {
+    return new Column(name, type, true, true, null, true); // Primary keys are always not null and unique
   }
 
-  public static String toSql(Schema schema) {
+  public static Column fk(
+      final String name, final SqlType type, final String refTable, final String refColumn) {
+    return new Column(name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
+  }
+
+  public static String toSql(final Schema schema) {
     return schema.tables().stream().map(SchemaDsl::tableSql).collect(Collectors.joining());
   }
 
-  private static String tableSql(Table table) {
-    String cols =
-        table.columns().stream().map(SchemaDsl::columnSql).collect(Collectors.joining(",\n"));
-    return "CREATE TABLE ".concat(table.name()).concat(" (\n").concat(cols).concat("\n);\n\n");
+  private static String tableSql(final Table table) {
+    if (table.columns().isEmpty()) {
+      return "CREATE TABLE %s ();\n\n".formatted(table.name());
+    }
+    final String cols =
+        table.columns().stream().map(SchemaDsl::columnSql).collect(Collectors.joining(",\n  "));
+    return "CREATE TABLE %s (\n  %s\n);\n\n".formatted(table.name(), cols);
   }
 
-  private static String columnSql(Column column) {
-    StringBuilder sql =
-        new StringBuilder("  ").append(column.name()).append(' ').append(column.type().toSql());
+  private static String columnSql(final Column column) {
+    final StringBuilder sql =
+        new StringBuilder("%s %s".formatted(column.name(), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");
     }
+    if (column.notNull()) {
+      sql.append(" NOT NULL");
+    }
+    if (column.defaultValue() != null) {
+      sql.append(" DEFAULT %s".formatted(column.defaultValue()));
+    }
+    if (column.unique()) {
+      sql.append(" UNIQUE");
+    }
     if (column.isForeignKey()) {
-      ForeignKeyReference fk = column.foreignKey();
-      sql.append(" REFERENCES ").append(fk.table()).append('(').append(fk.column()).append(')');
+      final ForeignKeyReference fk = column.foreignKey();
+      sql.append(" REFERENCES %s(%s)".formatted(fk.table(), fk.column()));
     }
     return sql.toString();
-  }
-
-  public enum SqlType {
-    INT,
-    VARCHAR,
-    TIMESTAMP,
-    BOOLEAN;
-
-    public String toSql() {
-      return switch (this) {
-        case INT -> "INT";
-        case VARCHAR -> "VARCHAR(255)";
-        case TIMESTAMP -> "TIMESTAMP";
-        case BOOLEAN -> "BOOLEAN";
-      };
-    }
   }
 
   public record Schema(List<Table> tables) {
@@ -89,10 +95,26 @@ public class SchemaDsl {
   }
 
   public record Column(
-      String name, SqlType type, boolean primaryKey, ForeignKeyReference foreignKey) {
+      String name,
+      SqlType type,
+      boolean primaryKey,
+      boolean notNull,
+      String defaultValue,
+      boolean unique,
+      ForeignKeyReference foreignKey) {
     public Column {
       Objects.requireNonNull(name, "The column name cannot be null.");
       Objects.requireNonNull(type, "The SQL type cannot be null.");
+    }
+
+    public Column(
+        String name,
+        SqlType type,
+        boolean primaryKey,
+        boolean notNull,
+        String defaultValue,
+        boolean unique) {
+      this(name, type, primaryKey, notNull, defaultValue, unique, null);
     }
 
     public boolean isForeignKey() {

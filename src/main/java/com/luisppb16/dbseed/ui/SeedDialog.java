@@ -11,10 +11,21 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.GenerationConfig;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import javax.swing.JCheckBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JPasswordField;
+import javax.swing.JSpinner;
+import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
 import org.jetbrains.annotations.NotNull;
-
-import javax.swing.*;
-import java.awt.*;
 
 public final class SeedDialog extends DialogWrapper {
 
@@ -33,19 +44,18 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private static void addRow(
-      JPanel panel,
-      GridBagConstraints base,
-      int rowIndex,
-      String labelText,
-      JComponent field,
-      int labelAnchor) {
+      final JPanel panel,
+      final GridBagConstraints base,
+      final int rowIndex,
+      final String labelText,
+      final JComponent field) {
 
-    GridBagConstraints c = (GridBagConstraints) base.clone();
+    final GridBagConstraints c = (GridBagConstraints) base.clone();
 
     c.gridx = 0;
     c.gridy = rowIndex;
     c.gridwidth = 1;
-    c.anchor = labelAnchor;
+    c.anchor = GridBagConstraints.EAST;
     c.fill = GridBagConstraints.NONE;
     panel.add(new JLabel(labelText), c);
 
@@ -62,46 +72,53 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private void loadConfiguration() {
-    Project project = getCurrentProject();
+    final Project project = getCurrentProject();
     if (project != null) {
-      GenerationConfig config = ConnectionConfigPersistence.load(project);
+      final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      urlField.setText(config.url());
-      userField.setText(config.user());
-      passwordField.setText(config.password());
-      schemaField.setText(config.schema());
+      urlField.setText(
+          Objects.requireNonNullElse(config.url(), "jdbc:postgresql://localhost:5432/postgres"));
+      userField.setText(Objects.requireNonNullElse(config.user(), "postgres"));
+      passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
+      schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
       rowsSpinner.setValue(config.rowsPerTable());
       deferredBox.setSelected(config.deferred());
     }
   }
 
   private void saveConfiguration() {
-    Project project = getCurrentProject();
+    final Project project = getCurrentProject();
     if (project != null) {
-      GenerationConfig config = getConfiguration();
+      final GenerationConfig config = getConfiguration();
       ConnectionConfigPersistence.save(project, config);
     }
   }
 
   private Project getCurrentProject() {
-    Project[] openProjects = ProjectManager.getInstance().getOpenProjects();
-    return openProjects.length > 0 ? openProjects[0] : null;
+    final Project[] openProjects = ProjectManager.getInstance().getOpenProjects();
+    return openProjects.length > 0
+        ? openProjects[0]
+        : ProjectManager.getInstance().getDefaultProject();
   }
 
   @Override
   protected @NotNull JComponent createCenterPanel() {
-    JPanel panel = new JPanel(new GridBagLayout());
-    GridBagConstraints c = new GridBagConstraints();
+    return createFormPanel();
+  }
+
+  private JPanel createFormPanel() {
+    final JPanel panel = new JPanel(new GridBagLayout());
+    final GridBagConstraints c = new GridBagConstraints();
     c.insets = JBUI.insets(4);
     c.fill = GridBagConstraints.HORIZONTAL;
     c.weightx = 1;
 
     int row = 0;
-    addRow(panel, c, row++, "JDBC URL:", urlField, GridBagConstraints.EAST);
-    addRow(panel, c, row++, "User:", userField, GridBagConstraints.EAST);
-    addRow(panel, c, row++, "Password:", passwordField, GridBagConstraints.EAST);
-    addRow(panel, c, row++, "Schema:", schemaField, GridBagConstraints.EAST);
-    addRow(panel, c, row++, "Rows per table:", rowsSpinner, GridBagConstraints.EAST);
+    addRow(panel, c, row++, "JDBC URL:", urlField);
+    addRow(panel, c, row++, "User:", userField);
+    addRow(panel, c, row++, "Password:", passwordField);
+    addRow(panel, c, row++, "Schema:", schemaField);
+    addRow(panel, c, row++, "Rows per table:", rowsSpinner);
 
     c.gridx = 0;
     c.gridy = row;
@@ -121,5 +138,13 @@ public final class SeedDialog extends DialogWrapper {
         .rowsPerTable((Integer) rowsSpinner.getValue())
         .deferred(deferredBox.isSelected())
         .build();
+  }
+
+  public Map<String, Map<String, String>> getSelectionByTable() {
+    return Collections.emptyMap();
+  }
+
+  public Map<String, List<String>> getExcludedColumnsByTable() {
+    return Collections.emptyMap();
   }
 }

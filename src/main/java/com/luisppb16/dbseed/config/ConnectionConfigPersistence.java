@@ -28,8 +28,8 @@ public class ConnectionConfigPersistence {
   private static final int DEFAULT_ROWS = 10;
   private static final boolean DEFAULT_DEFERRED = false;
 
-  public static void save(@NotNull Project project, @NotNull GenerationConfig config) {
-    PropertiesComponent properties = PropertiesComponent.getInstance(project);
+  public static void save(@NotNull final Project project, @NotNull final GenerationConfig config) {
+    final PropertiesComponent properties = PropertiesComponent.getInstance(project);
 
     properties.setValue(URL_KEY, config.url());
     properties.setValue(USER_KEY, config.user());
@@ -42,31 +42,28 @@ public class ConnectionConfigPersistence {
   }
 
   @NotNull
-  public static GenerationConfig load(@NotNull Project project) {
-    PropertiesComponent properties = PropertiesComponent.getInstance(project);
+  public static GenerationConfig load(@NotNull final Project project) {
+    final PropertiesComponent properties = PropertiesComponent.getInstance(project);
 
-    String url = properties.getValue(URL_KEY, DEFAULT_URL);
-    String user = properties.getValue(USER_KEY, DEFAULT_USER);
-    String password = properties.getValue(PASSWORD_KEY, "");
-    String schema = properties.getValue(SCHEMA_KEY, DEFAULT_SCHEMA);
-    int rows = properties.getInt(ROWS_KEY, DEFAULT_ROWS);
-    boolean deferred = properties.getBoolean(DEFERRED_KEY, DEFAULT_DEFERRED);
+    final String url = properties.getValue(URL_KEY, DEFAULT_URL);
+    final String user = properties.getValue(USER_KEY, DEFAULT_USER);
+    final String password = properties.getValue(PASSWORD_KEY, "");
+    final String schema = properties.getValue(SCHEMA_KEY, DEFAULT_SCHEMA);
+    final int rows = properties.getInt(ROWS_KEY, DEFAULT_ROWS);
+    final boolean deferred = properties.getBoolean(DEFERRED_KEY, DEFAULT_DEFERRED);
 
-    log.debug(
-        "Configuration loaded: url={}, user={}, schema={}, rows={}, deferred={}",
-        url,
-        user,
-        schema,
-        rows,
-        deferred);
+    final GenerationConfig config =
+        GenerationConfig.builder()
+            .url(url)
+            .user(user)
+            .password(password)
+            .schema(schema)
+            .rowsPerTable(rows)
+            .deferred(deferred)
+            .build();
 
-    return GenerationConfig.builder()
-        .url(url)
-        .user(user)
-        .password(password)
-        .schema(schema)
-        .rowsPerTable(rows)
-        .deferred(deferred)
-        .build();
+    log.debug("Configuration loaded: {}", config);
+
+    return config;
   }
 }

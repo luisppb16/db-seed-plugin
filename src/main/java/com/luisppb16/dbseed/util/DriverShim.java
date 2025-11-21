@@ -12,12 +12,8 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.Properties;
 import java.util.logging.Logger;
-import lombok.AllArgsConstructor;
 
-@AllArgsConstructor
-class DriverShim implements Driver {
-  private final Driver driver;
-
+record DriverShim(Driver driver) implements Driver {
   @Override
   public Connection connect(String url, Properties info) throws SQLException {
     return driver.connect(url, info);

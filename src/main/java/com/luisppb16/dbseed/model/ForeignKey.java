@@ -5,8 +5,10 @@
 
 package com.luisppb16.dbseed.model;
 
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.Builder;
 
 @Builder(toBuilder = true)
@@ -22,8 +24,8 @@ public record ForeignKey(
 
     // If the name was not provided, one is generated based on the PK and child columns.
     if (name == null || name.isBlank()) {
-      String cols = String.join("__", columnMapping.keySet());
-      name = "fk_".concat(pkTable).concat(cols.isEmpty() ? "" : "_".concat(cols));
+      final String cols = columnMapping.keySet().stream().sorted(Comparator.naturalOrder()).collect(Collectors.joining("__"));
+      name = "fk_%s%s".formatted(pkTable, cols.isEmpty() ? "" : "_" + cols);
     }
   }
 }

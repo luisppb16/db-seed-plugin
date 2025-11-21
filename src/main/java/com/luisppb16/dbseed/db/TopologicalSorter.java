@@ -65,27 +65,22 @@ public class TopologicalSorter {
 
     // Calculate in-degrees for Kahn's algorithm.
     Map<Integer, Integer> inDegree = new HashMap<>();
-    IntStream.range(0, sccs.size())
-        .forEach(
-            i -> {
-              inDegree.put(i, 0);
-              sccGraph.computeIfAbsent(i, k -> new HashSet<>());
-            });
+    IntStream.range(0, sccs.size()).forEach(i -> inDegree.put(i, 0)); // Initialize all to 0
     sccGraph.values().forEach(edges -> edges.forEach(v -> inDegree.merge(v, 1, Integer::sum)));
 
     // Topological sort of the SCCs.
-    Deque<Integer> queue = new ArrayDeque<>();
-    inDegree.entrySet().stream()
-        .filter(e -> e.getValue() == 0)
-        .map(Map.Entry::getKey)
-        .forEach(queue::add);
+    Deque<Integer> queue =
+        inDegree.entrySet().stream()
+            .filter(e -> e.getValue() == 0)
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toCollection(ArrayDeque::new));
 
     List<Integer> orderScc = new ArrayList<>();
     while (!queue.isEmpty()) {
       int scc = queue.remove();
       orderScc.add(scc);
       sccGraph
-          .getOrDefault(scc, Set.of())
+          .getOrDefault(scc, Collections.emptySet()) // Use Collections.emptySet() for clarity
           .forEach(
               v -> {
                 int deg = inDegree.merge(v, -1, Integer::sum);
@@ -109,12 +104,14 @@ public class TopologicalSorter {
                 g ->
                     g.size() > 1
                         || graph
-                            .getOrDefault(g.iterator().next(), Set.of())
+                            .getOrDefault(
+                                g.iterator().next(),
+                                Collections.emptySet()) // Use Collections.emptySet()
                             .contains(g.iterator().next()))
             .map(Collections::unmodifiableSet)
             .toList();
 
-    return new SortResult(List.copyOf(ordered), List.copyOf(cycles));
+    return new SortResult(ordered, cycles); // Removed redundant List.copyOf
   }
 
   public record SortResult(List<String> ordered, List<Set<String>> cycles) {}
@@ -129,7 +126,8 @@ public class TopologicalSorter {
     private int index = 0;
 
     Tarjan(Map<String, Set<String>> graph) {
-      this.graph = Objects.requireNonNull(graph);
+      this.graph =
+          Objects.requireNonNull(graph, "Graph cannot be null"); // Added null check message
     }
 
     List<Set<String>> run() {
@@ -139,7 +137,7 @@ public class TopologicalSorter {
               v -> {
                 if (!indexMap.containsKey(v)) strongConnect(v);
               });
-      return List.copyOf(result);
+      return result; // Removed redundant List.copyOf
     }
 
     private void strongConnect(String v) {
@@ -150,7 +148,7 @@ public class TopologicalSorter {
       onStack.add(v);
 
       graph
-          .getOrDefault(v, Set.of())
+          .getOrDefault(v, Collections.emptySet()) // Use Collections.emptySet()
           .forEach(
               w -> {
                 if (!indexMap.containsKey(w)) {
@@ -169,7 +167,7 @@ public class TopologicalSorter {
           onStack.remove(w);
           scc.add(w);
         } while (!w.equals(v));
-        result.add(Set.copyOf(scc));
+        result.add(Collections.unmodifiableSet(scc)); // Make SCCs unmodifiable
       }
     }
   }

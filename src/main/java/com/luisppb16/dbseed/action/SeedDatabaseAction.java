@@ -7,10 +7,8 @@ package com.luisppb16.dbseed.action;
 
 import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
-import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -33,26 +31,19 @@ import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
-import java.net.URI;
+import com.luisppb16.dbseed.util.DriverLoader;
+import java.io.IOException;
 import java.net.URISyntaxException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.Connection;
-import java.sql.Driver;
 import java.sql.DriverManager;
-import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -60,59 +51,97 @@ import org.jetbrains.annotations.NotNull;
 @Slf4j
 public class SeedDatabaseAction extends AnAction {
 
-  @Override
-  public void actionPerformed(@NotNull AnActionEvent e) {
-    Optional.ofNullable(e.getProject())
-        .ifPresentOrElse(
-            project -> {
-              List<DriverInfo> drivers = DriverRegistry.getDrivers();
-              if (drivers.isEmpty()) {
-                notifyError(project, "No drivers found in drivers.json");
-                return;
-              }
+  private static final String NOTIFICATION_TITLE = "DB Seed Generator";
+  private static final String SQL_FILE_NAME = "seed.sql";
 
-              DriverSelectionDialog driverDialog = new DriverSelectionDialog(project, drivers);
-              if (!driverDialog.showAndGet()) {
-                return;
-              }
-
-              Optional<DriverInfo> chosenOpt = driverDialog.getSelectedDriver();
-              if (chosenOpt.isEmpty()) {
-                return;
-              }
-              DriverInfo chosen = chosenOpt.get();
-              try {
-                ensureDriverPresent(chosen);
-                SeedDialog dialog = new SeedDialog();
-                if (dialog.showAndGet()) {
-                  runSeedGeneration(project, dialog.getConfiguration());
-                }
-
-              } catch (Exception ex) {
-                notifyError(project, "Error preparing driver: ".concat(ex.getMessage()));
-              }
-            },
-            () -> log.debug("Action canceled: no active project."));
+  private static boolean hasNonNullableForeignKeyInCycle(
+      final Table table, final Set<String> cycle) {
+    return table.foreignKeys().stream()
+        .filter(
+            fk -> cycle.contains(fk.pkTable())) // Foreign key points to a table within the cycle
+        .anyMatch(
+            fk ->
+                fk.columnMapping().keySet().stream()
+                    .map(table::column)
+                    .filter(Objects::nonNull)
+                    .anyMatch(c -> !c.nullable())); // At least one column in the FK is non-nullable
   }
 
-  private void runSeedGeneration(Project project, GenerationConfig config) {
+  private static boolean requiresDeferredDueToNonNullableCycles(
+      final TopologicalSorter.SortResult sort, final Map<String, Table> tableMap) {
+
+    return sort.cycles().stream()
+        .anyMatch(
+            cycle ->
+                cycle.stream()
+                    .map(tableMap::get)
+                    .filter(Objects::nonNull)
+                    .anyMatch(table -> hasNonNullableForeignKeyInCycle(table, cycle)));
+  }
+
+  @Override
+  public void actionPerformed(@NotNull final AnActionEvent e) {
+    final Project project = e.getProject();
+    if (project == null) {
+      log.debug("Action canceled: no active project.");
+      return;
+    }
+
+    final List<DriverInfo> drivers = DriverRegistry.getDrivers();
+    if (drivers.isEmpty()) {
+      notifyError(project, "No drivers found in drivers.json");
+      return;
+    }
+
+    final DriverSelectionDialog driverDialog = new DriverSelectionDialog(project, drivers);
+    if (!driverDialog.showAndGet()) {
+      log.debug("Driver selection canceled.");
+      return;
+    }
+
+    final Optional<DriverInfo> chosenDriverOpt = driverDialog.getSelectedDriver();
+    if (chosenDriverOpt.isEmpty()) {
+      log.debug("No driver selected or BigQuery ProjectId missing.");
+      return;
+    }
+    final DriverInfo chosenDriver = chosenDriverOpt.get();
+
+    try {
+      DriverLoader.ensureDriverPresent(chosenDriver);
+      final SeedDialog seedDialog = new SeedDialog();
+      if (seedDialog.showAndGet()) {
+        runSeedGeneration(project, seedDialog.getConfiguration());
+      } else {
+        log.debug("Seed generation dialog canceled.");
+      }
+    } catch (final IOException
+        | ReflectiveOperationException
+        | URISyntaxException
+        | SQLException ex) {
+      log.error("Error preparing driver: {}", chosenDriver.name(), ex);
+      notifyError(project, "Error preparing driver: " + ex.getMessage());
+    }
+  }
+
+  private void runSeedGeneration(final Project project, final GenerationConfig config) {
     final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
 
     ProgressManager.getInstance()
         .run(
             new Task.Backgroundable(project, "Introspecting schema", false) {
               @Override
-              public void run(@NotNull ProgressIndicator indicator) {
+              public void run(@NotNull final ProgressIndicator indicator) {
                 indicator.setIndeterminate(true);
-                try (Connection conn =
+                try (final Connection conn =
                     DriverManager.getConnection(
                         config.url(),
                         Objects.requireNonNullElse(config.user(), ""),
                         Objects.requireNonNullElse(config.password(), ""))) {
                   tablesRef.set(SchemaIntrospector.introspect(conn, config.schema()));
-                } catch (SQLException ex) {
-                  log.warn("Error introspecting schema.", ex);
-                  notifyError(project, "Error introspecting schema: ".concat(ex.getMessage()));
+                  log.info("Schema introspection successful for schema: {}", config.schema());
+                } catch (final SQLException ex) {
+                  log.warn("Error introspecting schema for URL: {}", config.url(), ex);
+                  notifyError(project, "Error introspecting schema: " + ex.getMessage());
                 }
               }
 
@@ -128,143 +157,89 @@ public class SeedDatabaseAction extends AnAction {
   }
 
   private void continueGeneration(
-      Project project, GenerationConfig config, List<Table> tables) {
-    TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
-    Map<String, Table> tableByName =
+      final Project project, final GenerationConfig config, final List<Table> tables) {
+    final TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
+    final Map<String, Table> tableByName =
         tables.stream().collect(Collectors.toMap(Table::name, Function.identity()));
-    List<Table> ordered =
+    final List<Table> ordered =
         sort.ordered().stream().map(tableByName::get).filter(Objects::nonNull).toList();
 
     final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(ordered);
     if (!pkDialog.showAndGet()) {
+      log.debug("PK UUID selection canceled.");
       return;
     }
-    Map<String, Set<String>> overrides = pkDialog.getSelectionByTable();
-    Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
+    final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
+    final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
+
+    // Convert Map<String, Set<String>> to Map<String, Map<String, String>> for pkUuidOverrides
+    final Map<String, Map<String, String>> pkUuidOverrides =
+        selectedPkUuidColumns.entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    entry ->
+                        entry.getValue().stream()
+                            .collect(Collectors.toMap(Function.identity(), col -> ""))));
+
+    // Convert Map<String, Set<String>> to Map<String, List<String>> for excludedColumns
+    final Map<String, List<String>> excludedColumns =
+        excludedColumnsSet.entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
     ProgressManager.getInstance()
         .run(
             new Task.Backgroundable(project, "Generating SQL", false) {
               @Override
-              public void run(@NotNull ProgressIndicator indicator) {
+              public void run(@NotNull final ProgressIndicator indicator) {
                 indicator.setIndeterminate(false);
                 indicator.setText("Generating data...");
                 indicator.setFraction(0.3);
-                DataGenerator.GenerationResult gen =
+
+                final boolean mustForceDeferred =
+                    requiresDeferredDueToNonNullableCycles(sort, tableByName);
+                final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
+                log.debug("Effective deferred: {}", effectiveDeferred);
+
+                final DataGenerator.GenerationResult gen =
                     DataGenerator.generate(
                         ordered,
                         config.rowsPerTable(),
-                        config.deferred(),
-                        overrides,
+                        effectiveDeferred,
+                        pkUuidOverrides,
                         excludedColumns);
+                log.info("Data generation completed for {} rows per table.", config.rowsPerTable());
 
                 indicator.setText("Building SQL...");
                 indicator.setFraction(0.8);
-                String sql =
-                    SqlGenerator.generate(ordered, gen.rows(), gen.updates(), config.deferred());
+                final String sql =
+                    SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
+                log.info("SQL script built successfully.");
 
                 indicator.setText("Opening editor...");
                 indicator.setFraction(1.0);
                 ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
               }
+
+              @Override
+              public void onThrowable(@NotNull final Throwable error) {
+                log.error("Error during SQL generation.", error);
+                notifyError(project, "Error during SQL generation: " + error.getMessage());
+              }
             });
   }
 
-  private void ensureDriverPresent(DriverInfo info) throws Exception {
-    Path libDir = Path.of(System.getProperty("user.home"), ".dbseed-drivers");
-    Files.createDirectories(libDir);
-
-    String jarName = info.mavenArtifactId().concat("-").concat(info.version()).concat(".jar");
-    Path jarPath = libDir.resolve(jarName);
-
-    if (!Files.exists(jarPath)) {
-      String url =
-          String.format(
-              "https://repo1.maven.org/maven2/%s/%s/%s/%s",
-              info.mavenGroupId().replace('.', '/'),
-              info.mavenArtifactId(),
-              info.version(),
-              jarName);
-      log.info("Downloading driver {} from {}", info.name(), url);
-      try (var in = new URI(url).toURL().openStream()) {
-        Files.copy(in, jarPath);
-      } catch (URISyntaxException e) {
-        throw new RuntimeException(e);
-      }
-    }
-
-    URLClassLoader loader =
-        new URLClassLoader(new URL[] {jarPath.toUri().toURL()}, this.getClass().getClassLoader());
-    Driver driver =
-        (Driver)
-            Class.forName(info.driverClass(), true, loader).getDeclaredConstructor().newInstance();
-    DriverManager.registerDriver(new DriverShim(driver));
-  }
-
-  private void openEditor(Project project, String sql) {
-    FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName("seed.sql");
-    LightVirtualFile file = new LightVirtualFile("seed.sql", fileType, sql);
+  private void openEditor(final Project project, final String sql) {
+    final FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(SQL_FILE_NAME);
+    final LightVirtualFile file = new LightVirtualFile(SQL_FILE_NAME, fileType, sql);
     FileEditorManager.getInstance(project).openFile(file, true);
+    log.info("File {} opened in the editor.", SQL_FILE_NAME);
   }
 
-  private void notifyError(Project project, String message) {
-    Optional.ofNullable(
-            NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_ID.getValue()))
-        .ifPresentOrElse(
-            group ->
-                group
-                    .createNotification(NOTIFICATION_ID.getValue(), message, NotificationType.ERROR)
-                    .notify(project),
-            () -> {
-              Notification notification =
-                  new Notification(
-                      NOTIFICATION_ID.getValue(),
-                      NOTIFICATION_ID.getValue(),
-                      message,
-                      NotificationType.ERROR);
-              Notifications.Bus.notify(notification, project);
-            });
-  }
-
-  private record DriverShim(Driver driver) implements Driver {
-
-    @Override
-    public boolean acceptsURL(String u) throws SQLException {
-      return driver.acceptsURL(u);
-    }
-
-    @Override
-    public Connection connect(String u, Properties p) throws SQLException {
-      return driver.connect(u, p);
-    }
-
-    @Override
-    public int getMajorVersion() {
-      return driver.getMajorVersion();
-    }
-
-    @Override
-    public int getMinorVersion() {
-      return driver.getMinorVersion();
-    }
-
-    @Override
-    public DriverPropertyInfo[] getPropertyInfo(String u, Properties p) throws SQLException {
-      return driver.getPropertyInfo(u, p);
-    }
-
-    @Override
-    public boolean jdbcCompliant() {
-      return driver.jdbcCompliant();
-    }
-
-    @Override
-    public Logger getParentLogger() {
-      try {
-        return driver.getParentLogger();
-      } catch (Exception e) {
-        return Logger.getGlobal();
-      }
-    }
+  private void notifyError(final Project project, final String message) {
+    NotificationGroupManager.getInstance()
+        .getNotificationGroup(NOTIFICATION_ID.getValue())
+        .createNotification(NOTIFICATION_TITLE, message, NotificationType.ERROR)
+        .notify(project);
   }
 }

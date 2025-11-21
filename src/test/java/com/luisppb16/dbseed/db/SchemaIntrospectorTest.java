@@ -95,7 +95,7 @@ class SchemaIntrospectorTest {
   @DisplayName("Should return empty list if no tables found")
   void shouldReturnEmptyListIfNoTables() throws SQLException {
     when(connection.getMetaData()).thenReturn(metaData);
-    when(metaData.getDatabaseProductName()).thenReturn("H2");
+    // Removed: when(metaData.getDatabaseProductName()).thenReturn("H2"); // Not called in this path
 
     ResultSet tableRs = mock(ResultSet.class);
     when(tableRs.next()).thenReturn(false); // No tables
@@ -151,11 +151,18 @@ class SchemaIntrospectorTest {
         .thenReturn(colRsChecks)
         .thenReturn(colRsLoad);
 
-    // Mock getPrimaryKeys
-    ResultSet pkRs = mock(ResultSet.class);
-    when(pkRs.next()).thenReturn(true).thenReturn(false);
-    when(pkRs.getString("COLUMN_NAME")).thenReturn("id");
-    when(metaData.getPrimaryKeys(null, schema, tableName)).thenReturn(pkRs);
+    // Mock getPrimaryKeys - called twice: once in introspect, once in loadColumns
+    ResultSet pkRs1 = mock(ResultSet.class);
+    when(pkRs1.next()).thenReturn(true).thenReturn(false);
+    when(pkRs1.getString("COLUMN_NAME")).thenReturn("id");
+
+    ResultSet pkRs2 = mock(ResultSet.class);
+    when(pkRs2.next()).thenReturn(true).thenReturn(false);
+    when(pkRs2.getString("COLUMN_NAME")).thenReturn("id");
+
+    when(metaData.getPrimaryKeys(null, schema, tableName))
+        .thenReturn(pkRs1) // First call (in introspect)
+        .thenReturn(pkRs2); // Second call (in loadColumns)
 
     // Mock getUniqueKeys
     ResultSet ukRs = mock(ResultSet.class);
@@ -170,6 +177,7 @@ class SchemaIntrospectorTest {
     when(fkRs.getString("FKCOLUMN_NAME")).thenReturn("user_id");
     when(fkRs.getString("PKTABLE_NAME")).thenReturn("users");
     when(fkRs.getString("PKCOLUMN_NAME")).thenReturn("id");
+    when(fkRs.getString("FK_NAME")).thenReturn("fk_user_id");
     when(metaData.getImportedKeys(null, schema, tableName)).thenReturn(fkRs);
 
     List<Table> tables = SchemaIntrospector.introspect(connection, schema);

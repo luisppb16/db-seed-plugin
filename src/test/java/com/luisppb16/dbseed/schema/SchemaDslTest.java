@@ -80,9 +80,22 @@ class SchemaDslTest {
     String sql = SchemaDsl.toSql(schema);
 
     String expectedUsersTableSql =
-        "CREATE TABLE users (  id INT PRIMARY KEY NOT NULL UNIQUE,  name VARCHAR(255));";
+        """
+        CREATE TABLE users (
+          id INT PRIMARY KEY NOT NULL UNIQUE,
+          name VARCHAR(255)
+        );
+
+        """;
     String expectedPostsTableSql =
-        "CREATE TABLE posts (  id INT PRIMARY KEY NOT NULL UNIQUE,  title VARCHAR(255),  user_id INT REFERENCES users(id));";
+        """
+        CREATE TABLE posts (
+          id INT PRIMARY KEY NOT NULL UNIQUE,
+          title VARCHAR(255),
+          user_id INT REFERENCES users(id)
+        );
+
+        """;
 
     assertTrue(sql.contains(expectedUsersTableSql));
     assertTrue(sql.contains(expectedPostsTableSql));
@@ -117,7 +130,9 @@ class SchemaDslTest {
           is_active BOOLEAN DEFAULT TRUE,
           created_at TIMESTAMP NOT NULL,
           unique_code VARCHAR(255) UNIQUE
-        );""";
+        );
+
+        """;
 
     assertTrue(sql.contains(expectedProductsTableSql));
   }
@@ -135,7 +150,7 @@ class SchemaDslTest {
   void shouldGenerateSqlForTableWithNoColumns() {
     Schema schema = SchemaDsl.schema(SchemaDsl.table("empty_table"));
     String sql = SchemaDsl.toSql(schema);
-    String expectedSql = "CREATE TABLE empty_table ();";
+    String expectedSql = "CREATE TABLE empty_table ();\n\n";
     assertTrue(sql.contains(expectedSql));
   }
 }

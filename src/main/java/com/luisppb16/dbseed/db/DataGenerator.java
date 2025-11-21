@@ -45,7 +45,7 @@ public class DataGenerator {
 
   private static final Pattern SINGLE_WORD_PATTERN =
       Pattern.compile("^\\p{L}[\\p{L}\\p{N}]*$"); // Simplified regex, removed named group
-  private static final int MAX_GENERATE_ATTEMPTS = 10;
+  private static final int MAX_GENERATE_ATTEMPTS = 100; // Increased from 10
   private static final int DEFAULT_INT_MAX = 10_000;
   private static final int DEFAULT_LONG_MAX = 1_000_000;
   private static final int DEFAULT_DECIMAL_MAX = 1_000;
@@ -154,6 +154,12 @@ public class DataGenerator {
 
     orderedTables.forEach(
         table -> {
+          if (table.columns().isEmpty()) {
+            data.put(table, Collections.emptyList());
+            log.debug("Skipping row generation for table {} as it has no columns.", table.name());
+            return;
+          }
+
           Map<String, ParsedConstraint> constraints =
               table.columns().stream()
                   .collect(
@@ -165,24 +171,50 @@ public class DataGenerator {
           List<Row> rows = new ArrayList<>();
           Predicate<Column> isFkColumn = column -> table.fkColumnNames().contains(column.name());
           Set<String> seenPrimaryKeys = new HashSet<>();
+          // Map to store seen combinations for each unique key (list of column names)
+          Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
           Set<String> excluded = excludedColumns.getOrDefault(table.name(), Set.of());
 
-          IntStream.range(0, rowsPerTable)
-              .forEach(
-                  i -> {
-                    Map<String, Object> values =
-                        generateSingleRow(
-                            faker, table, i, usedUuids, constraints, isFkColumn, excluded);
+          int generatedCount = 0;
+          int attempts = 0;
+          while (generatedCount < rowsPerTable && attempts < rowsPerTable * MAX_GENERATE_ATTEMPTS) {
+            Map<String, Object> values =
+                generateSingleRow(
+                    faker, table, generatedCount, usedUuids, constraints, isFkColumn, excluded);
 
-                    String pkKey =
-                        table.primaryKey().stream()
-                            .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
-                            .collect(Collectors.joining("|"));
+            boolean isPkUnique;
+            if (table.primaryKey().isEmpty()) {
+                isPkUnique = true;
+            } else {
+                String pkKey = table.primaryKey().stream()
+                    .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
+                    .collect(Collectors.joining("|"));
+                isPkUnique = seenPrimaryKeys.add(pkKey);
+            }
 
-                    if (pkKey.isEmpty() || seenPrimaryKeys.add(pkKey)) {
-                      rows.add(new Row(values));
+            boolean areUniqueColumnsUnique = true;
+            for (List<String> uniqueKeyColumns : table.uniqueKeys()) {
+                // If the unique key is exactly the primary key, its uniqueness is already covered by isPkUnique.
+                // We only need to check other unique keys or if the PK is empty.
+                if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
+                    String uniqueKeyCombination = uniqueKeyColumns.stream()
+                        .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
+                        .collect(Collectors.joining("|"));
+                    Set<String> seenCombinations = seenUniqueKeyCombinations.computeIfAbsent(
+                        String.join("__", uniqueKeyColumns), k -> new HashSet<>());
+                    if (!seenCombinations.add(uniqueKeyCombination)) {
+                        areUniqueColumnsUnique = false;
+                        break;
                     }
-                  });
+                }
+            }
+
+            if (isPkUnique && areUniqueColumnsUnique) {
+              rows.add(new Row(values));
+              generatedCount++;
+            }
+            attempts++;
+          }
           data.put(table, rows);
           log.debug("Generated {} rows for table {}.", rows.size(), table.name());
         });
@@ -195,7 +227,7 @@ public class DataGenerator {
       Set<UUID> usedUuids,
       Map<String, ParsedConstraint> constraints,
       Predicate<Column> isFkColumn,
-      Set<String> excluded) {
+      Set<String> excluded) { // Removed seenUniqueValues parameter
 
     Map<String, Object> values = new LinkedHashMap<>();
     table
@@ -205,18 +237,25 @@ public class DataGenerator {
               if (isFkColumn.test(column) || excluded.contains(column.name())) {
                 values.put(column.name(), null);
               } else {
-                ParsedConstraint pc = constraints.get(column.name());
-                Object gen = generateValue(faker, column, index, usedUuids, pc);
-                if (isNumericJdbc(column.jdbcType())
-                    && pc != null
-                    && (pc.min() != null || pc.max() != null)) {
-                  int attempts = 0;
-                  while (isNumericOutsideBounds(gen, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-                    gen = generateNumericWithinBounds(column, pc);
-                    attempts++;
+                if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
+                  values.put(column.name(), null);
+                } else {
+                  ParsedConstraint pc = constraints.get(column.name());
+                  Object gen = generateValue(faker, column, index, usedUuids, pc);
+
+                  // Removed unique column handling from here. It will be handled in generateTableRows.
+
+                  if (isNumericJdbc(column.jdbcType())
+                      && pc != null
+                      && (pc.min() != null || pc.max() != null)) {
+                    int attempts = 0;
+                    while (isNumericOutsideBounds(gen, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
+                      gen = generateNumericWithinBounds(column, pc);
+                      attempts++;
+                    }
                   }
+                  values.put(column.name(), gen);
                 }
-                values.put(column.name(), gen);
               }
             });
     return values;

@@ -48,14 +48,17 @@ public class SchemaDsl {
   }
 
   private static String tableSql(final Table table) {
+    if (table.columns().isEmpty()) {
+      return "CREATE TABLE %s ();\n\n".formatted(table.name());
+    }
     final String cols =
-        table.columns().stream().map(SchemaDsl::columnSql).collect(Collectors.joining(",%n"));
-    return "CREATE TABLE %s (%n%s%n);%n%n".formatted(table.name(), cols);
+        table.columns().stream().map(SchemaDsl::columnSql).collect(Collectors.joining(",\n  "));
+    return "CREATE TABLE %s (\n  %s\n);\n\n".formatted(table.name(), cols);
   }
 
   private static String columnSql(final Column column) {
     final StringBuilder sql =
-        new StringBuilder("  %s %s".formatted(column.name(), column.type().toSql()));
+        new StringBuilder("%s %s".formatted(column.name(), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");

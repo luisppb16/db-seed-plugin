@@ -37,10 +37,14 @@ public class SqlGenerator {
 
     if (deferred) {
       sb.append("BEGIN;\n");
-      sb.append("SET CONSTRAINTS ALL DEFERRED;\n");
     }
 
     generateInsertStatements(sb, data, opts);
+
+    if (deferred) {
+      sb.append("SET CONSTRAINTS ALL DEFERRED;\n");
+    }
+
     generateUpdateStatements(sb, updates, opts);
 
     if (deferred) {
@@ -131,6 +135,7 @@ public class SqlGenerator {
     return switch (value) {
       case null -> "NULL";
       case String s -> "'".concat(escapeSql(s)).concat("'");
+      case Character c -> "'".concat(escapeSql(c.toString())).concat("'");
       case UUID u -> "'".concat(u.toString()).concat("'");
       case Date d -> "'".concat(d.toString()).concat("'");
       case Timestamp t -> "'".concat(t.toString()).concat("'");
@@ -140,7 +145,10 @@ public class SqlGenerator {
   }
 
   private static String escapeSql(String s) {
-    return s.replace("'", "''");
+    return s.replace("\\", "\\\\") // Escape backslashes first
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+        .replace("'", "''");
   }
 
   @Builder(toBuilder = true)

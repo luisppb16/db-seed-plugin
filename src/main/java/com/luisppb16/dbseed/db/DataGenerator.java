@@ -55,14 +55,14 @@ public class DataGenerator {
       List<Table> tables,
       int rowsPerTable,
       boolean deferred,
-      Map<String, Set<String>> pkUuidOverrides,
-      Map<String, Set<String>> excludedColumns) {
+      Map<String, Map<String, String>> pkUuidOverrides,
+      Map<String, List<String>> excludedColumns) {
 
     Map<String, Table> overridden = new LinkedHashMap<>();
     tables.forEach(
         t -> {
-          Set<String> set = pkUuidOverrides != null ? pkUuidOverrides.get(t.name()) : null;
-          if (set == null || set.isEmpty()) {
+          Map<String, String> pkOverridesForTable = pkUuidOverrides != null ? pkUuidOverrides.get(t.name()) : null;
+          if (pkOverridesForTable == null || pkOverridesForTable.isEmpty()) {
             overridden.put(t.name(), t);
             return;
           }
@@ -70,7 +70,7 @@ public class DataGenerator {
           t.columns()
               .forEach(
                   c -> {
-                    boolean forceUuid = set.contains(c.name());
+                    boolean forceUuid = pkOverridesForTable.containsKey(c.name());
                     if (forceUuid && !c.uuid()) {
                       newCols.add(c.toBuilder().uuid(true).build());
                     } else {
@@ -84,7 +84,12 @@ public class DataGenerator {
         });
 
     List<Table> list = new ArrayList<>(overridden.values());
-    return generateInternal(list, rowsPerTable, deferred, excludedColumns);
+
+    // Convert excludedColumns from Map<String, List<String>> to Map<String, Set<String>>
+    Map<String, Set<String>> excludedColumnsSet = excludedColumns.entrySet().stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
+
+    return generateInternal(list, rowsPerTable, deferred, excludedColumnsSet);
   }
 
   private static GenerationResult generateInternal(
@@ -695,7 +700,7 @@ public class DataGenerator {
         Pattern.compile(colPattern.concat("\\s+IN\\s*\\(([^)]+)\\)"), Pattern.CASE_INSENSITIVE);
     Pattern eqPattern =
         Pattern.compile(
-            colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-ZaZ_+-]+)"), Pattern.CASE_INSENSITIVE);
+            colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"), Pattern.CASE_INSENSITIVE);
     Pattern lenPattern =
         Pattern.compile(
             "(?i)(?:char_length|length)\\s*\\(\\s*"

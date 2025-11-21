@@ -13,6 +13,7 @@ import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.text.ParseException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -67,6 +68,11 @@ public final class SeedDialog extends DialogWrapper {
 
   @Override
   protected void doOKAction() {
+    try {
+      rowsSpinner.commitEdit();
+    } catch (ParseException e) {
+      // Invalid number typed, spinner will retain last valid value.
+    }
     super.doOKAction();
     saveConfiguration();
   }

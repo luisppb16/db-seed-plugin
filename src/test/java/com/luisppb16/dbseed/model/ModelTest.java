@@ -272,14 +272,15 @@ class ModelTest {
     @DisplayName("Table column method should return the correct column")
     void tableColumnFound() {
       Column col = Column.builder().name("c").jdbcType(Types.VARCHAR).build();
-      Table t = Table.builder()
-          .name("t")
-          .columns(List.of(col))
-          .primaryKey(List.of()) // Added
-          .foreignKeys(List.of()) // Added
-          .checks(List.of()) // Added
-          .uniqueKeys(List.of()) // Added
-          .build();
+      Table t =
+          Table.builder()
+              .name("t")
+              .columns(List.of(col))
+              .primaryKey(List.of()) // Added
+              .foreignKeys(List.of()) // Added
+              .checks(List.of()) // Added
+              .uniqueKeys(List.of()) // Added
+              .build();
 
       assertNotNull(t.column("c"));
       assertEquals("c", t.column("c").name());
@@ -289,14 +290,15 @@ class ModelTest {
     @DisplayName("Table column method should return null if column not found")
     void tableColumnNotFound() {
       Column col = Column.builder().name("c").jdbcType(Types.VARCHAR).build();
-      Table t = Table.builder()
-          .name("t")
-          .columns(List.of(col))
-          .primaryKey(List.of()) // Added
-          .foreignKeys(List.of()) // Added
-          .checks(List.of()) // Added
-          .uniqueKeys(List.of()) // Added
-          .build();
+      Table t =
+          Table.builder()
+              .name("t")
+              .columns(List.of(col))
+              .primaryKey(List.of()) // Added
+              .foreignKeys(List.of()) // Added
+              .checks(List.of()) // Added
+              .uniqueKeys(List.of()) // Added
+              .build();
 
       assertNull(t.column("non_existent_column"));
     }
@@ -314,14 +316,15 @@ class ModelTest {
               .pkTable("parent2")
               .columnMapping(Map.of("child_id_2", "parent_id_2", "child_id_3", "parent_id_3"))
               .build();
-      Table t = Table.builder()
-          .name("t")
-          .columns(List.of())
-          .primaryKey(List.of()) // Added
-          .foreignKeys(List.of(fk1, fk2))
-          .checks(List.of()) // Added
-          .uniqueKeys(List.of()) // Added
-          .build();
+      Table t =
+          Table.builder()
+              .name("t")
+              .columns(List.of())
+              .primaryKey(List.of()) // Added
+              .foreignKeys(List.of(fk1, fk2))
+              .checks(List.of()) // Added
+              .uniqueKeys(List.of()) // Added
+              .build();
 
       Set<String> expectedFkColumns = Set.of("child_id_1", "child_id_2", "child_id_3");
       assertEquals(expectedFkColumns, t.fkColumnNames());
@@ -330,14 +333,15 @@ class ModelTest {
     @Test
     @DisplayName("Table fkColumnNames should return an empty set if no foreign keys")
     void tableFkColumnNamesNoFks() {
-      Table t = Table.builder()
-          .name("t")
-          .columns(List.of())
-          .primaryKey(List.of()) // Added
-          .foreignKeys(List.of())
-          .checks(List.of()) // Added
-          .uniqueKeys(List.of()) // Added
-          .build();
+      Table t =
+          Table.builder()
+              .name("t")
+              .columns(List.of())
+              .primaryKey(List.of()) // Added
+              .foreignKeys(List.of())
+              .checks(List.of()) // Added
+              .uniqueKeys(List.of()) // Added
+              .build();
 
       assertTrue(t.fkColumnNames().isEmpty());
     }
@@ -347,14 +351,15 @@ class ModelTest {
         "Table fkColumnNames should return an empty set if foreign keys have empty mappings")
     void tableFkColumnNamesEmptyMappingFks() {
       ForeignKey fk = ForeignKey.builder().pkTable("parent").columnMapping(Map.of()).build();
-      Table t = Table.builder()
-          .name("t")
-          .columns(List.of())
-          .primaryKey(List.of()) // Added
-          .foreignKeys(List.of(fk))
-          .checks(List.of()) // Added
-          .uniqueKeys(List.of()) // Added
-          .build();
+      Table t =
+          Table.builder()
+              .name("t")
+              .columns(List.of())
+              .primaryKey(List.of()) // Added
+              .foreignKeys(List.of(fk))
+              .checks(List.of()) // Added
+              .uniqueKeys(List.of()) // Added
+              .build();
 
       assertTrue(t.fkColumnNames().isEmpty());
     }

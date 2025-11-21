@@ -31,7 +31,7 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.util.Collections;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -45,7 +45,7 @@ public final class GenerateSeedAction extends AnAction {
   private static final String FILE_NAME = "query_batch.sql";
 
   private static boolean requiresDeferredDueToNonNullableCycles(
-      TopologicalSorter.SortResult sort, Map<String, Table> tableMap) {
+      final TopologicalSorter.SortResult sort, final Map<String, Table> tableMap) {
 
     return sort.cycles().stream()
         .anyMatch(
@@ -66,95 +66,92 @@ public final class GenerateSeedAction extends AnAction {
   }
 
   @Override
-  public void actionPerformed(@NotNull AnActionEvent e) {
-    Project project = e.getProject();
+  public void actionPerformed(@NotNull final AnActionEvent e) {
+    final Project project = e.getProject();
     if (project == null) {
       log.debug("Action canceled: no active project.");
       return;
     }
 
-    SeedDialog dialog = new SeedDialog();
+    final SeedDialog dialog = new SeedDialog();
     if (!dialog.showAndGet()) {
       log.info("User canceled the seed generation operation.");
       return;
     }
 
-    GenerationConfig config = dialog.getConfiguration();
+    final GenerationConfig config = dialog.getConfiguration();
 
     ProgressManager.getInstance()
         .run(
             new Task.Backgroundable(project, APP_NAME.getValue(), false) {
               @Override
-              public void run(@NotNull ProgressIndicator indicator) {
-
+              public void run(@NotNull final ProgressIndicator indicator) {
                 try {
-                  Class.forName("org.postgresql.Driver");
-                } catch (ClassNotFoundException ex) {
-                  log.error("PostgreSQL JDBC driver not found.", ex);
-                  notifyError(project, "PostgreSQL JDBC driver not found in the classpath.");
-                  return;
-                }
-
-                try (Connection conn =
-                    DriverManager.getConnection(config.url(), config.user(), config.password())) {
-
-                  indicator.setText("Introspecting schema...");
-                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
-                  log.debug("Schema introspected with {} tables.", tables.size());
-
-                  indicator.setText("Sorting tables...");
-                  TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
-
-                  Map<String, Table> tableMap =
-                      tables.stream().collect(Collectors.toMap(Table::name, t -> t));
-
-                  List<Table> ordered =
-                      sort.ordered().stream().map(tableMap::get).filter(Objects::nonNull).toList();
-                  log.debug("Sorted {} tables.", ordered.size());
-
-                  boolean mustForceDeferred =
-                      requiresDeferredDueToNonNullableCycles(sort, tableMap);
-                  boolean effectiveDeferred = config.deferred() || mustForceDeferred;
-                  log.debug("Effective deferred: {}", effectiveDeferred);
-
-                  indicator.setText("Generating data...");
-                  DataGenerator.GenerationResult gen =
-                      DataGenerator.generate(
-                          ordered,
-                          config.rowsPerTable(),
-                          effectiveDeferred,
-                          Collections.emptyMap(),
-                          Collections.emptyMap());
-
-                  indicator.setText("Building SQL...");
-                  String sql =
-                      SqlGenerator.generate(ordered, gen.rows(), gen.updates(), effectiveDeferred);
-
-                  log.info("Seed SQL generated successfully.");
+                  final String sql = generateSeedSql(config, dialog, indicator);
                   ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
-
-                } catch (Exception ex) {
+                } catch (final SQLException ex) {
+                  log.error("Database error during seed SQL generation.", ex);
+                  notifyError(project, "Database Error: " + ex.getMessage());
+                } catch (final Exception ex) {
                   log.error("Error during seed SQL generation.", ex);
-                  Notifications.Bus.notify(
-                      new Notification(
-                          NOTIFICATION_ID.getValue(),
-                          "Error",
-                          ex.getMessage(),
-                          NotificationType.ERROR),
-                      project);
+                  notifyError(project, "Error: " + ex.getMessage());
                 }
               }
             });
   }
 
-  private void openEditor(Project project, String sql) {
-    FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(FILE_NAME);
-    LightVirtualFile file = new LightVirtualFile(FILE_NAME, fileType, sql);
+  private String generateSeedSql(
+      @NotNull final GenerationConfig config,
+      @NotNull final SeedDialog dialog,
+      @NotNull final ProgressIndicator indicator)
+      throws Exception {
+
+    try (final Connection conn =
+        DriverManager.getConnection(config.url(), config.user(), config.password())) {
+
+      indicator.setText("Introspecting schema...");
+      final List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
+      log.debug("Schema introspected with {} tables.", tables.size());
+
+      indicator.setText("Sorting tables...");
+      final TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
+
+      final Map<String, Table> tableMap =
+          tables.stream().collect(Collectors.toMap(Table::name, t -> t));
+
+      final List<Table> ordered =
+          sort.ordered().stream().map(tableMap::get).filter(Objects::nonNull).toList();
+      log.debug("Sorted {} tables.", ordered.size());
+
+      final boolean mustForceDeferred = requiresDeferredDueToNonNullableCycles(sort, tableMap);
+      final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
+      log.debug("Effective deferred: {}", effectiveDeferred);
+
+      indicator.setText("Generating data...");
+      final DataGenerator.GenerationResult gen =
+          DataGenerator.generate(
+              ordered,
+              config.rowsPerTable(),
+              effectiveDeferred,
+              dialog.getSelectionByTable(),
+              dialog.getExcludedColumnsByTable());
+
+      indicator.setText("Building SQL...");
+      final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
+
+      log.info("Seed SQL generated successfully.");
+      return sql;
+    }
+  }
+
+  private void openEditor(final Project project, final String sql) {
+    final FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(FILE_NAME);
+    final LightVirtualFile file = new LightVirtualFile(FILE_NAME, fileType, sql);
     FileEditorManager.getInstance(project).openFile(file, true);
     log.info("File {} opened in the editor.", FILE_NAME);
   }
 
-  private void notifyError(Project project, String message) {
+  private void notifyError(final Project project, final String message) {
     Notifications.Bus.notify(
         new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
         project);

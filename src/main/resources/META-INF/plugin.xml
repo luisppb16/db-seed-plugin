@@ -2,7 +2,7 @@
     <id>com.luisppb16.dbseed</id>
     <name>Database Seed Generator</name>
     <version>1.1.1</version>
-    <vendor email="ironkrozz@gmail.com">LuisPPB16</vendor>
+    <vendor email="ironkrozz@gmail.com">Luis Pepe</vendor>
     <description>
         <![CDATA[
             A smart SQL seed generator that respects your schema's integrity.
@@ -39,6 +39,12 @@
                 class="com.luisppb16.dbseed.action.GenerateSeedAction"
                 text="Database Seed Generator"
                 description="Generates SQL seed script with Primary Key and Foreign Key restrictions, and realistic data.">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="SeedDatabaseAction"
+                class="com.luisppb16.dbseed.action.SeedDatabaseAction"
+                text="Seed Database"
+                description="Seeds the database with generated data.">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>

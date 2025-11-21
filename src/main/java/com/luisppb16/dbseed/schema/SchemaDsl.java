@@ -22,16 +22,25 @@ public class SchemaDsl {
   }
 
   public static Column column(final String name, final SqlType type) {
-    return new Column(name, type, false, null);
+    return new Column(name, type, false, false, null, false);
+  }
+
+  public static Column column(
+      final String name,
+      final SqlType type,
+      final boolean notNull,
+      final String defaultValue,
+      final boolean unique) {
+    return new Column(name, type, false, notNull, defaultValue, unique);
   }
 
   public static Column pk(final String name, final SqlType type) {
-    return new Column(name, type, true, null);
+    return new Column(name, type, true, true, null, true); // Primary keys are always not null and unique
   }
 
   public static Column fk(
       final String name, final SqlType type, final String refTable, final String refColumn) {
-    return new Column(name, type, false, new ForeignKeyReference(refTable, refColumn));
+    return new Column(name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
   }
 
   public static String toSql(final Schema schema) {
@@ -50,6 +59,15 @@ public class SchemaDsl {
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");
+    }
+    if (column.notNull()) {
+      sql.append(" NOT NULL");
+    }
+    if (column.defaultValue() != null) {
+      sql.append(" DEFAULT %s".formatted(column.defaultValue()));
+    }
+    if (column.unique()) {
+      sql.append(" UNIQUE");
     }
     if (column.isForeignKey()) {
       final ForeignKeyReference fk = column.foreignKey();
@@ -74,10 +92,26 @@ public class SchemaDsl {
   }
 
   public record Column(
-      String name, SqlType type, boolean primaryKey, ForeignKeyReference foreignKey) {
+      String name,
+      SqlType type,
+      boolean primaryKey,
+      boolean notNull,
+      String defaultValue,
+      boolean unique,
+      ForeignKeyReference foreignKey) {
     public Column {
       Objects.requireNonNull(name, "The column name cannot be null.");
       Objects.requireNonNull(type, "The SQL type cannot be null.");
+    }
+
+    public Column(
+        String name,
+        SqlType type,
+        boolean primaryKey,
+        boolean notNull,
+        String defaultValue,
+        boolean unique) {
+      this(name, type, primaryKey, notNull, defaultValue, unique, null);
     }
 
     public boolean isForeignKey() {

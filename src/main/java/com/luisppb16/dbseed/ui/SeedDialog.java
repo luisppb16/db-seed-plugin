@@ -13,6 +13,9 @@ import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
@@ -132,5 +135,13 @@ public final class SeedDialog extends DialogWrapper {
         .rowsPerTable((Integer) rowsSpinner.getValue())
         .deferred(deferredBox.isSelected())
         .build();
+  }
+
+  public Map<String, Map<String, String>> getSelectionByTable() {
+    return Collections.emptyMap();
+  }
+
+  public Map<String, List<String>> getExcludedColumnsByTable() {
+    return Collections.emptyMap();
   }
 }

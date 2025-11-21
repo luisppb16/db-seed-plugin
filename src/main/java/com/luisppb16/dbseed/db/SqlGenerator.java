@@ -24,6 +24,7 @@ import lombok.experimental.UtilityClass;
 public class SqlGenerator {
 
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
+  private static final int BATCH_SIZE = 1000; // Optimal batch size for most DBs
 
   private static final Set<String> RESERVED_KEYWORDS =
       Set.of(
@@ -56,7 +57,6 @@ public class SqlGenerator {
 
   private static void generateInsertStatements(
       StringBuilder sb, Map<Table, List<Row>> data, SqlOptions opts) {
-    // The insertion order of tables is preserved by LinkedHashMap in DataGenerator.
     data.forEach(
         (table, rows) -> {
           if (rows == null || rows.isEmpty()) {
@@ -64,25 +64,32 @@ public class SqlGenerator {
           }
 
           List<String> columnOrder = table.columns().stream().map(Column::name).toList();
-
           String tableName = qualified(opts, table.name());
           String columnList =
               columnOrder.stream()
                   .map(col -> qualified(opts, col))
                   .collect(Collectors.joining(", "));
 
-          for (Row row : rows) {
-            String values =
-                columnOrder.stream()
-                    .map(col -> formatValue(row.values().get(col)))
-                    .collect(Collectors.joining(", "));
+          for (int i = 0; i < rows.size(); i += BATCH_SIZE) {
             sb.append("INSERT INTO ")
                 .append(tableName)
                 .append(" (")
                 .append(columnList)
-                .append(") VALUES (")
-                .append(values)
-                .append(");\n");
+                .append(") VALUES\n");
+
+            List<Row> batch = rows.subList(i, Math.min(i + BATCH_SIZE, rows.size()));
+            String values =
+                batch.stream()
+                    .map(
+                        row ->
+                            "("
+                                + columnOrder.stream()
+                                    .map(col -> formatValue(row.values().get(col)))
+                                    .collect(Collectors.joining(", "))
+                                + ")")
+                    .collect(Collectors.joining(",\n"));
+
+            sb.append(values).append(";\n");
           }
         });
   }

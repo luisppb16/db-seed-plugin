@@ -19,6 +19,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.testFramework.LightVirtualFile;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -53,6 +54,7 @@ public class SeedDatabaseAction extends AnAction {
 
   private static final String NOTIFICATION_TITLE = "DB Seed Generator";
   private static final String SQL_FILE_NAME = "seed.sql";
+  private static final long INSERT_THRESHOLD = 10000L;
 
   private static boolean hasNonNullableForeignKeyInCycle(
       final Table table, final Set<String> cycle) {
@@ -158,6 +160,30 @@ public class SeedDatabaseAction extends AnAction {
 
   private void continueGeneration(
       final Project project, final GenerationConfig config, final List<Table> tables) {
+    final long totalRows = (long) config.rowsPerTable() * tables.size();
+    if (totalRows >= INSERT_THRESHOLD) {
+      final String message =
+          String.format(
+              "This operation will generate approximately %,d rows."
+                  + " The plugin can handle them, but your database may take some time to insert them.%n%n"
+                  + "Do you still want to continue?",
+              totalRows);
+
+      final int result =
+          Messages.showOkCancelDialog(
+              project,
+              message,
+              "Large Data Seeding Operation",
+              "Continue",
+              "Cancel",
+              Messages.getWarningIcon());
+
+      if (result == Messages.CANCEL) {
+        log.debug("User canceled large data seeding operation.");
+        return;
+      }
+    }
+
     final TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
     final Map<String, Table> tableByName =
         tables.stream().collect(Collectors.toMap(Table::name, Function.identity()));

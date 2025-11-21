@@ -34,7 +34,6 @@ import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
@@ -184,29 +183,36 @@ public class DataGenerator {
 
             boolean isPkUnique;
             if (table.primaryKey().isEmpty()) {
-                isPkUnique = true;
+              isPkUnique = true;
             } else {
-                String pkKey = table.primaryKey().stream()
-                    .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
-                    .collect(Collectors.joining("|"));
-                isPkUnique = seenPrimaryKeys.add(pkKey);
+              String pkKey =
+                  table.primaryKey().stream()
+                      .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
+                      .collect(Collectors.joining("|"));
+              isPkUnique = seenPrimaryKeys.add(pkKey);
             }
 
             boolean areUniqueColumnsUnique = true;
             for (List<String> uniqueKeyColumns : table.uniqueKeys()) {
-                // If the unique key is exactly the primary key, its uniqueness is already covered by isPkUnique.
-                // We only need to check other unique keys or if the PK is empty.
-                if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
-                    String uniqueKeyCombination = uniqueKeyColumns.stream()
+              if (uniqueKeyColumns.stream().allMatch(table.fkColumnNames()::contains)) {
+                continue;
+              }
+              // If the unique key is exactly the primary key, its uniqueness is already covered by
+              // isPkUnique.
+              // We only need to check other unique keys or if the PK is empty.
+              if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
+                String uniqueKeyCombination =
+                    uniqueKeyColumns.stream()
                         .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
                         .collect(Collectors.joining("|"));
-                    Set<String> seenCombinations = seenUniqueKeyCombinations.computeIfAbsent(
+                Set<String> seenCombinations =
+                    seenUniqueKeyCombinations.computeIfAbsent(
                         String.join("__", uniqueKeyColumns), k -> new HashSet<>());
-                    if (!seenCombinations.add(uniqueKeyCombination)) {
-                        areUniqueColumnsUnique = false;
-                        break;
-                    }
+                if (!seenCombinations.add(uniqueKeyCombination)) {
+                  areUniqueColumnsUnique = false;
+                  break;
                 }
+              }
             }
 
             if (isPkUnique && areUniqueColumnsUnique) {
@@ -243,7 +249,8 @@ public class DataGenerator {
                   ParsedConstraint pc = constraints.get(column.name());
                   Object gen = generateValue(faker, column, index, usedUuids, pc);
 
-                  // Removed unique column handling from here. It will be handled in generateTableRows.
+                  // Removed unique column handling from here. It will be handled in
+                  // generateTableRows.
 
                   if (isNumericJdbc(column.jdbcType())
                       && pc != null
@@ -316,17 +323,91 @@ public class DataGenerator {
                       .map(table::column)
                       .allMatch(Column::nullable);
 
-          rows.forEach(
-              row ->
-                  table
-                      .foreignKeys()
-                      .forEach(
-                          fk ->
-                              resolveSingleForeignKey(
-                                  fk, table, row, fkIsNullable.test(fk), context)));
+          List<List<String>> uniqueKeysOnFks =
+              table.uniqueKeys().stream()
+                  .filter(uk -> uk.stream().allMatch(table.fkColumnNames()::contains))
+                  .toList();
+
+          if (!uniqueKeysOnFks.isEmpty()) {
+            // Special handling for tables with unique keys composed entirely of foreign keys
+            handleUniqueFkResolution(table, rows, context, uniqueKeysOnFks);
+          } else {
+            // Default FK resolution
+            rows.forEach(
+                row ->
+                    table
+                        .foreignKeys()
+                        .forEach(
+                            fk ->
+                                resolveSingleForeignKey(
+                                    fk, table, row, fkIsNullable.test(fk), context)));
+          }
 
           inserted.add(table.name());
         });
+  }
+
+  private static void handleUniqueFkResolution(
+      Table table,
+      List<Row> rows,
+      ForeignKeyResolutionContext context,
+      List<List<String>> uniqueKeysOnFks) {
+    Set<String> usedCombinations = new HashSet<>();
+    int maxAttempts = 100 * rows.size();
+
+    for (Row row : rows) {
+      boolean assigned = false;
+      for (int attempt = 0; attempt < maxAttempts; attempt++) {
+        Map<String, Object> potentialFkValues = new HashMap<>();
+        // For each FK in the table, pick a random parent
+        for (ForeignKey fk : table.foreignKeys()) {
+          Table parent = context.tableMap().get(fk.pkTable());
+          if (parent == null) continue;
+          List<Row> parentRows = context.data().get(parent);
+          if (parentRows == null || parentRows.isEmpty()) continue;
+
+          Row parentRow =
+              getParentRowForForeignKey(
+                  fk,
+                  parentRows,
+                  context.uniqueFkParentQueues(),
+                  table.name(),
+                  parent.name(),
+                  false);
+          if (parentRow != null) {
+            fk.columnMapping()
+                .forEach(
+                    (fkCol, pkCol) -> potentialFkValues.put(fkCol, parentRow.values().get(pkCol)));
+          }
+        }
+
+        // Check if this combination of FKs violates any unique constraint
+        boolean collision = false;
+        List<String> currentCombinations = new ArrayList<>();
+        for (List<String> ukColumns : uniqueKeysOnFks) {
+          String combination =
+              ukColumns.stream()
+                  .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
+                  .collect(Collectors.joining("|"));
+          if (usedCombinations.contains(combination)) {
+            collision = true;
+            break;
+          }
+          currentCombinations.add(combination);
+        }
+
+        if (!collision) {
+          // No collision, this is a valid assignment
+          row.values().putAll(potentialFkValues);
+          usedCombinations.addAll(currentCombinations);
+          assigned = true;
+          break;
+        }
+      }
+      if (!assigned) {
+        log.warn("Could not find a unique FK combination for a row in table {}", table.name());
+      }
+    }
   }
 
   private static void resolveSingleForeignKey(
@@ -667,7 +748,7 @@ public class DataGenerator {
     if (len == 2) return faker.country().countryCode2();
     if (len == 3) return faker.country().countryCode3();
     if (len == 24) return normalizeToLength("ES".concat(faker.number().digits(22)), len, jdbcType);
-    int numWords = ThreadLocalRandom.current().nextInt(1, Math.clamp(len / 5, 2, 10));
+    int numWords = ThreadLocalRandom.current().nextInt(3, Math.clamp(len / 5, 4, 10));
     String phrase = String.join(" ", faker.lorem().words(numWords));
     return normalizeToLength(phrase, len, jdbcType);
   }

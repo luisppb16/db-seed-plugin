@@ -13,18 +13,24 @@ import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.event.KeyEvent;
 import java.text.ParseException;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import javax.swing.ActionMap;
+import javax.swing.InputMap;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
+import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
+import javax.swing.JSpinner.DefaultEditor;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import org.jetbrains.annotations.NotNull;
 
@@ -35,13 +41,30 @@ public final class SeedDialog extends DialogWrapper {
   private final JTextField userField = new JTextField("postgres");
   private final JPasswordField passwordField = new JPasswordField();
   private final JTextField schemaField = new JTextField("public");
-  private final JSpinner rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 10_000, 1));
+  private final JSpinner rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, 3));
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
 
   public SeedDialog() {
     super(true);
     setTitle("Database Seed Generator");
     loadConfiguration();
+
+    final JComponent editor = rowsSpinner.getEditor();
+    if (editor instanceof final DefaultEditor defaultEditor) {
+      final JFormattedTextField textField = defaultEditor.getTextField();
+      final InputMap inputMap = textField.getInputMap(JComponent.WHEN_FOCUSED);
+
+      final String incrementAction = "increment";
+      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), incrementAction);
+      final String decrementAction = "decrement";
+      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), decrementAction);
+
+      final ActionMap spinnerActionMap = rowsSpinner.getActionMap();
+      final ActionMap textFieldActionMap = textField.getActionMap();
+      textFieldActionMap.put(incrementAction, spinnerActionMap.get(incrementAction));
+      textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
+    }
+
     init();
   }
 

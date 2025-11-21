@@ -12,9 +12,16 @@ import org.jetbrains.annotations.Nullable;
 
 @Builder(toBuilder = true)
 public record ColumnDefinition(
-    @NotNull String name, @NotNull SqlType type, boolean primaryKey, @Nullable ForeignKeyReference foreignKey) {
+    @NotNull String name,
+    @NotNull SqlType type,
+    boolean primaryKey,
+    @Nullable ForeignKeyReference foreignKey) {
 
-  public ColumnDefinition(@NotNull String name, @NotNull SqlType type, boolean primaryKey, @Nullable ForeignKeyReference foreignKey) {
+  public ColumnDefinition(
+      @NotNull String name,
+      @NotNull SqlType type,
+      boolean primaryKey,
+      @Nullable ForeignKeyReference foreignKey) {
     this.name = Objects.requireNonNull(name, "The column name cannot be null.");
     this.type = Objects.requireNonNull(type, "The SQL type of the column cannot be null.");
     this.primaryKey = primaryKey;

@@ -69,10 +69,11 @@ public class TopologicalSorter {
     sccGraph.values().forEach(edges -> edges.forEach(v -> inDegree.merge(v, 1, Integer::sum)));
 
     // Topological sort of the SCCs.
-    Deque<Integer> queue = inDegree.entrySet().stream()
-        .filter(e -> e.getValue() == 0)
-        .map(Map.Entry::getKey)
-        .collect(Collectors.toCollection(ArrayDeque::new));
+    Deque<Integer> queue =
+        inDegree.entrySet().stream()
+            .filter(e -> e.getValue() == 0)
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toCollection(ArrayDeque::new));
 
     List<Integer> orderScc = new ArrayList<>();
     while (!queue.isEmpty()) {
@@ -103,7 +104,9 @@ public class TopologicalSorter {
                 g ->
                     g.size() > 1
                         || graph
-                            .getOrDefault(g.iterator().next(), Collections.emptySet()) // Use Collections.emptySet()
+                            .getOrDefault(
+                                g.iterator().next(),
+                                Collections.emptySet()) // Use Collections.emptySet()
                             .contains(g.iterator().next()))
             .map(Collections::unmodifiableSet)
             .toList();
@@ -123,7 +126,8 @@ public class TopologicalSorter {
     private int index = 0;
 
     Tarjan(Map<String, Set<String>> graph) {
-      this.graph = Objects.requireNonNull(graph, "Graph cannot be null"); // Added null check message
+      this.graph =
+          Objects.requireNonNull(graph, "Graph cannot be null"); // Added null check message
     }
 
     List<Set<String>> run() {

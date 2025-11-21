@@ -76,7 +76,8 @@ public final class SeedDialog extends DialogWrapper {
     if (project != null) {
       final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      urlField.setText(Objects.requireNonNullElse(config.url(), "jdbc:postgresql://localhost:5432/postgres"));
+      urlField.setText(
+          Objects.requireNonNullElse(config.url(), "jdbc:postgresql://localhost:5432/postgres"));
       userField.setText(Objects.requireNonNullElse(config.user(), "postgres"));
       passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
       schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
@@ -95,7 +96,9 @@ public final class SeedDialog extends DialogWrapper {
 
   private Project getCurrentProject() {
     final Project[] openProjects = ProjectManager.getInstance().getOpenProjects();
-    return openProjects.length > 0 ? openProjects[0] : ProjectManager.getInstance().getDefaultProject();
+    return openProjects.length > 0
+        ? openProjects[0]
+        : ProjectManager.getInstance().getDefaultProject();
   }
 
   @Override

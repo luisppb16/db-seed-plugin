@@ -28,7 +28,8 @@ public class DriverRegistry {
     try (final InputStream in = DriverRegistry.class.getResourceAsStream(DRIVERS_JSON_PATH)) {
       if (in == null) {
         log.error("Driver configuration file not found: {}", DRIVERS_JSON_PATH);
-        throw new IllegalStateException("Driver configuration file not found: " + DRIVERS_JSON_PATH);
+        throw new IllegalStateException(
+            "Driver configuration file not found: " + DRIVERS_JSON_PATH);
       }
       final ObjectMapper mapper = new ObjectMapper();
       tempDrivers = mapper.readValue(in, new TypeReference<>() {});

@@ -61,7 +61,8 @@ public class DataGenerator {
     Map<String, Table> overridden = new LinkedHashMap<>();
     tables.forEach(
         t -> {
-          Map<String, String> pkOverridesForTable = pkUuidOverrides != null ? pkUuidOverrides.get(t.name()) : null;
+          Map<String, String> pkOverridesForTable =
+              pkUuidOverrides != null ? pkUuidOverrides.get(t.name()) : null;
           if (pkOverridesForTable == null || pkOverridesForTable.isEmpty()) {
             overridden.put(t.name(), t);
             return;
@@ -86,8 +87,9 @@ public class DataGenerator {
     List<Table> list = new ArrayList<>(overridden.values());
 
     // Convert excludedColumns from Map<String, List<String>> to Map<String, Set<String>>
-    Map<String, Set<String>> excludedColumnsSet = excludedColumns.entrySet().stream()
-        .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
+    Map<String, Set<String>> excludedColumnsSet =
+        excludedColumns.entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
     return generateInternal(list, rowsPerTable, deferred, excludedColumnsSet);
   }
@@ -168,8 +170,9 @@ public class DataGenerator {
           IntStream.range(0, rowsPerTable)
               .forEach(
                   i -> {
-                    Map<String, Object> values = generateSingleRow(
-                        faker, table, i, usedUuids, constraints, isFkColumn, excluded);
+                    Map<String, Object> values =
+                        generateSingleRow(
+                            faker, table, i, usedUuids, constraints, isFkColumn, excluded);
 
                     String pkKey =
                         table.primaryKey().stream()
@@ -240,9 +243,7 @@ public class DataGenerator {
     for (Column col : table.columns()) {
       ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
-      if (isNumericJdbc(col.jdbcType())
-          && pc != null
-          && (pc.min() != null || pc.max() != null)) {
+      if (isNumericJdbc(col.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
         int attempts = 0;
         while (isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
           val = generateNumericWithinBounds(col, pc);
@@ -252,14 +253,6 @@ public class DataGenerator {
       }
     }
   }
-
-  private record ForeignKeyResolutionContext(
-      Map<String, Table> tableMap,
-      Map<Table, List<Row>> data,
-      boolean deferred,
-      List<PendingUpdate> updates,
-      Set<String> inserted,
-      Map<String, Deque<Row>> uniqueFkParentQueues) {}
 
   private static void resolveForeignKeys(
       List<Table> orderedTables,
@@ -306,8 +299,7 @@ public class DataGenerator {
 
     Table parent = context.tableMap().get(fk.pkTable());
     if (parent == null) {
-      log.warn(
-          "Skipping FK {}.{} -> {}: table not found", table.name(), fk.name(), fk.pkTable());
+      log.warn("Skipping FK {}.{} -> {}: table not found", table.name(), fk.name(), fk.pkTable());
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
@@ -414,8 +406,7 @@ public class DataGenerator {
     return generateDefaultValue(faker, column, index, maxLen);
   }
 
-  private static Object generateUuidValue(
-      Column column, Set<UUID> usedUuids, ParsedConstraint pc) {
+  private static Object generateUuidValue(Column column, Set<UUID> usedUuids, ParsedConstraint pc) {
     // Try to parse from column's allowed values
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
       UUID uuid = tryParseUuidFromAllowedValues(column.allowedValues(), usedUuids);
@@ -432,7 +423,8 @@ public class DataGenerator {
     return generateUuid(usedUuids);
   }
 
-  private static UUID tryParseUuidFromAllowedValues(Set<String> allowedValues, Set<UUID> usedUuids) {
+  private static UUID tryParseUuidFromAllowedValues(
+      Set<String> allowedValues, Set<UUID> usedUuids) {
     for (String s : allowedValues) {
       try {
         UUID u = UUID.fromString(s.trim());
@@ -460,7 +452,8 @@ public class DataGenerator {
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Object generateDefaultValue(Faker faker, Column column, int index, Integer maxLen) {
+  private static Object generateDefaultValue(
+      Faker faker, Column column, int index, Integer maxLen) {
     return switch (column.jdbcType()) {
       case Types.CHAR,
           Types.VARCHAR,
@@ -472,15 +465,11 @@ public class DataGenerator {
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);
       case Types.BIGINT -> boundedLong(column);
       case Types.BOOLEAN, Types.BIT -> faker.bool().bool();
-      case Types.DATE -> Date.valueOf(
-          LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
-      case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> Timestamp.from(
-          Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
-      case Types.DECIMAL,
-          Types.NUMERIC,
-          Types.FLOAT,
-          Types.DOUBLE,
-          Types.REAL ->
+      case Types.DATE ->
+          Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
+      case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
+          Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
+      case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL ->
           boundedDecimal(column);
       default -> index;
     };
@@ -496,11 +485,7 @@ public class DataGenerator {
       return switch (jdbcType) {
         case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(v);
         case Types.BIGINT -> Long.parseLong(v);
-        case Types.DECIMAL,
-            Types.NUMERIC,
-            Types.FLOAT,
-            Types.DOUBLE,
-            Types.REAL ->
+        case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL ->
             Double.parseDouble(v);
         case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(v);
         default -> v;
@@ -537,8 +522,10 @@ public class DataGenerator {
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
   private static Integer boundedInt(Column column) {
-    int min = getIntMin(column, null); // Pass null for pc as it's handled in generateNumericWithinBounds
-    int max = getIntMax(column, null); // Pass null for pc as it's handled in generateNumericWithinBounds
+    int min =
+        getIntMin(column, null); // Pass null for pc as it's handled in generateNumericWithinBounds
+    int max =
+        getIntMax(column, null); // Pass null for pc as it's handled in generateNumericWithinBounds
     if (min > max) {
       int t = min;
       min = max;
@@ -656,7 +643,8 @@ public class DataGenerator {
           Types.NUMERIC,
           Types.FLOAT,
           Types.DOUBLE,
-          Types.REAL -> true;
+          Types.REAL ->
+          true;
       default -> false;
     };
   }
@@ -689,8 +677,8 @@ public class DataGenerator {
 
     Pattern betweenPattern =
         Pattern.compile(
-            colPattern
-                .concat("\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+            colPattern.concat(
+                "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
     Pattern rangePattern =
         Pattern.compile(
@@ -700,7 +688,8 @@ public class DataGenerator {
         Pattern.compile(colPattern.concat("\\s+IN\\s*\\(([^)]+)\\)"), Pattern.CASE_INSENSITIVE);
     Pattern eqPattern =
         Pattern.compile(
-            colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"), Pattern.CASE_INSENSITIVE);
+            colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
+            Pattern.CASE_INSENSITIVE);
     Pattern lenPattern =
         Pattern.compile(
             "(?i)(?:char_length|length)\\s*\\(\\s*"
@@ -712,12 +701,14 @@ public class DataGenerator {
       String exprNoParens = check.replaceAll("[()]+", " ");
 
       // Parse BETWEEN constraints
-      BetweenParseResult betweenResult = parseBetweenConstraint(exprNoParens, betweenPattern, check, lower, upper);
+      BetweenParseResult betweenResult =
+          parseBetweenConstraint(exprNoParens, betweenPattern, check, lower, upper);
       lower = betweenResult.lower();
       upper = betweenResult.upper();
-      
+
       // Parse range constraints
-      RangeParseResult rangeResult = parseRangeConstraint(exprNoParens, rangePattern, check, lower, upper);
+      RangeParseResult rangeResult =
+          parseRangeConstraint(exprNoParens, rangePattern, check, lower, upper);
       lower = rangeResult.lower();
       upper = rangeResult.upper();
 
@@ -736,10 +727,12 @@ public class DataGenerator {
     return new ParsedConstraint(lower, upper, Set.copyOf(allowed), maxLen);
   }
 
-  private record BetweenParseResult(Double lower, Double upper) {}
-
   private static BetweenParseResult parseBetweenConstraint(
-      String exprNoParens, Pattern betweenPattern, String check, Double currentLower, Double currentUpper) {
+      String exprNoParens,
+      Pattern betweenPattern,
+      String check,
+      Double currentLower,
+      Double currentUpper) {
     Matcher mb = betweenPattern.matcher(exprNoParens);
     Double newLower = currentLower;
     Double newUpper = currentUpper;
@@ -758,10 +751,12 @@ public class DataGenerator {
     return new BetweenParseResult(newLower, newUpper);
   }
 
-  private record RangeParseResult(Double lower, Double upper) {}
-
   private static RangeParseResult parseRangeConstraint(
-      String exprNoParens, Pattern rangePattern, String check, Double currentLower, Double currentUpper) {
+      String exprNoParens,
+      Pattern rangePattern,
+      String check,
+      Double currentLower,
+      Double currentUpper) {
     Matcher mr = rangePattern.matcher(exprNoParens);
     Double newLower = currentLower;
     Double newUpper = currentUpper;
@@ -781,7 +776,8 @@ public class DataGenerator {
 
   private static Double updateLowerBound(String op, double val, Double currentLower) {
     return switch (op) {
-      case ">" -> (currentLower == null) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
+      case ">" ->
+          (currentLower == null) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
       case ">=", "=" -> (currentLower == null) ? val : Math.max(currentLower, val);
       default -> currentLower;
     };
@@ -789,7 +785,8 @@ public class DataGenerator {
 
   private static Double updateUpperBound(String op, double val, Double currentUpper) {
     return switch (op) {
-      case "<" -> (currentUpper == null) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
+      case "<" ->
+          (currentUpper == null) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
       case "<=", "=" -> (currentUpper == null) ? val : Math.min(currentUpper, val);
       default -> currentUpper;
     };
@@ -825,7 +822,8 @@ public class DataGenerator {
     }
   }
 
-  private static Integer parseLengthConstraint(String check, Pattern lenPattern, Integer currentMaxLen) {
+  private static Integer parseLengthConstraint(
+      String check, Pattern lenPattern, Integer currentMaxLen) {
     Matcher ml = lenPattern.matcher(check);
     Integer newMaxLen = currentMaxLen;
     while (ml.find()) {
@@ -875,11 +873,6 @@ public class DataGenerator {
     return List.copyOf(ordered);
   }
 
-  private record ParsedConstraint(
-      Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
-
-  public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
-
   private static void ensureUuidUniqueness(
       Map<Table, List<Row>> data, List<Table> orderedTables, Set<UUID> usedUuids) {
     Map<String, Set<UUID>> seenPerColumn = new HashMap<>();
@@ -894,7 +887,11 @@ public class DataGenerator {
   }
 
   private static void processUuidColumn(
-      Table table, Column col, List<Row> rows, Set<UUID> usedUuids, Map<String, Set<UUID>> seenPerColumn) {
+      Table table,
+      Column col,
+      List<Row> rows,
+      Set<UUID> usedUuids,
+      Map<String, Set<UUID>> seenPerColumn) {
     String key = table.name().concat(".").concat(col.name());
     Set<UUID> seen = seenPerColumn.computeIfAbsent(key, k -> new HashSet<>());
     for (Row row : rows) {
@@ -919,12 +916,28 @@ public class DataGenerator {
         UUID newU = generateUuid(usedUuids);
         row.values().put(col.name(), newU);
         seen.add(newU);
-        log.warn(
-            "Replaced duplicate UUID for {}.{}: {} -> {}", table.name(), col.name(), u, newU);
+        log.warn("Replaced duplicate UUID for {}.{}: {} -> {}", table.name(), col.name(), u, newU);
       } else {
         seen.add(u);
         usedUuids.add(u);
       }
     }
   }
+
+  private record ForeignKeyResolutionContext(
+      Map<String, Table> tableMap,
+      Map<Table, List<Row>> data,
+      boolean deferred,
+      List<PendingUpdate> updates,
+      Set<String> inserted,
+      Map<String, Deque<Row>> uniqueFkParentQueues) {}
+
+  private record BetweenParseResult(Double lower, Double upper) {}
+
+  private record RangeParseResult(Double lower, Double upper) {}
+
+  private record ParsedConstraint(
+      Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
+
+  public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

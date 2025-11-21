@@ -57,7 +57,8 @@ public class SeedDatabaseAction extends AnAction {
   private static boolean hasNonNullableForeignKeyInCycle(
       final Table table, final Set<String> cycle) {
     return table.foreignKeys().stream()
-        .filter(fk -> cycle.contains(fk.pkTable())) // Foreign key points to a table within the cycle
+        .filter(
+            fk -> cycle.contains(fk.pkTable())) // Foreign key points to a table within the cycle
         .anyMatch(
             fk ->
                 fk.columnMapping().keySet().stream()
@@ -113,7 +114,10 @@ public class SeedDatabaseAction extends AnAction {
       } else {
         log.debug("Seed generation dialog canceled.");
       }
-    } catch (final IOException | ReflectiveOperationException | URISyntaxException | SQLException ex) {
+    } catch (final IOException
+        | ReflectiveOperationException
+        | URISyntaxException
+        | SQLException ex) {
       log.error("Error preparing driver: {}", chosenDriver.name(), ex);
       notifyError(project, "Error preparing driver: " + ex.getMessage());
     }
@@ -181,9 +185,7 @@ public class SeedDatabaseAction extends AnAction {
     // Convert Map<String, Set<String>> to Map<String, List<String>> for excludedColumns
     final Map<String, List<String>> excludedColumns =
         excludedColumnsSet.entrySet().stream()
-            .collect(
-                Collectors.toMap(
-                    Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
+            .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
     ProgressManager.getInstance()
         .run(
@@ -194,7 +196,8 @@ public class SeedDatabaseAction extends AnAction {
                 indicator.setText("Generating data...");
                 indicator.setFraction(0.3);
 
-                final boolean mustForceDeferred = requiresDeferredDueToNonNullableCycles(sort, tableByName);
+                final boolean mustForceDeferred =
+                    requiresDeferredDueToNonNullableCycles(sort, tableByName);
                 final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
                 log.debug("Effective deferred: {}", effectiveDeferred);
 

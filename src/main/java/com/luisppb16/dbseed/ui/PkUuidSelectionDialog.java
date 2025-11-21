@@ -57,13 +57,17 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private void initDefaults() {
     tables.forEach(
         table -> {
-          final Set<String> defaults = table.primaryKey().stream()
-              .filter(pkCol -> {
-                final Column col = table.column(pkCol);
-                final String lower = pkCol.toLowerCase(Locale.ROOT);
-                return (col != null && col.uuid()) || lower.contains("uuid") || lower.contains("guid");
-              })
-              .collect(Collectors.toCollection(LinkedHashSet::new));
+          final Set<String> defaults =
+              table.primaryKey().stream()
+                  .filter(
+                      pkCol -> {
+                        final Column col = table.column(pkCol);
+                        final String lower = pkCol.toLowerCase(Locale.ROOT);
+                        return (col != null && col.uuid())
+                            || lower.contains("uuid")
+                            || lower.contains("guid");
+                      })
+                  .collect(Collectors.toCollection(LinkedHashSet::new));
           selectionByTable.put(table.name(), defaults);
         });
   }
@@ -118,7 +122,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                         selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
                     box.addActionListener(
                         e -> {
-                          selectionByTable.computeIfAbsent(table.name(), k -> new LinkedHashSet<>());
+                          selectionByTable.computeIfAbsent(
+                              table.name(), k -> new LinkedHashSet<>());
                           if (box.isSelected()) {
                             selectionByTable.get(table.name()).add(pkCol);
                           } else {
@@ -233,7 +238,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     topPanel.add(searchPanel, BorderLayout.EAST);
   }
 
-  private DocumentListener createFilterListener(final JTextField searchField, final JPanel listPanel) {
+  private DocumentListener createFilterListener(
+      final JTextField searchField, final JPanel listPanel) {
     return new DocumentListener() {
       @Override
       public void insertUpdate(final DocumentEvent e) {

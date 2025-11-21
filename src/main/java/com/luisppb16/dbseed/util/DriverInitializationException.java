@@ -6,8 +6,8 @@
 package com.luisppb16.dbseed.util;
 
 /**
- * Exception thrown when there is an issue initializing the driver loading mechanism,
- * such as failing to create the driver storage directory.
+ * Exception thrown when there is an issue initializing the driver loading mechanism, such as
+ * failing to create the driver storage directory.
  */
 public class DriverInitializationException extends RuntimeException {
 

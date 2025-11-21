@@ -30,7 +30,8 @@ public class SchemaIntrospector {
 
   private static final String COLUMN_NAME = "COLUMN_NAME";
 
-  public static List<Table> introspect(final Connection conn, final String schema) throws SQLException {
+  public static List<Table> introspect(final Connection conn, final String schema)
+      throws SQLException {
     final DatabaseMetaData meta = conn.getMetaData();
     final List<Table> tables = new ArrayList<>();
 
@@ -51,7 +52,10 @@ public class SchemaIntrospector {
   }
 
   private static List<Column> loadColumns(
-      final DatabaseMetaData meta, final String schema, final String table, final List<String> checkConstraints)
+      final DatabaseMetaData meta,
+      final String schema,
+      final String table,
+      final List<String> checkConstraints)
       throws SQLException {
     final List<Column> columns = new ArrayList<>();
     final Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
@@ -90,8 +94,8 @@ public class SchemaIntrospector {
     return columns;
   }
 
-  private static List<String> loadPrimaryKeys(final DatabaseMetaData meta, final String schema, final String table)
-      throws SQLException {
+  private static List<String> loadPrimaryKeys(
+      final DatabaseMetaData meta, final String schema, final String table) throws SQLException {
     final List<String> pks = new ArrayList<>();
     try (final ResultSet rs = meta.getPrimaryKeys(null, schema, table)) {
       while (rs.next()) {
@@ -102,7 +106,10 @@ public class SchemaIntrospector {
   }
 
   private static List<ForeignKey> loadForeignKeys(
-      final DatabaseMetaData meta, final String schema, final String table, final List<List<String>> uniqueKeys)
+      final DatabaseMetaData meta,
+      final String schema,
+      final String table,
+      final List<List<String>> uniqueKeys)
       throws SQLException {
     final List<ForeignKey> fks = new ArrayList<>();
     try (final ResultSet rs = meta.getImportedKeys(null, schema, table)) {
@@ -128,7 +135,8 @@ public class SchemaIntrospector {
     return fks;
   }
 
-  private static boolean isUniqueForeignKey(final Set<String> fkCols, final List<List<String>> uniqueKeys) {
+  private static boolean isUniqueForeignKey(
+      final Set<String> fkCols, final List<List<String>> uniqueKeys) {
     for (final List<String> uk : uniqueKeys) {
       if (uk.size() == fkCols.size() && fkCols.containsAll(uk)) {
         return true;
@@ -156,7 +164,8 @@ public class SchemaIntrospector {
   }
 
   private static List<String> loadTableCheckConstraints(
-      final Connection conn, final DatabaseMetaData meta, final String schema, final String table) throws SQLException {
+      final Connection conn, final DatabaseMetaData meta, final String schema, final String table)
+      throws SQLException {
     final List<String> checks = new ArrayList<>();
 
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
@@ -170,7 +179,8 @@ public class SchemaIntrospector {
   }
 
   private static void loadPostgresCheckConstraints(
-      final Connection conn, final String schema, final String table, final List<String> checks) throws SQLException {
+      final Connection conn, final String schema, final String table, final List<String> checks)
+      throws SQLException {
     final String sql =
         "SELECT conname, pg_get_constraintdef(con.oid) as condef "
             + "FROM pg_constraint con "
@@ -197,7 +207,11 @@ public class SchemaIntrospector {
   }
 
   private static void loadGenericCheckConstraints(
-      final DatabaseMetaData meta, final String schema, final String table, final List<String> checks) throws SQLException {
+      final DatabaseMetaData meta,
+      final String schema,
+      final String table,
+      final List<String> checks)
+      throws SQLException {
     try (final ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
       if (trs.next()) {
         final String remarks = safe(trs.getString("REMARKS"));
@@ -233,10 +247,20 @@ public class SchemaIntrospector {
     for (final String expr : checks) {
       if (expr == null || expr.isBlank()) continue;
 
-      final int[] betweenBounds = parseBounds(expr, "(?i)\\b" + Pattern.quote(columnName) + "\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)");
+      final int[] betweenBounds =
+          parseBounds(
+              expr,
+              "(?i)\\b" + Pattern.quote(columnName) + "\\b\\s+BETWEEN\\s+(\\d+)\\s+AND\\s+(\\d+)");
       if (betweenBounds.length == 2) return betweenBounds;
 
-      final int[] gteLteBounds = parseBounds(expr, "(?i)\\b" + Pattern.quote(columnName) + "\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b" + Pattern.quote(columnName) + "\\b\\s*<=\\s*(\\d+)");
+      final int[] gteLteBounds =
+          parseBounds(
+              expr,
+              "(?i)\\b"
+                  + Pattern.quote(columnName)
+                  + "\\b\\s*>?=\\s*(\\d+)\\s*\\)?\\s*AND\\s*\\(?\\b"
+                  + Pattern.quote(columnName)
+                  + "\\b\\s*<=\\s*(\\d+)");
       if (gteLteBounds.length == 2) return gteLteBounds;
     }
     return new int[0];

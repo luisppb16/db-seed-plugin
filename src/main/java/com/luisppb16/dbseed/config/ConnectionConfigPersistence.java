@@ -52,14 +52,15 @@ public class ConnectionConfigPersistence {
     final int rows = properties.getInt(ROWS_KEY, DEFAULT_ROWS);
     final boolean deferred = properties.getBoolean(DEFERRED_KEY, DEFAULT_DEFERRED);
 
-    final GenerationConfig config = GenerationConfig.builder()
-        .url(url)
-        .user(user)
-        .password(password)
-        .schema(schema)
-        .rowsPerTable(rows)
-        .deferred(deferred)
-        .build();
+    final GenerationConfig config =
+        GenerationConfig.builder()
+            .url(url)
+            .user(user)
+            .password(password)
+            .schema(schema)
+            .rowsPerTable(rows)
+            .deferred(deferred)
+            .build();
 
     log.debug("Configuration loaded: {}", config);
 

@@ -29,7 +29,8 @@ public class SchemaDsl {
     return new Column(name, type, true, null);
   }
 
-  public static Column fk(final String name, final SqlType type, final String refTable, final String refColumn) {
+  public static Column fk(
+      final String name, final SqlType type, final String refTable, final String refColumn) {
     return new Column(name, type, false, new ForeignKeyReference(refTable, refColumn));
   }
 
@@ -44,7 +45,8 @@ public class SchemaDsl {
   }
 
   private static String columnSql(final Column column) {
-    final StringBuilder sql = new StringBuilder("  %s %s".formatted(column.name(), column.type().toSql()));
+    final StringBuilder sql =
+        new StringBuilder("  %s %s".formatted(column.name(), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");

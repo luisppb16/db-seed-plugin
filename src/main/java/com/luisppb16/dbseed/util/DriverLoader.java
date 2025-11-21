@@ -40,8 +40,7 @@ public class DriverLoader {
 
   public static void ensureDriverPresent(final DriverInfo info)
       throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
-    final Path jarPath =
-        DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
+    final Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
     if (!Files.exists(jarPath)) {
       downloadDriver(info, jarPath);
@@ -54,8 +53,9 @@ public class DriverLoader {
       throws IOException, URISyntaxException {
     final String groupPath = info.mavenGroupId().replace('.', '/');
     final String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";
-    final String url = "https://repo1.maven.org/maven2/%s/%s/%s/%s".formatted(
-        groupPath, info.mavenArtifactId(), info.version(), jarFile);
+    final String url =
+        "https://repo1.maven.org/maven2/%s/%s/%s/%s"
+            .formatted(groupPath, info.mavenArtifactId(), info.version(), jarFile);
 
     log.info("Downloading driver from: {}", url);
     try (final InputStream in = new URI(url).toURL().openStream()) {
@@ -66,7 +66,8 @@ public class DriverLoader {
 
   private static void loadDriver(final URL jarUrl, final String driverClass)
       throws ReflectiveOperationException, SQLException {
-    try (final URLClassLoader cl = new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader())) {
+    try (final URLClassLoader cl =
+        new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader())) {
       final Class<?> clazz = Class.forName(driverClass, true, cl);
       if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
         DriverManager.registerDriver(new DriverShim(driver));

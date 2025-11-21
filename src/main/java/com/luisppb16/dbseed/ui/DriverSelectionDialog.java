@@ -59,30 +59,35 @@ public class DriverSelectionDialog extends DialogWrapper {
   }
 
   private JComboBox<String> createDriverComboBox(final List<DriverInfo> drivers) {
-    final var box = new ComboBox<>(
-        new DefaultComboBoxModel<>(drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
+    final var box =
+        new ComboBox<>(
+            new DefaultComboBoxModel<>(
+                drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
     box.setSelectedIndex(0);
     return box;
   }
 
   private JTextField createProjectIdField() {
     final var field = new JTextField(getTitle().length());
-    field.getDocument().addDocumentListener(new DocumentListener() {
-      @Override
-      public void insertUpdate(DocumentEvent e) {
-        updateProjectId();
-      }
+    field
+        .getDocument()
+        .addDocumentListener(
+            new DocumentListener() {
+              @Override
+              public void insertUpdate(DocumentEvent e) {
+                updateProjectId();
+              }
 
-      @Override
-      public void removeUpdate(DocumentEvent e) {
-        updateProjectId();
-      }
+              @Override
+              public void removeUpdate(DocumentEvent e) {
+                updateProjectId();
+              }
 
-      @Override
-      public void changedUpdate(DocumentEvent e) {
-        updateProjectId();
-      }
-    });
+              @Override
+              public void changedUpdate(DocumentEvent e) {
+                updateProjectId();
+              }
+            });
     return field;
   }
 

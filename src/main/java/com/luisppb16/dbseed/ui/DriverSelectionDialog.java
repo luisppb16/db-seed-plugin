@@ -38,12 +38,15 @@ public class DriverSelectionDialog extends DialogWrapper {
   private final JTextField projectIdField;
   private String currentProjectId = "";
 
-  public DriverSelectionDialog(@Nullable final Project project, final List<DriverInfo> drivers) {
+  public DriverSelectionDialog(
+      @Nullable final Project project,
+      final List<DriverInfo> drivers,
+      @Nullable final String lastDriverName) {
     super(project);
     this.drivers = drivers;
     setTitle("Select Database Driver");
 
-    comboBox = createDriverComboBox(drivers);
+    comboBox = createDriverComboBox(drivers, lastDriverName);
     projectIdField = createProjectIdField();
     bigQueryPanel = createBigQueryPanel(projectIdField);
     mainPanel = createMainPanel(comboBox, bigQueryPanel);
@@ -58,12 +61,23 @@ public class DriverSelectionDialog extends DialogWrapper {
     init();
   }
 
-  private JComboBox<String> createDriverComboBox(final List<DriverInfo> drivers) {
+  private JComboBox<String> createDriverComboBox(
+      final List<DriverInfo> drivers, @Nullable final String lastDriverName) {
     final var box =
         new ComboBox<>(
             new DefaultComboBoxModel<>(
                 drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
-    box.setSelectedIndex(0);
+
+    if (lastDriverName != null) {
+      for (int i = 0; i < drivers.size(); i++) {
+        if (drivers.get(i).name().equals(lastDriverName)) {
+          box.setSelectedIndex(i);
+          break;
+        }
+      }
+    } else {
+      box.setSelectedIndex(0);
+    }
     return box;
   }
 

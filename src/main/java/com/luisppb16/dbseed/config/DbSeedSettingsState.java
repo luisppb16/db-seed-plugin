@@ -18,6 +18,11 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final UuidStrategy DEFAULT_UUID_STRATEGY = UuidStrategy.FUNCTION_CALL;
   private static final int DEFAULT_COLUMN_SPINNER_STEP = 3;
 
+  // New dictionary usage flags
+  public boolean useLatinDictionary = true;
+  public boolean useEnglishDictionary = false;
+  public boolean useSpanishDictionary = false;
+
   public int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
   public String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
   public UuidStrategy uuidStrategy = DEFAULT_UUID_STRATEGY;
@@ -45,6 +50,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     if (columnSpinnerStep <= 0) {
       columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
     }
+    // No specific null check needed for booleans as they default to false if not present
   }
 
   /** Defines the strategy for generating UUID values in the seed script. */

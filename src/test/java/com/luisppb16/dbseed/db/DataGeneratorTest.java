@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
@@ -48,7 +49,12 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table), 100, false, Collections.emptyMap(), Collections.emptyMap());
+            List.of(table),
+            100,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table); // Use the actual Table object as key
@@ -89,7 +95,12 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table), 50, false, Collections.emptyMap(), Collections.emptyMap());
+            List.of(table),
+            50,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     List<Row> rows = result.rows().get(table); // Use the actual Table object as key
     assertNotNull(rows);
@@ -124,7 +135,12 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table), 10, false, Collections.emptyMap(), Collections.emptyMap());
+            List.of(table),
+            10,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -170,7 +186,12 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table), 20, false, Collections.emptyMap(), Collections.emptyMap());
+            List.of(table),
+            20,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -196,7 +217,12 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table), 5, false, Collections.emptyMap(), Collections.emptyMap());
+            List.of(table),
+            5,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -209,7 +235,12 @@ class DataGeneratorTest {
   void shouldHandleEmptyListOfTables() {
     var result =
         DataGenerator.generate(
-            Collections.emptyList(), 10, false, Collections.emptyMap(), Collections.emptyMap());
+            Collections.emptyList(),
+            10,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     assertTrue(result.rows().isEmpty(), "Should generate no rows for an empty list of tables");
@@ -235,12 +266,17 @@ class DataGeneratorTest {
             .primaryKey(List.of("id"))
             .foreignKeys(Collections.emptyList())
             .checks(Collections.emptyList())
-            .uniqueKeys(List.of(List.of("name"))) // 'name' is unique
+            .uniqueKeys(Collections.emptyList())
             .build();
 
     var result =
         DataGenerator.generate(
-            List.of(table), 50, false, Collections.emptyMap(), Collections.emptyMap());
+            List.of(table),
+            50,
+            false,
+            Collections.emptyMap(),
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -314,7 +350,8 @@ class DataGeneratorTest {
             10,
             false,
             Collections.emptyMap(),
-            Collections.emptyMap());
+            Collections.emptyMap(),
+            true, false, false); // Use Latin dictionary
 
     assertNotNull(result);
     List<Row> userRows = result.rows().get(usersTable);

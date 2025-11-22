@@ -39,7 +39,10 @@ public class DbSeedSettingsConfigurable implements Configurable {
     return mySettingsComponent.getColumnSpinnerStep() != settings.columnSpinnerStep
         || !Objects.equals(
             mySettingsComponent.getDefaultOutputDirectory(), settings.defaultOutputDirectory)
-        || mySettingsComponent.getUuidStrategy() != settings.uuidStrategy;
+        || mySettingsComponent.getUuidStrategy() != settings.uuidStrategy
+        || mySettingsComponent.getUseLatinDictionary() != settings.useLatinDictionary
+        || mySettingsComponent.getUseEnglishDictionary() != settings.useEnglishDictionary
+        || mySettingsComponent.getUseSpanishDictionary() != settings.useSpanishDictionary;
   }
 
   @Override
@@ -48,6 +51,9 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.columnSpinnerStep = mySettingsComponent.getColumnSpinnerStep();
     settings.defaultOutputDirectory = mySettingsComponent.getDefaultOutputDirectory();
     settings.uuidStrategy = mySettingsComponent.getUuidStrategy();
+    settings.useLatinDictionary = mySettingsComponent.getUseLatinDictionary();
+    settings.useEnglishDictionary = mySettingsComponent.getUseEnglishDictionary();
+    settings.useSpanishDictionary = mySettingsComponent.getUseSpanishDictionary();
   }
 
   @Override
@@ -56,6 +62,9 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setColumnSpinnerStep(settings.columnSpinnerStep);
     mySettingsComponent.setDefaultOutputDirectory(settings.defaultOutputDirectory);
     mySettingsComponent.setUuidStrategy(settings.uuidStrategy);
+    mySettingsComponent.setUseLatinDictionary(settings.useLatinDictionary);
+    mySettingsComponent.setUseEnglishDictionary(settings.useEnglishDictionary);
+    mySettingsComponent.setUseSpanishDictionary(settings.useSpanishDictionary);
   }
 
   @Override

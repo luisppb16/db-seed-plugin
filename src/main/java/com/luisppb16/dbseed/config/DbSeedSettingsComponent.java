@@ -8,6 +8,7 @@ package com.luisppb16.dbseed.config;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
+import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.FormBuilder;
 import javax.swing.JComboBox;
@@ -25,10 +26,19 @@ public class DbSeedSettingsComponent {
   private final JComboBox<DbSeedSettingsState.UuidStrategy> myUuidStrategy =
       new JComboBox<>(DbSeedSettingsState.UuidStrategy.values());
 
+  // New checkboxes for dictionary usage
+  private final JBCheckBox myUseLatinDictionary = new JBCheckBox("Use Latin Dictionary (Faker default)");
+  private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English Dictionary");
+  private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish Dictionary");
+
   public DbSeedSettingsComponent() {
     // Initialize components with current settings to prevent mismatches
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
+    myUuidStrategy.setSelectedItem(settings.uuidStrategy);
+    myUseLatinDictionary.setSelected(settings.useLatinDictionary);
+    myUseEnglishDictionary.setSelected(settings.useEnglishDictionary);
+    myUseSpanishDictionary.setSelected(settings.useSpanishDictionary);
 
     // Add file chooser for the output directory
     FileChooserDescriptor folderDescriptor =
@@ -46,6 +56,9 @@ public class DbSeedSettingsComponent {
             .addLabeledComponent(
                 new JBLabel("Default Output Directory:"), myDefaultOutputDirectory, 1, false)
             .addLabeledComponent(new JBLabel("UUID Generation Strategy:"), myUuidStrategy, 1, false)
+            .addComponent(myUseLatinDictionary, 1)
+            .addComponent(myUseEnglishDictionary, 1)
+            .addComponent(myUseSpanishDictionary, 1)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
   }
@@ -80,5 +93,30 @@ public class DbSeedSettingsComponent {
 
   public void setUuidStrategy(DbSeedSettingsState.UuidStrategy strategy) {
     myUuidStrategy.setSelectedItem(strategy);
+  }
+
+  // New getters and setters for dictionary checkboxes
+  public boolean getUseLatinDictionary() {
+    return myUseLatinDictionary.isSelected();
+  }
+
+  public void setUseLatinDictionary(boolean use) {
+    myUseLatinDictionary.setSelected(use);
+  }
+
+  public boolean getUseEnglishDictionary() {
+    return myUseEnglishDictionary.isSelected();
+  }
+
+  public void setUseEnglishDictionary(boolean use) {
+    myUseEnglishDictionary.setSelected(use);
+  }
+
+  public boolean getUseSpanishDictionary() {
+    return myUseSpanishDictionary.isSelected();
+  }
+
+  public void setUseSpanishDictionary(boolean use) {
+    myUseSpanishDictionary.setSelected(use);
   }
 }

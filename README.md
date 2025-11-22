@@ -63,6 +63,19 @@ This way, the plugin is **lighter, more extensible, and always uses the correct 
 
 ---
 
+### 📚 New Feature: Configurable Dictionaries for Data Generation
+
+The plugin now offers enhanced control over string data generation by allowing users to select which dictionaries to use. Previously, data generation relied solely on Faker's default (Latin) lorem ipsum. With this update, you can combine Faker's default with custom English and Spanish word lists.
+
+In the plugin settings, you will find three new checkboxes:
+- **Use Latin Dictionary (Faker default)**: When checked, Faker's default lorem ipsum generation (often Latin-based) will be included.
+- **Use English Dictionary**: When checked, words from an internal English dictionary will be used for string generation.
+- **Use Spanish Dictionary**: When checked, words from an internal Spanish dictionary will be used for string generation.
+
+This allows for more realistic and contextually relevant data generation, especially for text-based fields. You can select any combination of these options to tailor the generated string data to your specific needs.
+
+---
+
 ### 🔧 Main Functionality
 
 - Schema introspection via `DatabaseMetaData`.
@@ -119,5 +132,5 @@ The file is automatically opened in an editor within IntelliJ, ready to be execu
 
 ---
 
-👨‍💻 Project created by **Luis Pepe** ([@luisppb16](https://github.com/luisppb16)), a Java developer specializing in backend, microservices,
+👨‍💻 Project created by **Luis Pepe** ([@LuisPPB16](https://github.com/luisppb16)), a Java developer specializing in backend, microservices,
 and development tooling.

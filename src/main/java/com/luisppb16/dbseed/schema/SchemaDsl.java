@@ -35,12 +35,14 @@ public class SchemaDsl {
   }
 
   public static Column pk(final String name, final SqlType type) {
-    return new Column(name, type, true, true, null, true); // Primary keys are always not null and unique
+    return new Column(
+        name, type, true, true, null, true); // Primary keys are always not null and unique
   }
 
   public static Column fk(
       final String name, final SqlType type, final String refTable, final String refColumn) {
-    return new Column(name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
+    return new Column(
+        name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
   }
 
   public static String toSql(final Schema schema) {

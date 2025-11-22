@@ -37,14 +37,18 @@
     <actions>
         <action id="SeedDatabaseAction"
                 class="com.luisppb16.dbseed.action.SeedDatabaseAction"
-                text="Database Seed Generator"
+                text="DBSeed4SQL"
                 description="Seeds the database with generated data.">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>
     <extensions defaultExtensionNs="com.intellij">
-        <notificationGroup id="Database Seed Generator"
+        <notificationGroup id="DBSeed4SQL"
                            displayType="BALLOON"
                            isLogByDefault="true"/>
+        <applicationService serviceImplementation="com.luisppb16.dbseed.config.DbSeedSettingsState"/>
+        <applicationConfigurable instance="com.luisppb16.dbseed.config.DbSeedSettingsConfigurable"
+                                 id="com.luisppb16.dbseed.config.DbSeedSettingsConfigurable"
+                                 displayName="DBSeed4SQL"/>
     </extensions>
 </idea-plugin>

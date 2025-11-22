@@ -10,6 +10,7 @@ import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -41,12 +42,16 @@ public final class SeedDialog extends DialogWrapper {
   private final JTextField userField = new JTextField("postgres");
   private final JPasswordField passwordField = new JPasswordField();
   private final JTextField schemaField = new JTextField("public");
-  private final JSpinner rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, 3));
+  private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
 
   public SeedDialog() {
     super(true);
     setTitle("Database Seed Generator");
+
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.columnSpinnerStep));
+
     loadConfiguration();
 
     final JComponent editor = rowsSpinner.getEditor();

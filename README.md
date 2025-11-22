@@ -1,4 +1,4 @@
-# 🗃️ Database Seed Generator Plugin (IntelliJ IDEA).
+# 🗃️ DBSeed4SQL Plugin (IntelliJ IDEA).
 
 **db-seed-plugin** is a plugin for **IntelliJ IDEA** that generates synthetic data to populate database schemas.
 It automatically introspects a schema, analyzes dependencies between tables, and produces a consistent SQL script, respecting primary keys,
@@ -73,6 +73,9 @@ This way, the plugin is **lighter, more extensible, and always uses the correct 
 - Interactive selection of UUIDs in PKs through a UI dialog.
 - Automatic opening of the generated SQL in the IntelliJ editor.
 - Standalone visual schema designer to prototype tables and generate creation SQL.
+- **Improved Password Input**: The database configuration dialog now features a "show password" toggle (eye icon) directly within the password field, allowing users to easily reveal or hide the entered password. This provides a more intuitive and secure user experience.
+- **Batch Query Execution**: Optimized SQL script generation to execute queries in batches, significantly improving performance for large datasets.
+- **Configuration Window**: Introduced a dedicated configuration window within the IDE, allowing users to easily customize default settings and generation parameters.
 
 ---
 

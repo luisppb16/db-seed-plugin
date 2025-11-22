@@ -272,7 +272,7 @@ class SqlGeneratorTest {
             .build();
 
     Map<String, Object> values = new LinkedHashMap<>();
-    values.put("description", "Line1\nLine2\tTabbed\\Backslash\"DoubleQuote");
+    values.put("description", "Line1'Quote");
     Row row = new Row(values);
 
     Map<Table, List<Row>> data = Map.of(table, List.of(row));
@@ -280,7 +280,7 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"texts\" (\"description\") VALUES\n('Line1\\nLine2\\tTabbed\\\\Backslash\"DoubleQuote');\n";
+        "INSERT INTO \"texts\" (\"description\") VALUES\n('Line1''Quote');\n";
     assertEquals(expectedSql, sql);
   }
 

@@ -48,12 +48,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table),
-            100,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(table))
+                .rowsPerTable(100)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table); // Use the actual Table object as key
@@ -94,12 +97,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table),
-            50,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(table))
+                .rowsPerTable(50)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     List<Row> rows = result.rows().get(table); // Use the actual Table object as key
     assertNotNull(rows);
@@ -134,12 +140,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table),
-            10,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(table))
+                .rowsPerTable(10)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -185,12 +194,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table),
-            20,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(table))
+                .rowsPerTable(20)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -216,12 +228,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table),
-            5,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(table))
+                .rowsPerTable(5)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -234,12 +249,15 @@ class DataGeneratorTest {
   void shouldHandleEmptyListOfTables() {
     var result =
         DataGenerator.generate(
-            Collections.emptyList(),
-            10,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(Collections.emptyList())
+                .rowsPerTable(10)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     assertTrue(result.rows().isEmpty(), "Should generate no rows for an empty list of tables");
@@ -270,12 +288,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(table),
-            50,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(table))
+                .rowsPerTable(50)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     List<Row> rows = result.rows().get(table);
@@ -345,12 +366,15 @@ class DataGeneratorTest {
 
     var result =
         DataGenerator.generate(
-            List.of(usersTable, ordersTable),
-            10,
-            false,
-            Collections.emptyMap(),
-            Collections.emptyMap(),
-            true, false, false); // Use Latin dictionary
+            DataGenerator.GenerationParameters.builder()
+                .tables(List.of(usersTable, ordersTable))
+                .rowsPerTable(10)
+                .deferred(false)
+                .pkUuidOverrides(Collections.emptyMap())
+                .excludedColumns(Collections.emptyMap())
+                .useEnglishDictionary(false)
+                .useSpanishDictionary(false)
+                .build());
 
     assertNotNull(result);
     List<Row> userRows = result.rows().get(usersTable);

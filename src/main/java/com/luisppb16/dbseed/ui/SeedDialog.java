@@ -5,6 +5,7 @@
 
 package com.luisppb16.dbseed.ui;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -12,8 +13,11 @@ import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
+import java.awt.Cursor;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
 import java.util.Collections;
@@ -26,20 +30,26 @@ import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
+import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
 import javax.swing.JSpinner.DefaultEditor;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.border.Border;
+import javax.swing.border.CompoundBorder;
 import org.jetbrains.annotations.NotNull;
 
 public final class SeedDialog extends DialogWrapper {
 
+  private static final String DEFAULT_POSTGRES_USER = "postgres";
+  private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
   private final JTextField urlField = new JTextField("jdbc:postgresql://localhost:5432/");
-  private final JTextField databaseField = new JTextField("postgres");
-  private final JTextField userField = new JTextField("postgres");
+  private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
+  private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JPasswordField passwordField = new JPasswordField();
   private final JTextField schemaField = new JTextField("public");
   private final JSpinner rowsSpinner;
@@ -111,8 +121,7 @@ public final class SeedDialog extends DialogWrapper {
     if (project != null) {
       final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      final String url =
-          Objects.requireNonNullElse(config.url(), "jdbc:postgresql://localhost:5432/postgres");
+      final String url = Objects.requireNonNullElse(config.url(), DEFAULT_POSTGRES_URL);
       final int lastSlashIndex = url.lastIndexOf('/');
       if (lastSlashIndex > 0 && lastSlashIndex < url.length() - 1) {
         urlField.setText(url.substring(0, lastSlashIndex + 1));
@@ -121,7 +130,7 @@ public final class SeedDialog extends DialogWrapper {
         urlField.setText(url);
       }
 
-      userField.setText(Objects.requireNonNullElse(config.user(), "postgres"));
+      userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
       passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
       schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
       rowsSpinner.setValue(config.rowsPerTable());
@@ -159,7 +168,7 @@ public final class SeedDialog extends DialogWrapper {
     int row = 0;
     addRow(panel, c, row++, "JDBC URL:", urlField);
     addRow(panel, c, row++, "User:", userField);
-    addRow(panel, c, row++, "Password:", passwordField);
+    addRow(panel, c, row++, "Password:", createPasswordFieldWithToggle()); // Use the new helper method
     addRow(panel, c, row++, "Database:", databaseField);
     addRow(panel, c, row++, "Schema:", schemaField);
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
@@ -171,6 +180,46 @@ public final class SeedDialog extends DialogWrapper {
     panel.add(deferredBox, c);
 
     return panel;
+  }
+
+  private JLayeredPane createPasswordFieldWithToggle() {
+    // Create a JLayeredPane for the password field and the show/hide button
+    final JLayeredPane passwordLayeredPane = new JLayeredPane();
+    passwordLayeredPane.setPreferredSize(passwordField.getPreferredSize()); // Set initial size
+
+    // Get the original border of the JPasswordField
+    final Border originalBorder = passwordField.getBorder();
+    // Create a CompoundBorder: original border + empty border on the right for the button
+    passwordField.setBorder(new CompoundBorder(originalBorder, JBUI.Borders.emptyRight(30)));
+    passwordLayeredPane.add(passwordField, JLayeredPane.DEFAULT_LAYER);
+
+    // Configure showPasswordButton
+    final JToggleButton showPasswordButton = new JToggleButton(AllIcons.Actions.Show);
+    showPasswordButton.setFocusPainted(false);
+    showPasswordButton.setContentAreaFilled(false);
+    showPasswordButton.setBorderPainted(false);
+    showPasswordButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    showPasswordButton.addActionListener(
+        e -> {
+          if (showPasswordButton.isSelected()) {
+            passwordField.setEchoChar((char) 0); // Show password
+          } else {
+            passwordField.setEchoChar('•'); // Hide password
+          }
+        });
+    passwordLayeredPane.add(showPasswordButton, JLayeredPane.PALETTE_LAYER); // Add to a higher layer
+
+    // Add a component listener to resize and reposition components within the layered pane
+    passwordLayeredPane.addComponentListener(new ComponentAdapter() {
+      @Override
+      public void componentResized(ComponentEvent e) {
+        passwordField.setBounds(0, 0, passwordLayeredPane.getWidth(), passwordLayeredPane.getHeight());
+        final int buttonWidth = 24; // Approximate width of the button
+        final int buttonHeight = passwordLayeredPane.getHeight();
+        showPasswordButton.setBounds(passwordLayeredPane.getWidth() - buttonWidth - 2, 0, buttonWidth, buttonHeight);
+      }
+    });
+    return passwordLayeredPane;
   }
 
   public GenerationConfig getConfiguration() {

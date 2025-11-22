@@ -49,7 +49,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
-    setTitle("Select PKs for UUID Generation");
+    setTitle("PKs UUID Generation Preferences");
     initDefaults();
     init();
   }

@@ -179,7 +179,13 @@ public class SeedDatabaseAction extends AnAction {
               Messages.getWarningIcon());
 
       if (result == Messages.CANCEL) {
-        log.debug("User canceled large data seeding operation.");
+        log.debug("User canceled large data seeding operation. Returning to previous step.");
+        final SeedDialog seedDialog = new SeedDialog();
+        if (seedDialog.showAndGet()) {
+          runSeedGeneration(project, seedDialog.getConfiguration());
+        } else {
+          log.debug("Seed generation dialog canceled after warning.");
+        }
         return;
       }
     }

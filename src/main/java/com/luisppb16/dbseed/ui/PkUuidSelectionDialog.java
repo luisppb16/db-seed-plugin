@@ -9,7 +9,6 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.ui.JBUI;
-import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.BorderLayout;
@@ -58,9 +57,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private void initDefaults() {
-    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    final DbSeedSettingsState.UuidStrategy strategy = settings.uuidStrategy;
-
     tables.forEach(
         table -> {
           final Set<String> defaults =
@@ -76,11 +72,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   .collect(Collectors.toCollection(LinkedHashSet::new));
           selectionByTable.put(table.name(), defaults);
 
-          if (strategy == DbSeedSettingsState.UuidStrategy.PRE_GENERATED) {
-            final Map<String, String> uuidValues = new LinkedHashMap<>();
-            defaults.forEach(pkCol -> uuidValues.put(pkCol, UUID.randomUUID().toString()));
-            uuidValuesByTable.put(table.name(), uuidValues);
-          }
+          final Map<String, String> uuidValues = new LinkedHashMap<>();
+          defaults.forEach(pkCol -> uuidValues.put(pkCol, UUID.randomUUID().toString()));
+          uuidValuesByTable.put(table.name(), uuidValues);
         });
   }
 

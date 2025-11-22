@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -47,7 +49,7 @@ class SqlGeneratorTest {
 
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
-    String expectedSql = "INSERT INTO \"users\" (\"id\", \"name\") VALUES (1, 'Alice');\n";
+    String expectedSql = "INSERT INTO \"users\" (\"id\", \"name\") VALUES\n(1, 'Alice');\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -79,7 +81,7 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES (2, 'Bob', NULL);\n";
+        "INSERT INTO \"users\" (\"id\", \"name\", \"email\") VALUES\n(2, 'Bob', NULL);\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -115,8 +117,9 @@ class SqlGeneratorTest {
 
     String expectedSql =
         """
-        INSERT INTO "products" ("id", "name") VALUES (101, 'Laptop');
-        INSERT INTO "products" ("id", "name") VALUES (102, 'Mouse');
+        INSERT INTO "products" ("id", "name") VALUES
+        (101, 'Laptop'),
+        (102, 'Mouse');
         """;
     assertEquals(expectedSql, sql);
   }
@@ -166,8 +169,10 @@ class SqlGeneratorTest {
 
     String expectedSql =
         """
-        INSERT INTO "users" ("id", "name") VALUES (1, 'Alice');
-        INSERT INTO "products" ("id", "name") VALUES (101, 'Keyboard');
+        INSERT INTO "users" ("id", "name") VALUES
+        (1, 'Alice');
+        INSERT INTO "products" ("id", "name") VALUES
+        (101, 'Keyboard');
         """;
     assertEquals(expectedSql, sql);
   }
@@ -210,7 +215,7 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"types_table\" (\"dob\", \"created\", \"active\", \"uid\", \"count\", \"price\") VALUES ('2023-01-01', '2023-01-01 10:00:00.0', TRUE, '550e8400-e29b-41d4-a716-446655440000', 123, 99.99);\n";
+        "INSERT INTO \"types_table\" (\"dob\", \"created\", \"active\", \"uid\", \"count\", \"price\") VALUES\n('2023-01-01', '2023-01-01 10:00:00.0', TRUE, '550e8400-e29b-41d4-a716-446655440000', 123, 99.99);\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -248,7 +253,7 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"more_types_table\" (\"big_num\", \"small_num\", \"decimal_val\", \"float_val\", \"char_val\", \"long_text\") VALUES (123456789012345, 123, 123.456, 789.12, 'A', 'This is a very long text field.');\n";
+        "INSERT INTO \"more_types_table\" (\"big_num\", \"small_num\", \"decimal_val\", \"float_val\", \"char_val\", \"long_text\") VALUES\n(123456789012345, 123, 123.456, 789.12, 'A', 'This is a very long text field.');\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -275,7 +280,7 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"texts\" (\"description\") VALUES ('Line1\\nLine2\\tTabbed\\\\Backslash\"DoubleQuote');\n";
+        "INSERT INTO \"texts\" (\"description\") VALUES\n('Line1\\nLine2\\tTabbed\\\\Backslash\"DoubleQuote');\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -344,7 +349,7 @@ class SqlGeneratorTest {
 
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
-    String expectedSql = "INSERT INTO \"users\" (\"name\") VALUES ('O''Reilly''s Pub');\n";
+    String expectedSql = "INSERT INTO \"users\" (\"name\") VALUES\n('O''Reilly''s Pub');\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -402,7 +407,8 @@ class SqlGeneratorTest {
     String expectedSql =
         """
         BEGIN;
-        INSERT INTO "users" ("id", "name") VALUES (1, 'Alice');
+        INSERT INTO "users" ("id", "name") VALUES
+        (1, 'Alice');
         SET CONSTRAINTS ALL DEFERRED;
         UPDATE "table1" SET "col1"=10 WHERE "id"=1;
         UPDATE "table2" SET "col2"='test' WHERE "pk"=2;
@@ -440,7 +446,7 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"user\" (\"id\", \"from\", \"order by\") VALUES (1, 'sourceA', 'asc');\n";
+        "INSERT INTO \"user\" (\"id\", \"from\", \"order by\") VALUES\n(1, 'sourceA', 'asc');\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -490,7 +496,54 @@ class SqlGeneratorTest {
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
     String expectedSql =
-        "INSERT INTO \"table\"\"name\" (\"id\", \"col\"\"with\"\"quotes\") VALUES (1, 'some value');\n";
+        "INSERT INTO \"table\"\"name\" (\"id\", \"col\"\"with\"\"quotes\") VALUES\n(1, 'some value');\n";
     assertEquals(expectedSql, sql);
+  }
+
+  @Test
+  @DisplayName("Should generate batched INSERT statements for more than BATCH_SIZE rows")
+  void shouldGenerateBatchedInsertStatements() {
+    Column id = Column.builder().name("id").jdbcType(Types.INTEGER).build();
+    Column name = Column.builder().name("name").jdbcType(Types.VARCHAR).build();
+    Table table =
+        Table.builder()
+            .name("large_table")
+            .columns(List.of(id, name))
+            .primaryKey(List.of("id"))
+            .foreignKeys(Collections.emptyList())
+            .checks(Collections.emptyList())
+            .uniqueKeys(Collections.emptyList())
+            .build();
+
+    // Generate 1001 rows to exceed the BATCH_SIZE (1000)
+    List<Row> rows = IntStream.rangeClosed(1, 1001)
+        .mapToObj(i -> {
+          Map<String, Object> rowValues = new LinkedHashMap<>();
+          rowValues.put("id", i);
+          rowValues.put("name", "User" + i);
+          return new Row(rowValues);
+        })
+        .collect(Collectors.toList());
+
+    Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(table, rows);
+
+    String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
+
+    // Construct the expected SQL for two batches
+    StringBuilder expectedSqlBuilder = new StringBuilder();
+    expectedSqlBuilder.append("INSERT INTO \"large_table\" (\"id\", \"name\") VALUES\n");
+    IntStream.rangeClosed(1, 1000).forEach(i -> {
+      expectedSqlBuilder.append("(").append(i).append(", 'User").append(i).append("')");
+      if (i < 1000) {
+        expectedSqlBuilder.append(",\n");
+      }
+    });
+    expectedSqlBuilder.append(";\n");
+
+    expectedSqlBuilder.append("INSERT INTO \"large_table\" (\"id\", \"name\") VALUES\n");
+    expectedSqlBuilder.append("(1001, 'User1001');\n");
+
+    assertEquals(expectedSqlBuilder.toString(), sql);
   }
 }

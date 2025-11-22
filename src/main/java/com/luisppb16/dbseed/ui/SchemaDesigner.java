@@ -21,14 +21,18 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.prefs.Preferences;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.SwingWorker;
 import org.jetbrains.annotations.NotNull;
 
 public final class SchemaDesigner extends JFrame {
@@ -126,12 +130,45 @@ public final class SchemaDesigner extends JFrame {
   }
 
   private void generateSql() {
-    final SchemaDsl.Table[] tables =
-        Collections.list(model.elements()).stream()
-            .map(t -> SchemaDsl.table(t.name(), t.columns().toArray(SchemaDsl.Column[]::new)))
-            .toArray(SchemaDsl.Table[]::new);
-    final SchemaDsl.Schema schema = SchemaDsl.schema(tables);
-    sqlArea.setText(SchemaDsl.toSql(schema));
+    final JDialog progressDialog = new JDialog(this, "Generating SQL", true);
+    final JProgressBar progressBar = new JProgressBar();
+    progressBar.setIndeterminate(true);
+    progressDialog.add(BorderLayout.CENTER, progressBar);
+    progressDialog.add(BorderLayout.NORTH, new JPanel()); // Margin
+    progressDialog.setSize(300, 75);
+    progressDialog.setLocationRelativeTo(this);
+
+    final SwingWorker<String, Void> worker =
+        new SwingWorker<>() {
+          @Override
+          protected String doInBackground() throws Exception {
+            final SchemaDsl.Table[] tables =
+                Collections.list(model.elements()).stream()
+                    .map(
+                        t ->
+                            SchemaDsl.table(t.name(), t.columns().toArray(SchemaDsl.Column[]::new)))
+                    .toArray(SchemaDsl.Table[]::new);
+            final SchemaDsl.Schema schema = SchemaDsl.schema(tables);
+            return SchemaDsl.toSql(schema);
+          }
+
+          @Override
+          protected void done() {
+            progressDialog.dispose();
+            try {
+              sqlArea.setText(get());
+            } catch (final InterruptedException | ExecutionException e) {
+              JOptionPane.showMessageDialog(
+                  SchemaDesigner.this,
+                  "Error generating SQL: " + e.getMessage(),
+                  "Error",
+                  JOptionPane.ERROR_MESSAGE);
+            }
+          }
+        };
+
+    worker.execute();
+    progressDialog.setVisible(true);
   }
 
   private void savePosition() {

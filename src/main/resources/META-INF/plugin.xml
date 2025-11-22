@@ -23,7 +23,6 @@
         <![CDATA[
             <ul>
               <li><b>Configurable Dictionaries for Data Generation:</b> Introduced flexible dictionary usage with checkboxes for Latin (Faker default), English, and Spanish. Users can now combine these dictionaries to generate more realistic and contextually relevant string data.</li>
-              <li><b>Improved UUID Generation Strategy:</b> UUID generation options in settings to better suit the needs: "Database UUID randomizer" and "Java UUID randomizer".</li>
               <li><b>Plugin Renamed:</b> The plugin has been renamed from "Database Seed Generator" to "DBSeed4SQL" to better reflect its functionality and branding.</li>
               <li><b>Batch Query Execution:</b> Optimized SQL script generation to execute queries in batches, significantly improving performance for large datasets.</li>
               <li><b>Configuration Window:</b> Introduced a dedicated configuration window within the IDE, allowing users to easily customize default settings and generation parameters.</li>

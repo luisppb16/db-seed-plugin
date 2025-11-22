@@ -231,6 +231,9 @@ public class SeedDatabaseAction extends AnAction {
         excludedColumnsSet.entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
+    // Get dictionary usage from settings
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+
     ProgressManager.getInstance()
         .run(
             new Task.Backgroundable(project, "Generating SQL", false) {
@@ -251,7 +254,10 @@ public class SeedDatabaseAction extends AnAction {
                         config.rowsPerTable(),
                         effectiveDeferred,
                         pkUuidOverrides,
-                        excludedColumns);
+                        excludedColumns,
+                        settings.useLatinDictionary,
+                        settings.useEnglishDictionary,
+                        settings.useSpanishDictionary); // Pass dictionary usage flags here
                 log.info("Data generation completed for {} rows per table.", config.rowsPerTable());
 
                 indicator.setText("Building SQL...");

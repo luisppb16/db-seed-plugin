@@ -22,6 +22,7 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.testFramework.LightVirtualFile;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
@@ -80,6 +81,7 @@ public final class GenerateSeedAction extends AnAction {
     }
 
     final GenerationConfig config = dialog.getConfiguration();
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
     ProgressManager.getInstance()
         .run(
@@ -87,7 +89,14 @@ public final class GenerateSeedAction extends AnAction {
               @Override
               public void run(@NotNull final ProgressIndicator indicator) {
                 try {
-                  final String sql = generateSeedSql(config, dialog, indicator);
+                  final String sql =
+                      generateSeedSql(
+                          config,
+                          dialog,
+                          indicator,
+                          settings.useLatinDictionary,
+                          settings.useEnglishDictionary,
+                          settings.useSpanishDictionary);
                   ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
                 } catch (final SQLException ex) {
                   log.error("Database error during seed SQL generation.", ex);
@@ -103,7 +112,10 @@ public final class GenerateSeedAction extends AnAction {
   private String generateSeedSql(
       @NotNull final GenerationConfig config,
       @NotNull final SeedDialog dialog,
-      @NotNull final ProgressIndicator indicator)
+      @NotNull final ProgressIndicator indicator,
+      final boolean useLatinDictionary,
+      final boolean useEnglishDictionary,
+      final boolean useSpanishDictionary)
       throws Exception {
 
     try (final Connection conn =
@@ -134,7 +146,10 @@ public final class GenerateSeedAction extends AnAction {
               config.rowsPerTable(),
               effectiveDeferred,
               dialog.getSelectionByTable(),
-              dialog.getExcludedColumnsByTable());
+              dialog.getExcludedColumnsByTable(),
+              useLatinDictionary,
+              useEnglishDictionary,
+              useSpanishDictionary);
 
       indicator.setText("Building SQL...");
       final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);

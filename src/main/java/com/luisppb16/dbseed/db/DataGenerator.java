@@ -5,9 +5,15 @@
 
 package com.luisppb16.dbseed.db;
 
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.util.io.StreamUtil;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.sql.Types;
@@ -49,13 +55,18 @@ public class DataGenerator {
   private static final int DEFAULT_LONG_MAX = 1_000_000;
   private static final int DEFAULT_DECIMAL_MAX = 1_000;
   private static final int UUID_GENERATION_LIMIT = 1_000_000;
+  private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
+  private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
 
   public static GenerationResult generate(
       List<Table> tables,
       int rowsPerTable,
       boolean deferred,
       Map<String, Map<String, String>> pkUuidOverrides,
-      Map<String, List<String>> excludedColumns) {
+      Map<String, List<String>> excludedColumns,
+      boolean useLatinDictionary,
+      boolean useEnglishDictionary,
+      boolean useSpanishDictionary) {
 
     Map<String, Table> overridden = new LinkedHashMap<>();
     tables.forEach(
@@ -90,14 +101,24 @@ public class DataGenerator {
         excludedColumns.entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
-    return generateInternal(list, rowsPerTable, deferred, excludedColumnsSet);
+    return generateInternal(
+        list,
+        rowsPerTable,
+        deferred,
+        excludedColumnsSet,
+        useLatinDictionary,
+        useEnglishDictionary,
+        useSpanishDictionary);
   }
 
   private static GenerationResult generateInternal(
       List<Table> tables,
       int rowsPerTable,
       boolean deferred,
-      Map<String, Set<String>> excludedColumns) {
+      Map<String, Set<String>> excludedColumns,
+      boolean useLatinDictionary,
+      boolean useEnglishDictionary,
+      boolean useSpanishDictionary) {
 
     Instant start = Instant.now();
 
@@ -105,6 +126,8 @@ public class DataGenerator {
     Map<String, Table> tableMap =
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
+    List<String> dictionaryWords =
+        loadDictionaryWords(useLatinDictionary, useEnglishDictionary, useSpanishDictionary);
     Faker faker = new Faker();
     Map<Table, List<Row>> data = new LinkedHashMap<>();
     Set<UUID> usedUuids = new HashSet<>();
@@ -113,7 +136,14 @@ public class DataGenerator {
 
     // Generate rows for each table
     generateTableRows(
-        orderedTables, rowsPerTable, excludedColumns, faker, usedUuids, tableConstraints, data);
+        orderedTables,
+        rowsPerTable,
+        excludedColumns,
+        faker,
+        usedUuids,
+        tableConstraints,
+        data,
+        dictionaryWords);
 
     // Validation pass: ensure numeric values satisfy parsed CHECK bounds; if not, replace them.
     validateNumericConstraints(orderedTables, tableConstraints, data);
@@ -149,7 +179,8 @@ public class DataGenerator {
       Faker faker,
       Set<UUID> usedUuids,
       Map<String, Map<String, ParsedConstraint>> tableConstraints,
-      Map<Table, List<Row>> data) {
+      Map<Table, List<Row>> data,
+      List<String> dictionaryWords) {
 
     orderedTables.forEach(
         table -> {
@@ -179,7 +210,14 @@ public class DataGenerator {
           while (generatedCount < rowsPerTable && attempts < rowsPerTable * MAX_GENERATE_ATTEMPTS) {
             Map<String, Object> values =
                 generateSingleRow(
-                    faker, table, generatedCount, usedUuids, constraints, isFkColumn, excluded);
+                    faker,
+                    table,
+                    generatedCount,
+                    usedUuids,
+                    constraints,
+                    isFkColumn,
+                    excluded,
+                    dictionaryWords);
 
             boolean isPkUnique;
             if (table.primaryKey().isEmpty()) {
@@ -233,7 +271,8 @@ public class DataGenerator {
       Set<UUID> usedUuids,
       Map<String, ParsedConstraint> constraints,
       Predicate<Column> isFkColumn,
-      Set<String> excluded) { // Removed seenUniqueValues parameter
+      Set<String> excluded,
+      List<String> dictionaryWords) { // Added dictionaryWords parameter
 
     Map<String, Object> values = new LinkedHashMap<>();
     table
@@ -247,7 +286,7 @@ public class DataGenerator {
                   values.put(column.name(), null);
                 } else {
                   ParsedConstraint pc = constraints.get(column.name());
-                  Object gen = generateValue(faker, column, index, usedUuids, pc);
+                  Object gen = generateValue(faker, column, index, usedUuids, pc, dictionaryWords);
 
                   // Removed unique column handling from here. It will be handled in
                   // generateTableRows.
@@ -501,7 +540,12 @@ public class DataGenerator {
   }
 
   private static Object generateValue(
-      Faker faker, Column column, int index, Set<UUID> usedUuids, ParsedConstraint pc) {
+      Faker faker,
+      Column column,
+      int index,
+      Set<UUID> usedUuids,
+      ParsedConstraint pc,
+      List<String> dictionaryWords) { // Added dictionaryWords parameter
     if (column.uuid()) {
       return generateUuidValue(column, usedUuids, pc);
     }
@@ -523,7 +567,7 @@ public class DataGenerator {
     Integer maxLen = pc != null ? pc.maxLength() : null;
     if (maxLen == null || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
 
-    return generateDefaultValue(faker, column, index, maxLen);
+    return generateDefaultValue(faker, column, index, maxLen, dictionaryWords);
   }
 
   private static Object generateUuidValue(Column column, Set<UUID> usedUuids, ParsedConstraint pc) {
@@ -573,7 +617,7 @@ public class DataGenerator {
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
   private static Object generateDefaultValue(
-      Faker faker, Column column, int index, Integer maxLen) {
+      Faker faker, Column column, int index, Integer maxLen, List<String> dictionaryWords) {
     return switch (column.jdbcType()) {
       case Types.CHAR,
           Types.VARCHAR,
@@ -581,7 +625,7 @@ public class DataGenerator {
           Types.NVARCHAR,
           Types.LONGVARCHAR,
           Types.LONGNVARCHAR ->
-          generateString(faker, maxLen, column.jdbcType());
+          generateString(faker, maxLen, column.jdbcType(), dictionaryWords);
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);
       case Types.BIGINT -> boundedLong(column);
       case Types.BOOLEAN, Types.BIT -> faker.bool().bool();
@@ -743,14 +787,58 @@ public class DataGenerator {
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static String generateString(Faker faker, Integer maxLen, int jdbcType) {
+  private static String generateString(
+      Faker faker, Integer maxLen, int jdbcType, List<String> dictionaryWords) {
     int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
     if (len == 2) return faker.country().countryCode2();
     if (len == 3) return faker.country().countryCode3();
     if (len == 24) return normalizeToLength("ES".concat(faker.number().digits(22)), len, jdbcType);
-    int numWords = ThreadLocalRandom.current().nextInt(3, Math.clamp(len / 5, 4, 10));
-    String phrase = String.join(" ", faker.lorem().words(numWords));
-    return normalizeToLength(phrase, len, jdbcType);
+
+    if (!dictionaryWords.isEmpty()) {
+      // Use dictionary words
+      int numWords = ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), 5));
+      StringBuilder phraseBuilder = new StringBuilder();
+      for (int i = 0; i < numWords; i++) {
+        phraseBuilder.append(pickRandom(dictionaryWords, Types.VARCHAR)).append(" ");
+      }
+      return normalizeToLength(phraseBuilder.toString().trim(), len, jdbcType);
+    } else {
+      // Fallback to Faker if no dictionary words are loaded
+      int numWords = ThreadLocalRandom.current().nextInt(3, Math.clamp(len / 5, 4, 10));
+      String phrase = String.join(" ", faker.lorem().words(numWords));
+      return normalizeToLength(phrase, len, jdbcType);
+    }
+  }
+
+  private static List<String> loadDictionaryWords(
+      boolean useLatinDictionary, boolean useEnglishDictionary, boolean useSpanishDictionary) {
+    List<String> words = new ArrayList<>();
+    if (useEnglishDictionary) {
+      words.addAll(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
+    }
+    if (useSpanishDictionary) {
+      words.addAll(readWordsFromFile(SPANISH_DICTIONARY_PATH));
+    }
+    // If no specific dictionary is selected, or if Latin is explicitly chosen,
+    // Faker's default (Latin) will be used by generateString if dictionaryWords is empty.
+    // So, we don't need to load a "Latin" dictionary here.
+    return words;
+  }
+
+  private static List<String> readWordsFromFile(String filePath) {
+    try (InputStream is = DataGenerator.class.getResourceAsStream(filePath)) {
+      if (is == null) {
+        log.warn("Dictionary file not found: {}", filePath);
+        return Collections.emptyList();
+      }
+      return Arrays.stream(StreamUtil.readText(is, StandardCharsets.UTF_8).split("\\s+"))
+          .map(String::trim)
+          .filter(s -> !s.isEmpty())
+          .collect(Collectors.toList());
+    } catch (IOException e) {
+      log.error("Error reading dictionary file: {}", filePath, e);
+      return Collections.emptyList();
+    }
   }
 
   private static boolean isNumericJdbc(int jdbcType) {

@@ -57,7 +57,7 @@ public final class SeedDialog extends DialogWrapper {
 
   public SeedDialog() {
     super(true);
-    setTitle("Database Seed Generator");
+    setTitle("DBSeed4SQL");
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.columnSpinnerStep));

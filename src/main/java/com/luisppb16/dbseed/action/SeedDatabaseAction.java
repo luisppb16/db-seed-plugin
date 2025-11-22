@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.action;
 
 import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -52,6 +53,7 @@ import org.jetbrains.annotations.NotNull;
 @Slf4j
 public class SeedDatabaseAction extends AnAction {
 
+  private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
   private static final String NOTIFICATION_TITLE = "DB Seed Generator";
   private static final String SQL_FILE_NAME = "seed.sql";
   private static final long INSERT_THRESHOLD = 10000L;
@@ -95,7 +97,11 @@ public class SeedDatabaseAction extends AnAction {
       return;
     }
 
-    final DriverSelectionDialog driverDialog = new DriverSelectionDialog(project, drivers);
+    final PropertiesComponent props = PropertiesComponent.getInstance(project);
+    final String lastDriverName = props.getValue(PREF_LAST_DRIVER);
+
+    final DriverSelectionDialog driverDialog =
+        new DriverSelectionDialog(project, drivers, lastDriverName);
     if (!driverDialog.showAndGet()) {
       log.debug("Driver selection canceled.");
       return;
@@ -107,6 +113,7 @@ public class SeedDatabaseAction extends AnAction {
       return;
     }
     final DriverInfo chosenDriver = chosenDriverOpt.get();
+    props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
 
     try {
       DriverLoader.ensureDriverPresent(chosenDriver);

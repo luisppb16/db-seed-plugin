@@ -40,9 +40,11 @@ public final class SchemaDesigner extends JFrame {
   private static final String PREF_NODE = "com/luisppb16/dbseed/ui";
   private static final String PREF_X = "windowX";
   private static final String PREF_Y = "windowY";
+  private static final String PREF_DIVIDER_LOCATION = "dividerLocation";
 
   private final DefaultListModel<UiTable> model = new DefaultListModel<>();
   private final JTextArea sqlArea = new JTextArea();
+  private JSplitPane mainSplitPane;
 
   public SchemaDesigner() {
     super("Schema Designer");
@@ -78,9 +80,11 @@ public final class SchemaDesigner extends JFrame {
     sqlArea.setEditable(false);
     sqlArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
 
-    final JSplitPane mainSplitPane =
-        new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scroll, new JBScrollPane(sqlArea));
-    mainSplitPane.setDividerLocation(250);
+    mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scroll, new JBScrollPane(sqlArea));
+
+    final Preferences prefs = Preferences.userRoot().node(PREF_NODE);
+    final int dividerLocation = prefs.getInt(PREF_DIVIDER_LOCATION, 250);
+    mainSplitPane.setDividerLocation(dividerLocation);
 
     add(mainSplitPane, BorderLayout.CENTER);
     add(buttonsPanel, BorderLayout.SOUTH);
@@ -176,6 +180,7 @@ public final class SchemaDesigner extends JFrame {
     final Point location = getLocation();
     prefs.putInt(PREF_X, location.x);
     prefs.putInt(PREF_Y, location.y);
+    prefs.putInt(PREF_DIVIDER_LOCATION, mainSplitPane.getDividerLocation());
   }
 
   private void loadPosition() {

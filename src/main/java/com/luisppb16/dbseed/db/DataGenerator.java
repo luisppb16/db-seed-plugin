@@ -5,9 +5,6 @@
 
 package com.luisppb16.dbseed.db;
 
-import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.util.io.StreamUtil;
-import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
@@ -33,13 +30,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import lombok.Builder;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
@@ -58,16 +58,43 @@ public class DataGenerator {
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
   private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
 
-  public static GenerationResult generate(
+  @Builder
+  public record GenerationParameters(
       List<Table> tables,
       int rowsPerTable,
       boolean deferred,
       Map<String, Map<String, String>> pkUuidOverrides,
       Map<String, List<String>> excludedColumns,
-      boolean useLatinDictionary,
       boolean useEnglishDictionary,
-      boolean useSpanishDictionary) {
+      boolean useSpanishDictionary) {}
 
+  public static GenerationResult generate(GenerationParameters params) {
+
+    Map<String, Table> overridden = applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
+
+    List<Table> list = new ArrayList<>(overridden.values());
+
+    // Convert excludedColumns from Map<String, List<String>> to Map<String, Set<String>>
+    Map<String, Set<String>> excludedColumnsSet =
+        params
+            .excludedColumns()
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
+
+    return generateInternal(
+        GenerationInternalParameters.builder()
+            .tables(list)
+            .rowsPerTable(params.rowsPerTable())
+            .deferred(params.deferred())
+            .excludedColumns(excludedColumnsSet)
+            .useEnglishDictionary(params.useEnglishDictionary())
+            .useSpanishDictionary(params.useSpanishDictionary())
+            .build());
+  }
+
+  private static Map<String, Table> applyPkUuidOverrides(
+      List<Table> tables, Map<String, Map<String, String>> pkUuidOverrides) {
     Map<String, Table> overridden = new LinkedHashMap<>();
     tables.forEach(
         t -> {
@@ -91,73 +118,55 @@ public class DataGenerator {
           overridden.put(
               t.name(),
               new Table(
-                  t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
+                  t.name(),
+                  newCols,
+                  t.primaryKey(),
+                  t.foreignKeys(),
+                  t.checks(),
+                  t.uniqueKeys()));
         });
-
-    List<Table> list = new ArrayList<>(overridden.values());
-
-    // Convert excludedColumns from Map<String, List<String>> to Map<String, Set<String>>
-    Map<String, Set<String>> excludedColumnsSet =
-        excludedColumns.entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
-
-    return generateInternal(
-        list,
-        rowsPerTable,
-        deferred,
-        excludedColumnsSet,
-        useLatinDictionary,
-        useEnglishDictionary,
-        useSpanishDictionary);
+    return overridden;
   }
 
-  private static GenerationResult generateInternal(
+  @Builder
+  private record GenerationInternalParameters(
       List<Table> tables,
       int rowsPerTable,
       boolean deferred,
       Map<String, Set<String>> excludedColumns,
-      boolean useLatinDictionary,
       boolean useEnglishDictionary,
-      boolean useSpanishDictionary) {
+      boolean useSpanishDictionary) {}
+
+  private static GenerationResult generateInternal(GenerationInternalParameters params) {
 
     Instant start = Instant.now();
 
-    List<Table> orderedTables = orderByWordAndFk(tables);
+    List<Table> orderedTables = orderByWordAndFk(params.tables());
     Map<String, Table> tableMap =
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
     List<String> dictionaryWords =
-        loadDictionaryWords(useLatinDictionary, useEnglishDictionary, useSpanishDictionary);
+        loadDictionaryWords(params.useEnglishDictionary(), params.useSpanishDictionary());
     Faker faker = new Faker();
     Map<Table, List<Row>> data = new LinkedHashMap<>();
     Set<UUID> usedUuids = new HashSet<>();
 
     Map<String, Map<String, ParsedConstraint>> tableConstraints = new HashMap<>();
 
-    // Generate rows for each table
-    generateTableRows(
-        orderedTables,
-        rowsPerTable,
-        excludedColumns,
-        faker,
-        usedUuids,
-        tableConstraints,
-        data,
-        dictionaryWords);
+    GenerationContext context =
+        new GenerationContext(
+            orderedTables,
+            params.rowsPerTable(),
+            params.excludedColumns(),
+            faker,
+            usedUuids,
+            tableConstraints,
+            data,
+            dictionaryWords,
+            tableMap,
+            params.deferred());
 
-    // Validation pass: ensure numeric values satisfy parsed CHECK bounds; if not, replace them.
-    validateNumericConstraints(orderedTables, tableConstraints, data);
-
-    // Ensure UUID uniqueness across generated rows (fast check/reparations)
-    ensureUuidUniqueness(data, orderedTables, usedUuids);
-
-    List<PendingUpdate> updates = new ArrayList<>();
-    Set<String> inserted = new HashSet<>();
-    Map<String, Deque<Row>> uniqueFkParentQueues = new HashMap<>();
-
-    // Resolve foreign keys
-    resolveForeignKeys(
-        orderedTables, tableMap, data, deferred, updates, inserted, uniqueFkParentQueues);
+    executeGenerationSteps(context);
 
     Instant end = Instant.now();
     Duration duration = Duration.between(start, end);
@@ -166,13 +175,13 @@ public class DataGenerator {
     log.info(
         "Generation completed in {} seconds. Tables: {}, deferred updates: {}",
         String.format(Locale.ROOT, "%.3f", seconds),
-        orderedTables.size(),
-        updates.size());
+        context.orderedTables().size(),
+        context.updates().size());
 
-    return new GenerationResult(data, updates);
+    return new GenerationResult(context.data(), context.updates());
   }
 
-  private static void generateTableRows(
+  private record GenerationContext(
       List<Table> orderedTables,
       int rowsPerTable,
       Map<String, Set<String>> excludedColumns,
@@ -180,91 +189,134 @@ public class DataGenerator {
       Set<UUID> usedUuids,
       Map<String, Map<String, ParsedConstraint>> tableConstraints,
       Map<Table, List<Row>> data,
-      List<String> dictionaryWords) {
+      List<String> dictionaryWords,
+      Map<String, Table> tableMap,
+      boolean deferred,
+      List<PendingUpdate> updates,
+      Set<String> inserted,
+      Map<String, Deque<Row>> uniqueFkParentQueues) {
 
-    orderedTables.forEach(
-        table -> {
-          if (table.columns().isEmpty()) {
-            data.put(table, Collections.emptyList());
-            log.debug("Skipping row generation for table {} as it has no columns.", table.name());
-            return;
-          }
-
-          Map<String, ParsedConstraint> constraints =
-              table.columns().stream()
-                  .collect(
-                      Collectors.toMap(
-                          Column::name,
-                          col ->
-                              parseConstraintsForColumn(table.checks(), col.name(), col.length())));
-          tableConstraints.put(table.name(), constraints);
-          List<Row> rows = new ArrayList<>();
-          Predicate<Column> isFkColumn = column -> table.fkColumnNames().contains(column.name());
-          Set<String> seenPrimaryKeys = new HashSet<>();
-          // Map to store seen combinations for each unique key (list of column names)
-          Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
-          Set<String> excluded = excludedColumns.getOrDefault(table.name(), Set.of());
-
-          int generatedCount = 0;
-          int attempts = 0;
-          while (generatedCount < rowsPerTable && attempts < rowsPerTable * MAX_GENERATE_ATTEMPTS) {
-            Map<String, Object> values =
-                generateSingleRow(
-                    faker,
-                    table,
-                    generatedCount,
-                    usedUuids,
-                    constraints,
-                    isFkColumn,
-                    excluded,
-                    dictionaryWords);
-
-            boolean isPkUnique;
-            if (table.primaryKey().isEmpty()) {
-              isPkUnique = true;
-            } else {
-              String pkKey =
-                  table.primaryKey().stream()
-                      .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
-                      .collect(Collectors.joining("|"));
-              isPkUnique = seenPrimaryKeys.add(pkKey);
-            }
-
-            boolean areUniqueColumnsUnique = true;
-            for (List<String> uniqueKeyColumns : table.uniqueKeys()) {
-              if (uniqueKeyColumns.stream().allMatch(table.fkColumnNames()::contains)) {
-                continue;
-              }
-              // If the unique key is exactly the primary key, its uniqueness is already covered by
-              // isPkUnique.
-              // We only need to check other unique keys or if the PK is empty.
-              if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
-                String uniqueKeyCombination =
-                    uniqueKeyColumns.stream()
-                        .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
-                        .collect(Collectors.joining("|"));
-                Set<String> seenCombinations =
-                    seenUniqueKeyCombinations.computeIfAbsent(
-                        String.join("__", uniqueKeyColumns), k -> new HashSet<>());
-                if (!seenCombinations.add(uniqueKeyCombination)) {
-                  areUniqueColumnsUnique = false;
-                  break;
-                }
-              }
-            }
-
-            if (isPkUnique && areUniqueColumnsUnique) {
-              rows.add(new Row(values));
-              generatedCount++;
-            }
-            attempts++;
-          }
-          data.put(table, rows);
-          log.debug("Generated {} rows for table {}.", rows.size(), table.name());
-        });
+    GenerationContext(
+        List<Table> orderedTables,
+        int rowsPerTable,
+        Map<String, Set<String>> excludedColumns,
+        Faker faker,
+        Set<UUID> usedUuids,
+        Map<String, Map<String, ParsedConstraint>> tableConstraints,
+        Map<Table, List<Row>> data,
+        List<String> dictionaryWords,
+        Map<String, Table> tableMap,
+        boolean deferred) {
+      this(
+          orderedTables,
+          rowsPerTable,
+          excludedColumns,
+          faker,
+          usedUuids,
+          tableConstraints,
+          data,
+          dictionaryWords,
+          tableMap,
+          deferred,
+          new ArrayList<>(),
+          new HashSet<>(),
+          new HashMap<>());
+    }
   }
 
-  private static Map<String, Object> generateSingleRow(
+  private static void executeGenerationSteps(GenerationContext context) {
+    generateTableRows(
+        GenerateTableRowsParameters.builder()
+            .orderedTables(context.orderedTables())
+            .rowsPerTable(context.rowsPerTable())
+            .excludedColumns(context.excludedColumns())
+            .faker(context.faker())
+            .usedUuids(context.usedUuids())
+            .tableConstraints(context.tableConstraints())
+            .data(context.data())
+            .dictionaryWords(context.dictionaryWords())
+            .build());
+
+    validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data());
+    ensureUuidUniqueness(context.data(), context.orderedTables(), context.usedUuids());
+    resolveForeignKeys(context);
+  }
+
+  @Builder
+  private record GenerateTableRowsParameters(
+      List<Table> orderedTables,
+      int rowsPerTable,
+      Map<String, Set<String>> excludedColumns,
+      Faker faker,
+      Set<UUID> usedUuids,
+      Map<String, Map<String, ParsedConstraint>> tableConstraints,
+      Map<Table, List<Row>> data,
+      List<String> dictionaryWords) {}
+
+  private static void generateTableRows(GenerateTableRowsParameters params) {
+
+    params
+        .orderedTables()
+        .forEach(
+            table -> {
+              if (table.columns().isEmpty()) {
+                params.data().put(table, Collections.emptyList());
+                log.debug(
+                    "Skipping row generation for table {} as it has no columns.", table.name());
+                return;
+              }
+
+              Map<String, ParsedConstraint> constraints =
+                  table.columns().stream()
+                      .collect(
+                          Collectors.toMap(
+                              Column::name,
+                              col ->
+                                  parseConstraintsForColumn(
+                                      table.checks(), col.name(), col.length())));
+              params.tableConstraints().put(table.name(), constraints);
+              List<Row> rows = new ArrayList<>();
+              Predicate<Column> isFkColumn =
+                  column -> table.fkColumnNames().contains(column.name());
+              Set<String> seenPrimaryKeys = new HashSet<>();
+              // Map to store seen combinations for each unique key (list of column names)
+              Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
+              Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
+
+              AtomicInteger generatedCount = new AtomicInteger(0);
+              int attempts = 0;
+              while (generatedCount.get() < params.rowsPerTable()
+                  && attempts < params.rowsPerTable() * MAX_GENERATE_ATTEMPTS) {
+
+                Optional<Row> generatedRow =
+                    generateAndValidateRow(
+                        GenerateAndValidateRowParameters.builder()
+                            .table(table)
+                            .generatedCount(generatedCount.get())
+                            .faker(params.faker())
+                            .usedUuids(params.usedUuids())
+                            .constraints(constraints)
+                            .isFkColumn(isFkColumn)
+                            .excluded(excluded)
+                            .dictionaryWords(params.dictionaryWords())
+                            .seenPrimaryKeys(seenPrimaryKeys)
+                            .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
+                            .build());
+
+                generatedRow.ifPresent(
+                    row -> {
+                      rows.add(row);
+                      generatedCount.incrementAndGet();
+                    });
+                attempts++;
+              }
+              params.data().put(table, rows);
+              log.debug("Generated {} rows for table {}.", rows.size(), table.name());
+            });
+  }
+
+  @Builder
+  private record GenerateSingleRowParameters(
       Faker faker,
       Table table,
       int index,
@@ -272,39 +324,125 @@ public class DataGenerator {
       Map<String, ParsedConstraint> constraints,
       Predicate<Column> isFkColumn,
       Set<String> excluded,
-      List<String> dictionaryWords) { // Added dictionaryWords parameter
+      List<String> dictionaryWords) {}
+
+  private static Map<String, Object> generateSingleRow(GenerateSingleRowParameters params) {
 
     Map<String, Object> values = new LinkedHashMap<>();
-    table
+    params
+        .table()
         .columns()
-        .forEach(
-            column -> {
-              if (isFkColumn.test(column) || excluded.contains(column.name())) {
-                values.put(column.name(), null);
-              } else {
-                if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
-                  values.put(column.name(), null);
-                } else {
-                  ParsedConstraint pc = constraints.get(column.name());
-                  Object gen = generateValue(faker, column, index, usedUuids, pc, dictionaryWords);
-
-                  // Removed unique column handling from here. It will be handled in
-                  // generateTableRows.
-
-                  if (isNumericJdbc(column.jdbcType())
-                      && pc != null
-                      && (pc.min() != null || pc.max() != null)) {
-                    int attempts = 0;
-                    while (isNumericOutsideBounds(gen, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-                      gen = generateNumericWithinBounds(column, pc);
-                      attempts++;
-                    }
-                  }
-                  values.put(column.name(), gen);
-                }
-              }
-            });
+        .forEach(column -> values.put(column.name(), generateColumnValue(params, column)));
     return values;
+  }
+
+  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
+  private static Object generateColumnValue(GenerateSingleRowParameters params, Column column) {
+    if (params.isFkColumn().test(column) || params.excluded().contains(column.name())) {
+      return null;
+    }
+
+    if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
+      return null;
+    }
+
+    ParsedConstraint pc = params.constraints().get(column.name());
+    Object gen =
+        generateValue(
+            params.faker(),
+            column,
+            params.index(),
+            params.usedUuids(),
+            pc,
+            params.dictionaryWords());
+
+    return applyNumericConstraints(column, pc, gen);
+  }
+
+  private static Object applyNumericConstraints(Column column, ParsedConstraint pc, Object generatedValue) {
+    if (isNumericJdbc(column.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
+      Object currentGen = generatedValue;
+      int attempts = 0;
+      while (isNumericOutsideBounds(currentGen, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
+        currentGen = generateNumericWithinBounds(column, pc);
+        attempts++;
+      }
+      return currentGen;
+    }
+    return generatedValue;
+  }
+
+  @Builder
+  private record GenerateAndValidateRowParameters(
+      Table table,
+      int generatedCount,
+      Faker faker,
+      Set<UUID> usedUuids,
+      Map<String, ParsedConstraint> constraints,
+      Predicate<Column> isFkColumn,
+      Set<String> excluded,
+      List<String> dictionaryWords,
+      Set<String> seenPrimaryKeys,
+      Map<String, Set<String>> seenUniqueKeyCombinations) {}
+
+  private static Optional<Row> generateAndValidateRow(GenerateAndValidateRowParameters params) {
+
+    Map<String, Object> values =
+        generateSingleRow(
+            GenerateSingleRowParameters.builder()
+                .faker(params.faker())
+                .table(params.table())
+                .index(params.generatedCount())
+                .usedUuids(params.usedUuids())
+                .constraints(params.constraints())
+                .isFkColumn(params.isFkColumn())
+                .excluded(params.excluded())
+                .dictionaryWords(params.dictionaryWords())
+                .build());
+
+    if (!isPrimaryKeyUnique(params.table(), values, params.seenPrimaryKeys())) {
+      return Optional.empty();
+    }
+
+    if (!areUniqueKeysUnique(params.table(), values, params.seenUniqueKeyCombinations())) {
+      return Optional.empty();
+    }
+
+    return Optional.of(new Row(values));
+  }
+
+  private static boolean isPrimaryKeyUnique(
+      Table table, Map<String, Object> values, Set<String> seenPrimaryKeys) {
+    if (table.primaryKey().isEmpty()) {
+      return true;
+    }
+    String pkKey =
+        table.primaryKey().stream()
+            .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
+            .collect(Collectors.joining("|"));
+    return seenPrimaryKeys.add(pkKey);
+  }
+
+  private static boolean areUniqueKeysUnique(
+      Table table, Map<String, Object> values, Map<String, Set<String>> seenUniqueKeyCombinations) {
+    for (List<String> uniqueKeyColumns : table.uniqueKeys()) {
+      if (table.fkColumnNames().containsAll(uniqueKeyColumns)) {
+        continue;
+      }
+      if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
+        String uniqueKeyCombination =
+            uniqueKeyColumns.stream()
+                .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
+                .collect(Collectors.joining("|"));
+        Set<String> seenCombinations =
+            seenUniqueKeyCombinations.computeIfAbsent(
+                String.join("__", uniqueKeyColumns), k -> new HashSet<>());
+        if (!seenCombinations.add(uniqueKeyCombination)) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   private static void validateNumericConstraints(
@@ -339,51 +477,52 @@ public class DataGenerator {
     }
   }
 
-  private static void resolveForeignKeys(
-      List<Table> orderedTables,
-      Map<String, Table> tableMap,
-      Map<Table, List<Row>> data,
-      boolean deferred,
-      List<PendingUpdate> updates,
-      Set<String> inserted,
-      Map<String, Deque<Row>> uniqueFkParentQueues) {
+  private static void resolveForeignKeys(GenerationContext context) {
 
-    ForeignKeyResolutionContext context =
+    ForeignKeyResolutionContext fkContext =
         new ForeignKeyResolutionContext(
-            tableMap, data, deferred, updates, inserted, uniqueFkParentQueues);
+            context.tableMap(),
+            context.data(),
+            context.deferred(),
+            context.updates(),
+            context.inserted(),
+            context.uniqueFkParentQueues());
 
-    orderedTables.forEach(
-        table -> {
-          List<Row> rows = Objects.requireNonNull(data.get(table));
+    context
+        .orderedTables()
+        .forEach(table -> resolveForeignKeysForTable(table, fkContext));
+  }
 
-          Predicate<ForeignKey> fkIsNullable =
-              fk ->
-                  fk.columnMapping().keySet().stream()
-                      .map(table::column)
-                      .allMatch(Column::nullable);
+  private static void resolveForeignKeysForTable(Table table, ForeignKeyResolutionContext context) {
+    List<Row> rows = Objects.requireNonNull(context.data().get(table));
 
-          List<List<String>> uniqueKeysOnFks =
-              table.uniqueKeys().stream()
-                  .filter(uk -> uk.stream().allMatch(table.fkColumnNames()::contains))
-                  .toList();
+    Predicate<ForeignKey> fkIsNullable =
+        fk ->
+            fk.columnMapping().keySet().stream()
+                .map(table::column)
+                .allMatch(Column::nullable);
 
-          if (!uniqueKeysOnFks.isEmpty()) {
-            // Special handling for tables with unique keys composed entirely of foreign keys
-            handleUniqueFkResolution(table, rows, context, uniqueKeysOnFks);
-          } else {
-            // Default FK resolution
-            rows.forEach(
-                row ->
-                    table
-                        .foreignKeys()
-                        .forEach(
-                            fk ->
-                                resolveSingleForeignKey(
-                                    fk, table, row, fkIsNullable.test(fk), context)));
-          }
+    List<List<String>> uniqueKeysOnFks =
+        table.uniqueKeys().stream()
+            .filter(uk -> table.fkColumnNames().containsAll(uk)) // Simplified condition
+            .toList();
 
-          inserted.add(table.name());
-        });
+    if (!uniqueKeysOnFks.isEmpty()) {
+      // Special handling for tables with unique keys composed entirely of foreign keys
+      handleUniqueFkResolution(table, rows, context, uniqueKeysOnFks);
+    } else {
+      // Default FK resolution
+      rows.forEach(
+          row ->
+              table
+                  .foreignKeys()
+                  .forEach(
+                      fk ->
+                          resolveSingleForeignKey(
+                              fk, table, row, fkIsNullable.test(fk), context)));
+    }
+
+    context.inserted().add(table.name());
   }
 
   private static void handleUniqueFkResolution(
@@ -395,57 +534,88 @@ public class DataGenerator {
     int maxAttempts = 100 * rows.size();
 
     for (Row row : rows) {
-      boolean assigned = false;
-      for (int attempt = 0; attempt < maxAttempts; attempt++) {
-        Map<String, Object> potentialFkValues = new HashMap<>();
-        // For each FK in the table, pick a random parent
-        for (ForeignKey fk : table.foreignKeys()) {
-          Table parent = context.tableMap().get(fk.pkTable());
-          if (parent == null) continue;
-          List<Row> parentRows = context.data().get(parent);
-          if (parentRows == null || parentRows.isEmpty()) continue;
+      Optional<Map<String, Object>> resolvedFkValues =
+          findUniqueFkCombination(table, context, uniqueKeysOnFks, usedCombinations, maxAttempts);
 
-          Row parentRow =
-              getParentRowForForeignKey(
-                  fk,
-                  parentRows,
-                  context.uniqueFkParentQueues(),
-                  table.name(),
-                  parent.name(),
-                  false);
-          if (parentRow != null) {
-            fk.columnMapping()
-                .forEach(
-                    (fkCol, pkCol) -> potentialFkValues.put(fkCol, parentRow.values().get(pkCol)));
-          }
-        }
-
-        // Check if this combination of FKs violates any unique constraint
-        boolean collision = false;
-        List<String> currentCombinations = new ArrayList<>();
-        for (List<String> ukColumns : uniqueKeysOnFks) {
-          String combination =
-              ukColumns.stream()
-                  .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
-                  .collect(Collectors.joining("|"));
-          if (usedCombinations.contains(combination)) {
-            collision = true;
-            break;
-          }
-          currentCombinations.add(combination);
-        }
-
-        if (!collision) {
-          // No collision, this is a valid assignment
-          row.values().putAll(potentialFkValues);
-          usedCombinations.addAll(currentCombinations);
-          assigned = true;
-          break;
-        }
-      }
-      if (!assigned) {
+      if (resolvedFkValues.isPresent()) {
+        row.values().putAll(resolvedFkValues.get());
+      } else {
         log.warn("Could not find a unique FK combination for a row in table {}", table.name());
       }
+    }
+  }
+
+  private static Optional<Map<String, Object>> findUniqueFkCombination(
+      Table table,
+      ForeignKeyResolutionContext context,
+      List<List<String>> uniqueKeysOnFks,
+      Set<String> usedCombinations,
+      int maxAttempts) {
+
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      Map<String, Object> potentialFkValues = generatePotentialFkValues(table, context);
+
+      if (!potentialFkValues.isEmpty() && !isUniqueFkCollision(uniqueKeysOnFks, potentialFkValues, usedCombinations)) {
+        // No collision, this is a valid assignment
+        addUniqueCombinationsToSet(uniqueKeysOnFks, potentialFkValues, usedCombinations);
+        return Optional.of(potentialFkValues);
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static Map<String, Object> generatePotentialFkValues(
+      Table table, ForeignKeyResolutionContext context) {
+    Map<String, Object> potentialFkValues = new HashMap<>();
+    for (ForeignKey fk : table.foreignKeys()) {
+      Table parent = context.tableMap().get(fk.pkTable());
+      List<Row> parentRows = (parent != null) ? context.data().get(parent) : null;
+
+      if (parent != null && parentRows != null && !parentRows.isEmpty()) {
+        Row parentRow =
+            getParentRowForForeignKey(
+                fk,
+                parentRows,
+                context.uniqueFkParentQueues(),
+                table.name(),
+                parent.name(),
+                false);
+        if (parentRow != null) {
+          fk.columnMapping()
+              .forEach(
+                  (fkCol, pkCol) -> potentialFkValues.put(fkCol, parentRow.values().get(pkCol)));
+        }
+      }
+    }
+    return potentialFkValues;
+  }
+
+  private static boolean isUniqueFkCollision(
+      List<List<String>> uniqueKeysOnFks,
+      Map<String, Object> potentialFkValues,
+      Set<String> usedCombinations) {
+    for (List<String> ukColumns : uniqueKeysOnFks) {
+      String combination =
+          ukColumns.stream()
+              .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
+              .collect(Collectors.joining("|"));
+      if (usedCombinations.contains(combination)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void addUniqueCombinationsToSet(
+      List<List<String>> uniqueKeysOnFks,
+      Map<String, Object> potentialFkValues,
+      Set<String> usedCombinations) {
+    for (List<String> ukColumns : uniqueKeysOnFks) {
+      String combination =
+          ukColumns.stream()
+              .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
+              .collect(Collectors.joining("|"));
+      usedCombinations.add(combination);
     }
   }
 
@@ -811,7 +981,7 @@ public class DataGenerator {
   }
 
   private static List<String> loadDictionaryWords(
-      boolean useLatinDictionary, boolean useEnglishDictionary, boolean useSpanishDictionary) {
+      boolean useEnglishDictionary, boolean useSpanishDictionary) {
     List<String> words = new ArrayList<>();
     if (useEnglishDictionary) {
       words.addAll(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
@@ -831,10 +1001,10 @@ public class DataGenerator {
         log.warn("Dictionary file not found: {}", filePath);
         return Collections.emptyList();
       }
-      return Arrays.stream(StreamUtil.readText(is, StandardCharsets.UTF_8).split("\\s+"))
+      return Arrays.stream(new String(is.readAllBytes(), StandardCharsets.UTF_8).split("\\s+"))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
-          .collect(Collectors.toList());
+          .toList(); // Replaced Collectors.toList() with toList()
     } catch (IOException e) {
       log.error("Error reading dictionary file: {}", filePath, e);
       return Collections.emptyList();

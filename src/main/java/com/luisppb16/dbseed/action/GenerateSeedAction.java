@@ -142,14 +142,15 @@ public final class GenerateSeedAction extends AnAction {
       indicator.setText("Generating data...");
       final DataGenerator.GenerationResult gen =
           DataGenerator.generate(
-              ordered,
-              config.rowsPerTable(),
-              effectiveDeferred,
-              dialog.getSelectionByTable(),
-              dialog.getExcludedColumnsByTable(),
-              useLatinDictionary,
-              useEnglishDictionary,
-              useSpanishDictionary);
+              DataGenerator.GenerationParameters.builder()
+                  .tables(ordered)
+                  .rowsPerTable(config.rowsPerTable())
+                  .deferred(effectiveDeferred)
+                  .pkUuidOverrides(dialog.getSelectionByTable())
+                  .excludedColumns(dialog.getExcludedColumnsByTable())
+                  .useEnglishDictionary(useEnglishDictionary)
+                  .useSpanishDictionary(useSpanishDictionary)
+                  .build());
 
       indicator.setText("Building SQL...");
       final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);

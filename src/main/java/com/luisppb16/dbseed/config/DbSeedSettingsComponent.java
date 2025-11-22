@@ -27,7 +27,8 @@ public class DbSeedSettingsComponent {
       new JComboBox<>(DbSeedSettingsState.UuidStrategy.values());
 
   // New checkboxes for dictionary usage
-  private final JBCheckBox myUseLatinDictionary = new JBCheckBox("Use Latin Dictionary (Faker default)");
+  private final JBCheckBox myUseLatinDictionary =
+      new JBCheckBox("Use Latin Dictionary (Faker default)");
   private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English Dictionary");
   private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish Dictionary");
 

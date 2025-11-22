@@ -8,8 +8,9 @@ package com.luisppb16.dbseed.action;
 import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
+import com.intellij.notification.Notifications;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -60,7 +61,6 @@ import org.jetbrains.annotations.NotNull;
 public class SeedDatabaseAction extends AnAction {
 
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
-  private static final String NOTIFICATION_TITLE = "DB Seed Generator";
   private static final long INSERT_THRESHOLD = 10000L;
 
   private static boolean hasNonNullableForeignKeyInCycle(
@@ -250,14 +250,15 @@ public class SeedDatabaseAction extends AnAction {
 
                 final DataGenerator.GenerationResult gen =
                     DataGenerator.generate(
-                        ordered,
-                        config.rowsPerTable(),
-                        effectiveDeferred,
-                        pkUuidOverrides,
-                        excludedColumns,
-                        settings.useLatinDictionary,
-                        settings.useEnglishDictionary,
-                        settings.useSpanishDictionary); // Pass dictionary usage flags here
+                        DataGenerator.GenerationParameters.builder()
+                            .tables(ordered)
+                            .rowsPerTable(config.rowsPerTable())
+                            .deferred(effectiveDeferred)
+                            .pkUuidOverrides(pkUuidOverrides)
+                            .excludedColumns(excludedColumns)
+                            .useEnglishDictionary(settings.useEnglishDictionary)
+                            .useSpanishDictionary(settings.useSpanishDictionary)
+                            .build());
                 log.info("Data generation completed for {} rows per table.", config.rowsPerTable());
 
                 indicator.setText("Building SQL...");
@@ -308,9 +309,8 @@ public class SeedDatabaseAction extends AnAction {
   }
 
   private void notifyError(final Project project, final String message) {
-    NotificationGroupManager.getInstance()
-        .getNotificationGroup(NOTIFICATION_ID.getValue())
-        .createNotification(NOTIFICATION_TITLE, message, NotificationType.ERROR)
-        .notify(project);
+    Notifications.Bus.notify(
+        new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
+        project);
   }
 }

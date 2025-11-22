@@ -123,13 +123,16 @@ public class SqlGenerator {
   }
 
   private static String qualified(SqlOptions opts, String identifier) {
+    if (Objects.isNull(identifier)) {
+      throw new IllegalArgumentException("Identifier cannot be null.");
+    }
     boolean forceQuote = opts.quoteIdentifiers() || needsQuoting(identifier);
     String safe = identifier.replace("\"", "\"\"");
     return forceQuote ? "\"".concat(safe).concat("\"") : identifier;
   }
 
   private static boolean needsQuoting(String identifier) {
-    if (identifier == null) {
+    if (Objects.isNull(identifier)) {
       return false;
     }
     if (!UNQUOTED.matcher(identifier).matches()) {

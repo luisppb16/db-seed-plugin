@@ -27,8 +27,8 @@
               <li><b>Plugin Renamed:</b> The plugin has been renamed from "Database Seed Generator" to "DBSeed4SQL" to better reflect its functionality and branding.</li>
               <li><b>Batch Query Execution:</b> Optimized SQL script generation to execute queries in batches, significantly improving performance for large datasets.</li>
               <li><b>Configuration Window:</b> Introduced a dedicated configuration window within the IDE, allowing users to easily customize default settings and generation parameters.</li>
-              <li><b>Warning Pop-up for Large Column Generation:</b> Added a warning pop-up to alert users when generating a large number of columns, preventing accidental overload.</li>
-              <li><b>Show Password Toggle in Input Fields:</b> Implemented a "show password" toggle (eye icon) in password input fields for improved usability.</li>
+              <li><b>Warning Pop-up for Large Row Generation:</b> Added a warning pop-up to alert users when generating a large number of rows, preventing accidental overload.</li>
+              <li><b>Show Password Toggle in Input Field:</b> Implemented a "show password" toggle (eye icon) in password input field for improved usability.</li>
               <li><b>Overall Performance Improvements:</b> Significant enhancements across the plugin for a smoother and faster user experience.</li>
               <li><b>Migrate to Java 21:</b> The plugin has been fully migrated to Java 21, ensuring compatibility with the latest Java features and better performance.</li>
               <li><b>Select All Primary Keys Feature:</b> The PK selection dialog now allows selecting all primary keys at once, streamlining workflows when working with complex schemas.</li>

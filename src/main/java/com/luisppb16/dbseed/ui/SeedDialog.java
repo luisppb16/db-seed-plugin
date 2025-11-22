@@ -168,7 +168,8 @@ public final class SeedDialog extends DialogWrapper {
     int row = 0;
     addRow(panel, c, row++, "JDBC URL:", urlField);
     addRow(panel, c, row++, "User:", userField);
-    addRow(panel, c, row++, "Password:", createPasswordFieldWithToggle()); // Use the new helper method
+    addRow(
+        panel, c, row++, "Password:", createPasswordFieldWithToggle()); // Use the new helper method
     addRow(panel, c, row++, "Database:", databaseField);
     addRow(panel, c, row++, "Schema:", schemaField);
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
@@ -207,18 +208,22 @@ public final class SeedDialog extends DialogWrapper {
             passwordField.setEchoChar('•'); // Hide password
           }
         });
-    passwordLayeredPane.add(showPasswordButton, JLayeredPane.PALETTE_LAYER); // Add to a higher layer
+    passwordLayeredPane.add(
+        showPasswordButton, JLayeredPane.PALETTE_LAYER); // Add to a higher layer
 
     // Add a component listener to resize and reposition components within the layered pane
-    passwordLayeredPane.addComponentListener(new ComponentAdapter() {
-      @Override
-      public void componentResized(ComponentEvent e) {
-        passwordField.setBounds(0, 0, passwordLayeredPane.getWidth(), passwordLayeredPane.getHeight());
-        final int buttonWidth = 24; // Approximate width of the button
-        final int buttonHeight = passwordLayeredPane.getHeight();
-        showPasswordButton.setBounds(passwordLayeredPane.getWidth() - buttonWidth - 2, 0, buttonWidth, buttonHeight);
-      }
-    });
+    passwordLayeredPane.addComponentListener(
+        new ComponentAdapter() {
+          @Override
+          public void componentResized(ComponentEvent e) {
+            passwordField.setBounds(
+                0, 0, passwordLayeredPane.getWidth(), passwordLayeredPane.getHeight());
+            final int buttonWidth = 24; // Approximate width of the button
+            final int buttonHeight = passwordLayeredPane.getHeight();
+            showPasswordButton.setBounds(
+                passwordLayeredPane.getWidth() - buttonWidth - 2, 0, buttonWidth, buttonHeight);
+          }
+        });
     return passwordLayeredPane;
   }
 

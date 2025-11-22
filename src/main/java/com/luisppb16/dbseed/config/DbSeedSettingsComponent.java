@@ -33,6 +33,7 @@ public class DbSeedSettingsComponent {
     // Initialize components with current settings to prevent mismatches
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
+    myDefaultOutputDirectory.setText(settings.defaultOutputDirectory);
     myUseLatinDictionary.setSelected(settings.useLatinDictionary);
     myUseEnglishDictionary.setSelected(settings.useEnglishDictionary);
     myUseSpanishDictionary.setSelected(settings.useSpanishDictionary);

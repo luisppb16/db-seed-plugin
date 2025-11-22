@@ -16,12 +16,9 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   private static final String DEFAULT_OUTPUT_DIRECTORY = "src/main/resources/db/seeder";
   private static final int DEFAULT_COLUMN_SPINNER_STEP = 3;
-
-  // New dictionary usage flags
   public boolean useLatinDictionary = true;
   public boolean useEnglishDictionary = false;
   public boolean useSpanishDictionary = false;
-
   public int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
   public String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
 
@@ -47,6 +44,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     if (columnSpinnerStep <= 0) {
       columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
     }
-    // No specific null check needed for booleans as they default to false if not present
+    useLatinDictionary = state.useLatinDictionary;
+    useEnglishDictionary = state.useEnglishDictionary;
+    useSpanishDictionary = state.useSpanishDictionary;
   }
 }

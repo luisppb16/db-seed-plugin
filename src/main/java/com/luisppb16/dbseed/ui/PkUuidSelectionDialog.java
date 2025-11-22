@@ -205,9 +205,25 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           try {
             isBulkUpdating.set(true);
             final boolean selectAll = "Select All".equals(toggleButton.getText());
-            checkBoxes.stream()
-                .filter(box -> box.isSelected() != selectAll)
-                .forEach(AbstractButton::doClick);
+            checkBoxes.forEach(
+                box -> {
+                  if (box.isSelected() != selectAll) {
+                    box.setSelected(selectAll);
+                    // Manually trigger the action listener's logic without firing the event
+                    final String tableName = getTableNameForComponent(box);
+                    final String columnName = getColumnNameForCheckBox(box);
+                    if (tableName != null && columnName != null) {
+                      final Map<String, Set<String>> targetMap =
+                          withSearch ? excludedColumnsByTable : selectionByTable;
+                      targetMap.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
+                      if (selectAll) {
+                        targetMap.get(tableName).add(columnName);
+                      } else {
+                        targetMap.get(tableName).remove(columnName);
+                      }
+                    }
+                  }
+                });
           } finally {
             isBulkUpdating.set(false);
             updateButtonState.run();
@@ -226,6 +242,35 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     mainPanel.add(new JBScrollPane(listPanel), BorderLayout.CENTER);
 
     return mainPanel;
+  }
+
+  private String getTableNameForComponent(final Component component) {
+    final Component parent = component.getParent();
+    if (parent instanceof JPanel listPanel) {
+      final Component[] components = listPanel.getComponents();
+      int componentIndex = -1;
+      for (int i = 0; i < components.length; i++) {
+        if (components[i] == component) {
+          componentIndex = i;
+          break;
+        }
+      }
+
+      if (componentIndex != -1) {
+        for (int i = componentIndex; i >= 0; i--) {
+          if (components[i] instanceof JLabel label) {
+            return label.getText();
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  private String getColumnNameForCheckBox(final JCheckBox checkBox) {
+    final String text = checkBox.getText();
+    final String prefix = text.startsWith("Treat as UUID: ") ? "Treat as UUID: " : "Exclude: ";
+    return text.substring(prefix.length());
   }
 
   private void addSearchFunctionality(final JPanel topPanel, final JPanel listPanel) {

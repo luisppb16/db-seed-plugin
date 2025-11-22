@@ -10,13 +10,18 @@ import com.intellij.ui.components.JBScrollPane;
 import com.luisppb16.dbseed.schema.SchemaDsl;
 import com.luisppb16.dbseed.schema.SqlType;
 import java.awt.BorderLayout;
-import java.awt.EventQueue;
+import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Point;
+import java.awt.Toolkit;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.prefs.Preferences;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JFrame;
@@ -24,22 +29,32 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
-import org.jetbrains.annotations.NotNull; // Added this import
+import org.jetbrains.annotations.NotNull;
 
 public final class SchemaDesigner extends JFrame {
+
+  private static final String PREF_NODE = "com/luisppb16/dbseed/ui";
+  private static final String PREF_X = "windowX";
+  private static final String PREF_Y = "windowY";
 
   private final DefaultListModel<UiTable> model = new DefaultListModel<>();
   private final JTextArea sqlArea = new JTextArea();
 
   public SchemaDesigner() {
     super("Schema Designer");
-    setDefaultCloseOperation(EXIT_ON_CLOSE);
-    setSize(800, 600);
+    setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+    setPreferredSize(new Dimension(800, 600));
+    pack();
+    loadPosition();
     initLayout();
-  }
 
-  public static void main(final String[] args) {
-    EventQueue.invokeLater(() -> new SchemaDesigner().setVisible(true));
+    addWindowListener(
+        new WindowAdapter() {
+          @Override
+          public void windowClosing(final WindowEvent e) {
+            savePosition();
+          }
+        });
   }
 
   private void initLayout() {
@@ -119,6 +134,30 @@ public final class SchemaDesigner extends JFrame {
     sqlArea.setText(SchemaDsl.toSql(schema));
   }
 
+  private void savePosition() {
+    final Preferences prefs = Preferences.userRoot().node(PREF_NODE);
+    final Point location = getLocation();
+    prefs.putInt(PREF_X, location.x);
+    prefs.putInt(PREF_Y, location.y);
+  }
+
+  private void loadPosition() {
+    final Preferences prefs = Preferences.userRoot().node(PREF_NODE);
+    final int x = prefs.getInt(PREF_X, -1);
+    final int y = prefs.getInt(PREF_Y, -1);
+
+    if (x != -1 && y != -1) {
+      setLocation(x, y);
+    } else {
+      // Center and move up
+      setLocationRelativeTo(null);
+      final Point location = getLocation();
+      final int screenHeight = Toolkit.getDefaultToolkit().getScreenSize().height;
+      final int newY = (int) (screenHeight * 0.2); // Move to 20% from top
+      setLocation(location.x, newY);
+    }
+  }
+
   private record UiTable(String name, List<SchemaDsl.Column> columns) {
     public UiTable {
       Objects.requireNonNull(name, "Table name cannot be null.");
@@ -127,7 +166,7 @@ public final class SchemaDesigner extends JFrame {
     }
 
     @Override
-    @NotNull // Added this annotation
+    @NotNull
     public String toString() {
       return name;
     }

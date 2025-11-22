@@ -45,7 +45,7 @@ jobs:
         if: github.event_name == 'release'
         id: locate-zip
         run: |
-          ZIP_PATH=$(find build/distributions -type f -name "*.zip")
+          ZIP_PATH=$(find build/distributions -type f -name "*.zip" | head -n 1)
           if [ -z "$ZIP_PATH" ]; then
             echo "No distributable ZIP file found" >&2
             exit 1
@@ -56,4 +56,4 @@ jobs:
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: "*.zip"
+          files: ${{ steps.locate-zip.outputs.zip_path }}

@@ -155,10 +155,7 @@ public class SqlGenerator {
   }
 
   private static String escapeSql(String s) {
-    return s.replace("\\", "\\\\") // Escape backslashes first
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-        .replace("'", "''");
+    return s.replace("'", "''");
   }
 
   @Builder(toBuilder = true)

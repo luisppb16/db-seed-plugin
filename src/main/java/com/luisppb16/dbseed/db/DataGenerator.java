@@ -359,7 +359,8 @@ public class DataGenerator {
     return applyNumericConstraints(column, pc, gen);
   }
 
-  private static Object applyNumericConstraints(Column column, ParsedConstraint pc, Object generatedValue) {
+  private static Object applyNumericConstraints(
+      Column column, ParsedConstraint pc, Object generatedValue) {
     if (isNumericJdbc(column.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
       Object currentGen = generatedValue;
       int attempts = 0;
@@ -488,12 +489,11 @@ public class DataGenerator {
             context.inserted(),
             context.uniqueFkParentQueues());
 
-    context
-        .orderedTables()
-        .forEach(table -> resolveForeignKeysForTable(table, fkContext));
+    context.orderedTables().forEach(table -> resolveForeignKeysForTable(table, fkContext));
   }
 
-  private static void resolveForeignKeysForTable(Table table, ForeignKeyResolutionContext context) {
+  private static void resolveForeignKeysForTable(
+      Table table, ForeignKeyResolutionContext context) {
     List<Row> rows = Objects.requireNonNull(context.data().get(table));
 
     Predicate<ForeignKey> fkIsNullable =
@@ -518,8 +518,7 @@ public class DataGenerator {
                   .foreignKeys()
                   .forEach(
                       fk ->
-                          resolveSingleForeignKey(
-                              fk, table, row, fkIsNullable.test(fk), context)));
+                          resolveSingleForeignKey(fk, table, row, fkIsNullable.test(fk), context)));
     }
 
     context.inserted().add(table.name());
@@ -555,7 +554,8 @@ public class DataGenerator {
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
       Map<String, Object> potentialFkValues = generatePotentialFkValues(table, context);
 
-      if (!potentialFkValues.isEmpty() && !isUniqueFkCollision(uniqueKeysOnFks, potentialFkValues, usedCombinations)) {
+      if (!potentialFkValues.isEmpty()
+          && !isUniqueFkCollision(uniqueKeysOnFks, potentialFkValues, usedCombinations)) {
         // No collision, this is a valid assignment
         addUniqueCombinationsToSet(uniqueKeysOnFks, potentialFkValues, usedCombinations);
         return Optional.of(potentialFkValues);

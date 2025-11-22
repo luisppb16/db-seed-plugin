@@ -11,7 +11,6 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.FormBuilder;
-import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
@@ -23,8 +22,6 @@ public class DbSeedSettingsComponent {
   private final JSpinner myColumnSpinnerStep = new JSpinner(new SpinnerNumberModel(1, 1, 10, 1));
   private final TextFieldWithBrowseButton myDefaultOutputDirectory =
       new TextFieldWithBrowseButton();
-  private final JComboBox<DbSeedSettingsState.UuidStrategy> myUuidStrategy =
-      new JComboBox<>(DbSeedSettingsState.UuidStrategy.values());
 
   // New checkboxes for dictionary usage
   private final JBCheckBox myUseLatinDictionary =
@@ -36,7 +33,6 @@ public class DbSeedSettingsComponent {
     // Initialize components with current settings to prevent mismatches
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
-    myUuidStrategy.setSelectedItem(settings.uuidStrategy);
     myUseLatinDictionary.setSelected(settings.useLatinDictionary);
     myUseEnglishDictionary.setSelected(settings.useEnglishDictionary);
     myUseSpanishDictionary.setSelected(settings.useSpanishDictionary);
@@ -56,7 +52,6 @@ public class DbSeedSettingsComponent {
             .addLabeledComponent(new JBLabel("Column Spinner Step:"), myColumnSpinnerStep, 1, false)
             .addLabeledComponent(
                 new JBLabel("Default Output Directory:"), myDefaultOutputDirectory, 1, false)
-            .addLabeledComponent(new JBLabel("UUID Generation Strategy:"), myUuidStrategy, 1, false)
             .addComponent(myUseLatinDictionary, 1)
             .addComponent(myUseEnglishDictionary, 1)
             .addComponent(myUseSpanishDictionary, 1)
@@ -86,14 +81,6 @@ public class DbSeedSettingsComponent {
 
   public void setDefaultOutputDirectory(String text) {
     myDefaultOutputDirectory.setText(text);
-  }
-
-  public DbSeedSettingsState.UuidStrategy getUuidStrategy() {
-    return (DbSeedSettingsState.UuidStrategy) myUuidStrategy.getSelectedItem();
-  }
-
-  public void setUuidStrategy(DbSeedSettingsState.UuidStrategy strategy) {
-    myUuidStrategy.setSelectedItem(strategy);
   }
 
   // New getters and setters for dictionary checkboxes

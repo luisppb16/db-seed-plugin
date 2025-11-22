@@ -14,14 +14,14 @@ import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.testFramework.LightVirtualFile;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
@@ -36,9 +36,15 @@ import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,7 +61,6 @@ public class SeedDatabaseAction extends AnAction {
 
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
   private static final String NOTIFICATION_TITLE = "DB Seed Generator";
-  private static final String SQL_FILE_NAME = "seed.sql";
   private static final long INSERT_THRESHOLD = 10000L;
 
   private static boolean hasNonNullableForeignKeyInCycle(
@@ -257,7 +262,8 @@ public class SeedDatabaseAction extends AnAction {
 
                 indicator.setText("Opening editor...");
                 indicator.setFraction(1.0);
-                ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
+                ApplicationManager.getApplication()
+                    .invokeLater(() -> saveAndOpenSqlFile(project, sql));
               }
 
               @Override
@@ -268,11 +274,31 @@ public class SeedDatabaseAction extends AnAction {
             });
   }
 
-  private void openEditor(final Project project, final String sql) {
-    final FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(SQL_FILE_NAME);
-    final LightVirtualFile file = new LightVirtualFile(SQL_FILE_NAME, fileType, sql);
-    FileEditorManager.getInstance(project).openFile(file, true);
-    log.info("File {} opened in the editor.", SQL_FILE_NAME);
+  private void saveAndOpenSqlFile(final Project project, final String sql) {
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    final String outputDir = settings.defaultOutputDirectory;
+    final String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
+    final String fileName = String.format("V%s__seed.sql", timestamp);
+
+    final Path path = Paths.get(Objects.requireNonNull(project.getBasePath()), outputDir, fileName);
+
+    try {
+      Files.createDirectories(path.getParent());
+      Files.writeString(path, sql, StandardCharsets.UTF_8);
+
+      final VirtualFile virtualFile =
+          LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
+      if (virtualFile != null) {
+        FileEditorManager.getInstance(project).openFile(virtualFile, true);
+        log.info("File {} saved and opened in the editor.", fileName);
+      } else {
+        log.warn("Could not find VirtualFile for path: {}", path);
+        notifyError(project, "Could not open generated SQL file.");
+      }
+    } catch (final IOException e) {
+      log.error("Error saving SQL file: {}", path, e);
+      notifyError(project, "Error saving SQL file: " + e.getMessage());
+    }
   }
 
   private void notifyError(final Project project, final String message) {

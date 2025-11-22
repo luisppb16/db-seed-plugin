@@ -9,6 +9,7 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.ui.JBUI;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.BorderLayout;
@@ -25,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.swing.AbstractButton;
@@ -45,6 +47,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final List<Table> tables;
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
   private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
+  private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
 
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
     super(true);
@@ -55,6 +58,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private void initDefaults() {
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    final DbSeedSettingsState.UuidStrategy strategy = settings.uuidStrategy;
+
     tables.forEach(
         table -> {
           final Set<String> defaults =
@@ -69,6 +75,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                       })
                   .collect(Collectors.toCollection(LinkedHashSet::new));
           selectionByTable.put(table.name(), defaults);
+
+          if (strategy == DbSeedSettingsState.UuidStrategy.PRE_GENERATED) {
+            final Map<String, String> uuidValues = new LinkedHashMap<>();
+            defaults.forEach(pkCol -> uuidValues.put(pkCol, UUID.randomUUID().toString()));
+            uuidValuesByTable.put(table.name(), uuidValues);
+          }
         });
   }
 
@@ -353,6 +365,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final Map<String, Set<String>> out = new LinkedHashMap<>();
     selectionByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
     return out;
+  }
+
+  public Map<String, Map<String, String>> getUuidValuesByTable() {
+    return uuidValuesByTable;
   }
 
   public Map<String, Set<String>> getExcludedColumnsByTable() {

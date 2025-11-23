@@ -65,6 +65,7 @@ public class DataGenerator {
       boolean deferred,
       Map<String, Map<String, String>> pkUuidOverrides,
       Map<String, List<String>> excludedColumns,
+      boolean useLatinDictionary,
       boolean useEnglishDictionary,
       boolean useSpanishDictionary) {}
 
@@ -88,6 +89,7 @@ public class DataGenerator {
             .rowsPerTable(params.rowsPerTable())
             .deferred(params.deferred())
             .excludedColumns(excludedColumnsSet)
+            .useLatinDictionary(params.useLatinDictionary())
             .useEnglishDictionary(params.useEnglishDictionary())
             .useSpanishDictionary(params.useSpanishDictionary())
             .build());
@@ -134,6 +136,7 @@ public class DataGenerator {
       int rowsPerTable,
       boolean deferred,
       Map<String, Set<String>> excludedColumns,
+      boolean useLatinDictionary,
       boolean useEnglishDictionary,
       boolean useSpanishDictionary) {}
 
@@ -146,7 +149,10 @@ public class DataGenerator {
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
     List<String> dictionaryWords =
-        loadDictionaryWords(params.useEnglishDictionary(), params.useSpanishDictionary());
+        loadDictionaryWords(
+            params.useLatinDictionary(),
+            params.useEnglishDictionary(),
+            params.useSpanishDictionary());
     Faker faker = new Faker();
     Map<Table, List<Row>> data = new LinkedHashMap<>();
     Set<UUID> usedUuids = new HashSet<>();
@@ -981,7 +987,7 @@ public class DataGenerator {
   }
 
   private static List<String> loadDictionaryWords(
-      boolean useEnglishDictionary, boolean useSpanishDictionary) {
+      boolean useLatinDictionary, boolean useEnglishDictionary, boolean useSpanishDictionary) {
     List<String> words = new ArrayList<>();
     if (useEnglishDictionary) {
       words.addAll(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
@@ -989,9 +995,9 @@ public class DataGenerator {
     if (useSpanishDictionary) {
       words.addAll(readWordsFromFile(SPANISH_DICTIONARY_PATH));
     }
-    // If no specific dictionary is selected, or if Latin is explicitly chosen,
-    // Faker's default (Latin) will be used by generateString if dictionaryWords is empty.
-    // So, we don't need to load a "Latin" dictionary here.
+    if (useLatinDictionary || words.isEmpty()) {
+      return Collections.emptyList();
+    }
     return words;
   }
 

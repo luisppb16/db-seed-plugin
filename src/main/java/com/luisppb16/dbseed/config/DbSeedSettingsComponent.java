@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -28,7 +29,7 @@ public class DbSeedSettingsComponent {
   private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English Dictionary");
   private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish Dictionary");
 
-  public DbSeedSettingsComponent() {
+  public DbSeedSettingsComponent(Project project) {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
     myDefaultOutputDirectory.setText(settings.defaultOutputDirectory);
@@ -42,7 +43,7 @@ public class DbSeedSettingsComponent {
     myDefaultOutputDirectory.addBrowseFolderListener(
         "Select Directory",
         "Please select the default directory for generated SQL files.",
-        null,
+        project,
         folderDescriptor);
 
     myMainPanel =

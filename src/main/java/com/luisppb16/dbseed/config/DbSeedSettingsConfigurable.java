@@ -6,6 +6,7 @@
 package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.options.Configurable;
+import com.intellij.openapi.project.Project;
 import java.util.Objects;
 import javax.swing.JComponent;
 import org.jetbrains.annotations.Nls;
@@ -13,7 +14,12 @@ import org.jetbrains.annotations.Nullable;
 
 public class DbSeedSettingsConfigurable implements Configurable {
 
+  private final Project project;
   private DbSeedSettingsComponent mySettingsComponent;
+
+  public DbSeedSettingsConfigurable(Project project) {
+    this.project = project;
+  }
 
   @Nls(capitalization = Nls.Capitalization.Title)
   @Override
@@ -29,7 +35,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
   @Nullable
   @Override
   public JComponent createComponent() {
-    mySettingsComponent = new DbSeedSettingsComponent();
+    mySettingsComponent = new DbSeedSettingsComponent(project);
     return mySettingsComponent.getPanel();
   }
 

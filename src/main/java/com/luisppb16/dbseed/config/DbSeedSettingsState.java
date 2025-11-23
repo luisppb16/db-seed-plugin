@@ -40,12 +40,13 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
     // Ensure resilience against null or invalid values from a deserialized state
     defaultOutputDirectory =
-        Objects.requireNonNullElse(defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
-    if (columnSpinnerStep <= 0) {
-      columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
+        Objects.requireNonNullElse(this.defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
+    if (this.columnSpinnerStep <= 0) {
+      this.columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
     }
-    useLatinDictionary = state.useLatinDictionary;
-    useEnglishDictionary = state.useEnglishDictionary;
-    useSpanishDictionary = state.useSpanishDictionary;
+    // Restore explicit assignment for language settings
+    this.useLatinDictionary = state.useLatinDictionary;
+    this.useEnglishDictionary = state.useEnglishDictionary;
+    this.useSpanishDictionary = state.useSpanishDictionary;
   }
 }

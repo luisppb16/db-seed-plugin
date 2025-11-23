@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -16,6 +18,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
@@ -112,7 +115,7 @@ class SchemaIntrospectorTest {
     String tableName = "MULTI_TYPE_TABLE";
 
     when(connection.getMetaData()).thenReturn(metaData);
-    when(metaData.getDatabaseProductName()).thenReturn("H2");
+    when(metaData.getDatabaseProductName()).thenReturn("GenericDB");
 
     // Mock getTables
     ResultSet tableRs = mock(ResultSet.class);
@@ -144,6 +147,10 @@ class SchemaIntrospectorTest {
         .thenReturn(Types.INTEGER)
         .thenReturn(Types.VARCHAR)
         .thenReturn(Types.TIMESTAMP);
+    when(colRsLoad.getString("TYPE_NAME"))
+        .thenReturn("INTEGER")
+        .thenReturn("VARCHAR")
+        .thenReturn("TIMESTAMP");
     when(colRsLoad.getString("IS_NULLABLE")).thenReturn("NO").thenReturn("YES").thenReturn("NO");
     when(colRsLoad.getInt("COLUMN_SIZE")).thenReturn(10).thenReturn(255).thenReturn(0);
 
@@ -235,13 +242,16 @@ class SchemaIntrospectorTest {
       String schema, String tableName, String colName, String checkDefinition, int jdbcType)
       throws SQLException {
     when(connection.getMetaData()).thenReturn(metaData);
-    when(metaData.getDatabaseProductName()).thenReturn("H2");
 
     // 1. getTables (main loop)
     ResultSet tableRs = mock(ResultSet.class);
     when(tableRs.next()).thenReturn(true).thenReturn(false);
     when(tableRs.getString("TABLE_NAME")).thenReturn(tableName);
     when(metaData.getTables(null, schema, "%", new String[] {"TABLE"})).thenReturn(tableRs);
+
+    // Switch DB name to "GenericDB" to force generic REMARKS path for these existing unit tests
+    // which rely on REMARKS to simulate checks.
+    when(metaData.getDatabaseProductName()).thenReturn("GenericDB");
 
     // 2. loadTableCheckConstraints -> getTables (for remarks fallback)
     ResultSet checkRs = mock(ResultSet.class);
@@ -262,6 +272,7 @@ class SchemaIntrospectorTest {
     when(colRsLoad.getInt("DATA_TYPE")).thenReturn(jdbcType);
     when(colRsLoad.getString("IS_NULLABLE")).thenReturn("NO");
     when(colRsLoad.getInt("COLUMN_SIZE")).thenReturn(10);
+    when(colRsLoad.getString("TYPE_NAME")).thenReturn("VARCHAR");
 
     when(metaData.getColumns(null, schema, tableName, "%"))
         .thenReturn(colRsChecks)

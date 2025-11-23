@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -23,14 +24,12 @@ public class DbSeedSettingsComponent {
   private final TextFieldWithBrowseButton myDefaultOutputDirectory =
       new TextFieldWithBrowseButton();
 
-  // New checkboxes for dictionary usage
   private final JBCheckBox myUseLatinDictionary =
       new JBCheckBox("Use Latin Dictionary (Faker default)");
   private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English Dictionary");
   private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish Dictionary");
 
-  public DbSeedSettingsComponent() {
-    // Initialize components with current settings to prevent mismatches
+  public DbSeedSettingsComponent(Project project) {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
     myDefaultOutputDirectory.setText(settings.defaultOutputDirectory);
@@ -38,14 +37,13 @@ public class DbSeedSettingsComponent {
     myUseEnglishDictionary.setSelected(settings.useEnglishDictionary);
     myUseSpanishDictionary.setSelected(settings.useSpanishDictionary);
 
-    // Add file chooser for the output directory
     FileChooserDescriptor folderDescriptor =
         FileChooserDescriptorFactory.createSingleFolderDescriptor();
     folderDescriptor.setTitle("Select Default Output Directory");
     myDefaultOutputDirectory.addBrowseFolderListener(
         "Select Directory",
         "Please select the default directory for generated SQL files.",
-        null,
+        project,
         folderDescriptor);
 
     myMainPanel =
@@ -84,7 +82,6 @@ public class DbSeedSettingsComponent {
     myDefaultOutputDirectory.setText(text);
   }
 
-  // New getters and setters for dictionary checkboxes
   public boolean getUseLatinDictionary() {
     return myUseLatinDictionary.isSelected();
   }

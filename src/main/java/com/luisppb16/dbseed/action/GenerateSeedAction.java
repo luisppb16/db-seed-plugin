@@ -148,6 +148,7 @@ public final class GenerateSeedAction extends AnAction {
                   .deferred(effectiveDeferred)
                   .pkUuidOverrides(dialog.getSelectionByTable())
                   .excludedColumns(dialog.getExcludedColumnsByTable())
+                  .useLatinDictionary(useLatinDictionary)
                   .useEnglishDictionary(useEnglishDictionary)
                   .useSpanishDictionary(useSpanishDictionary)
                   .build());

@@ -25,6 +25,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.experimental.UtilityClass;
 
+import java.util.Objects;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @UtilityClass
 public class SchemaIntrospector {
 
@@ -32,18 +36,21 @@ public class SchemaIntrospector {
 
   public static List<Table> introspect(final Connection conn, final String schema)
       throws SQLException {
+    Objects.requireNonNull(conn, "Connection cannot be null");
     final DatabaseMetaData meta = conn.getMetaData();
     final List<Table> tables = new ArrayList<>();
 
     try (final ResultSet rs = meta.getTables(null, schema, "%", new String[] {"TABLE"})) {
       while (rs.next()) {
         final String tableName = rs.getString("TABLE_NAME");
+        final String tableSchema = rs.getString("TABLE_SCHEM");
+        final String effectiveSchema = tableSchema != null ? tableSchema : schema;
 
-        final List<String> checks = loadTableCheckConstraints(conn, meta, schema, tableName);
-        final List<Column> columns = loadColumns(meta, schema, tableName, checks);
-        final List<String> pkCols = loadPrimaryKeys(meta, schema, tableName);
-        final List<List<String>> uniqueKeys = loadUniqueKeys(meta, schema, tableName);
-        final List<ForeignKey> fks = loadForeignKeys(meta, schema, tableName, uniqueKeys);
+        final List<String> checks = loadTableCheckConstraints(conn, meta, effectiveSchema, tableName);
+        final List<Column> columns = loadColumns(meta, effectiveSchema, tableName, checks);
+        final List<String> pkCols = loadPrimaryKeys(meta, effectiveSchema, tableName);
+        final List<List<String>> uniqueKeys = loadUniqueKeys(meta, effectiveSchema, tableName);
+        final List<ForeignKey> fks = loadForeignKeys(meta, effectiveSchema, tableName, uniqueKeys);
 
         tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
       }
@@ -64,6 +71,7 @@ public class SchemaIntrospector {
       while (rs.next()) {
         final String name = rs.getString(COLUMN_NAME);
         final int type = rs.getInt("DATA_TYPE");
+        final String typeName = rs.getString("TYPE_NAME"); // Fetch type name
         final boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
         final int length = rs.getInt("COLUMN_SIZE");
 
@@ -77,6 +85,11 @@ public class SchemaIntrospector {
         }
 
         final Set<String> allowedValues = loadAllowedValues();
+        final boolean isUuid =
+            name.toLowerCase(Locale.ROOT).endsWith("guid")
+                || name.toLowerCase(Locale.ROOT).endsWith("uuid") // Check for UUID name convention
+                || type == java.sql.Types.OTHER // H2 often maps UUID to OTHER
+                || (typeName != null && typeName.toLowerCase(Locale.ROOT).contains("uuid"));
 
         columns.add(
             new Column(
@@ -84,7 +97,7 @@ public class SchemaIntrospector {
                 type,
                 nullable,
                 pkCols.contains(name),
-                name.toLowerCase(Locale.ROOT).endsWith("guid"),
+                isUuid,
                 length,
                 minValue,
                 maxValue,
@@ -171,11 +184,43 @@ public class SchemaIntrospector {
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
     if (product.contains("postgres")) {
       loadPostgresCheckConstraints(conn, schema, table, checks);
+    } else if (product.contains("h2")) {
+      loadH2CheckConstraints(conn, schema, table, checks);
     } else {
       loadGenericCheckConstraints(meta, schema, table, checks);
     }
 
     return checks;
+  }
+
+  private static void loadH2CheckConstraints(
+      final Connection conn, final String schema, final String table, final List<String> checks)
+      throws SQLException {
+    final String sql =
+        "SELECT CHECK_CLAUSE "
+            + "FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc "
+            + "JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME "
+            + "WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'CHECK'";
+    try (final PreparedStatement ps = conn.prepareStatement(sql)) {
+      ps.setString(1, schema == null ? "PUBLIC" : schema.toUpperCase(Locale.ROOT));
+      ps.setString(2, table.toUpperCase(Locale.ROOT));
+      try (final ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) {
+          final String clause = rs.getString("CHECK_CLAUSE");
+          if (clause != null && !clause.isBlank()) {
+            // H2 returns raw expression like "(AGE >= 18) AND (AGE <= 100)"
+            checks.add(clause);
+          }
+        }
+      }
+    } catch (SQLException e) {
+      log.warn(
+          "Failed to load H2 check constraints for table {} in schema {}", table, schema, e);
+      // Propagate or just warn? For introspection, missing checks might be better than full failure.
+      // But typically introspection should be consistent.
+      // We'll throw to be safe, but log first.
+      throw e;
+    }
   }
 
   private static void loadPostgresCheckConstraints(

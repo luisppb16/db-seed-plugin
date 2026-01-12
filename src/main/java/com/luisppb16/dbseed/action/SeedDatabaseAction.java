@@ -19,6 +19,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -36,7 +37,6 @@ import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -96,6 +96,10 @@ public class SeedDatabaseAction extends AnAction {
       return;
     }
 
+    showDriverSelection(project);
+  }
+
+  private void showDriverSelection(final Project project) {
     try {
       final List<DriverInfo> drivers = DriverRegistry.getDrivers();
       if (drivers.isEmpty()) {
@@ -122,18 +126,28 @@ public class SeedDatabaseAction extends AnAction {
       props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
 
       DriverLoader.ensureDriverPresent(chosenDriver);
-      final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
-      if (seedDialog.showAndGet()) {
-        runSeedGeneration(project, seedDialog.getConfiguration());
-      } else {
-        log.debug("Seed generation dialog canceled.");
-      }
+      showSeedDialog(project, chosenDriver);
     } catch (final Exception ex) {
       handleException(project, "Error preparing driver: ", ex);
     }
   }
 
-  private void runSeedGeneration(final Project project, final GenerationConfig config) {
+  private void showSeedDialog(final Project project, final DriverInfo chosenDriver) {
+    final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
+    seedDialog.show();
+
+    final int exitCode = seedDialog.getExitCode();
+    if (exitCode == DialogWrapper.OK_EXIT_CODE) {
+      runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
+    } else if (exitCode == SeedDialog.BACK_EXIT_CODE) {
+      showDriverSelection(project);
+    } else {
+      log.debug("Seed generation dialog canceled.");
+    }
+  }
+
+  private void runSeedGeneration(
+      final Project project, final GenerationConfig config, final DriverInfo chosenDriver) {
     final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
 
     ProgressManager.getInstance()
@@ -160,13 +174,19 @@ public class SeedDatabaseAction extends AnAction {
                     .ifPresent(
                         tables ->
                             ApplicationManager.getApplication()
-                                .invokeLater(() -> continueGeneration(project, config, tables)));
+                                .invokeLater(
+                                    () ->
+                                        continueGeneration(
+                                            project, config, tables, chosenDriver)));
               }
             });
   }
 
   private void continueGeneration(
-      final Project project, final GenerationConfig config, final List<Table> tables) {
+      final Project project,
+      final GenerationConfig config,
+      final List<Table> tables,
+      final DriverInfo chosenDriver) {
     final long totalRows = (long) config.rowsPerTable() * tables.size();
     if (totalRows >= INSERT_THRESHOLD) {
       final String message =
@@ -187,12 +207,7 @@ public class SeedDatabaseAction extends AnAction {
 
       if (result == Messages.CANCEL) {
         log.debug("User canceled large data seeding operation. Returning to previous step.");
-        final SeedDialog seedDialog = new SeedDialog(config.url());
-        if (seedDialog.showAndGet()) {
-          runSeedGeneration(project, seedDialog.getConfiguration());
-        } else {
-          log.debug("Seed generation dialog canceled after warning.");
-        }
+        showSeedDialog(project, chosenDriver);
         return;
       }
     }
@@ -204,72 +219,77 @@ public class SeedDatabaseAction extends AnAction {
         sort.ordered().stream().map(tableByName::get).filter(Objects::nonNull).toList();
 
     final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(ordered);
-    if (!pkDialog.showAndGet()) {
-      log.debug("PK UUID selection canceled.");
-      return;
-    }
-    final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
-    final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
+    pkDialog.show();
 
-    final Map<String, Map<String, String>> pkUuidOverrides =
-        selectedPkUuidColumns.entrySet().stream()
-            .collect(
-                Collectors.toMap(
-                    Map.Entry::getKey,
-                    entry ->
-                        entry.getValue().stream()
-                            .collect(Collectors.toMap(Function.identity(), col -> ""))));
+    final int exitCode = pkDialog.getExitCode();
+    if (exitCode == DialogWrapper.OK_EXIT_CODE) {
+      final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
+      final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
 
-    final Map<String, List<String>> excludedColumns =
-        excludedColumnsSet.entrySet().stream()
-            .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
+      final Map<String, Map<String, String>> pkUuidOverrides =
+          selectedPkUuidColumns.entrySet().stream()
+              .collect(
+                  Collectors.toMap(
+                      Map.Entry::getKey,
+                      entry ->
+                          entry.getValue().stream()
+                              .collect(Collectors.toMap(Function.identity(), col -> ""))));
 
-    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+      final Map<String, List<String>> excludedColumns =
+          excludedColumnsSet.entrySet().stream()
+              .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
-    ProgressManager.getInstance()
-        .run(
-            new Task.Backgroundable(project, "Generating SQL", false) {
-              @Override
-              public void run(@NotNull final ProgressIndicator indicator) {
-                try {
-                  indicator.setIndeterminate(false);
-                  indicator.setText("Generating data...");
-                  indicator.setFraction(0.3);
+      final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
-                  final boolean mustForceDeferred =
-                      requiresDeferredDueToNonNullableCycles(sort, tableByName);
-                  final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
-                  log.debug("Effective deferred: {}", effectiveDeferred);
+      ProgressManager.getInstance()
+          .run(
+              new Task.Backgroundable(project, "Generating SQL", false) {
+                @Override
+                public void run(@NotNull final ProgressIndicator indicator) {
+                  try {
+                    indicator.setIndeterminate(false);
+                    indicator.setText("Generating data...");
+                    indicator.setFraction(0.3);
 
-                  final DataGenerator.GenerationResult gen =
-                      DataGenerator.generate(
-                          DataGenerator.GenerationParameters.builder()
-                              .tables(ordered)
-                              .rowsPerTable(config.rowsPerTable())
-                              .deferred(effectiveDeferred)
-                              .pkUuidOverrides(pkUuidOverrides)
-                              .excludedColumns(excludedColumns)
-                              .useEnglishDictionary(settings.useEnglishDictionary)
-                              .useSpanishDictionary(settings.useSpanishDictionary)
-                              .build());
-                  log.info(
-                      "Data generation completed for {} rows per table.", config.rowsPerTable());
+                    final boolean mustForceDeferred =
+                        requiresDeferredDueToNonNullableCycles(sort, tableByName);
+                    final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
+                    log.debug("Effective deferred: {}", effectiveDeferred);
 
-                  indicator.setText("Building SQL...");
-                  indicator.setFraction(0.8);
-                  final String sql =
-                      SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
-                  log.info("SQL script built successfully.");
+                    final DataGenerator.GenerationResult gen =
+                        DataGenerator.generate(
+                            DataGenerator.GenerationParameters.builder()
+                                .tables(ordered)
+                                .rowsPerTable(config.rowsPerTable())
+                                .deferred(effectiveDeferred)
+                                .pkUuidOverrides(pkUuidOverrides)
+                                .excludedColumns(excludedColumns)
+                                .useEnglishDictionary(settings.useEnglishDictionary)
+                                .useSpanishDictionary(settings.useSpanishDictionary)
+                                .build());
+                    log.info(
+                        "Data generation completed for {} rows per table.", config.rowsPerTable());
 
-                  indicator.setText("Opening editor...");
-                  indicator.setFraction(1.0);
-                  ApplicationManager.getApplication()
-                      .invokeLater(() -> saveAndOpenSqlFile(project, sql));
-                } catch (final Exception ex) {
-                  handleException(project, "Error during SQL generation: ", ex);
+                    indicator.setText("Building SQL...");
+                    indicator.setFraction(0.8);
+                    final String sql =
+                        SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
+                    log.info("SQL script built successfully.");
+
+                    indicator.setText("Opening editor...");
+                    indicator.setFraction(1.0);
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> saveAndOpenSqlFile(project, sql));
+                  } catch (final Exception ex) {
+                    handleException(project, "Error during SQL generation: ", ex);
+                  }
                 }
-              }
-            });
+              });
+    } else if (exitCode == PkUuidSelectionDialog.BACK_EXIT_CODE) {
+      showSeedDialog(project, chosenDriver);
+    } else {
+      log.debug("PK UUID selection canceled.");
+    }
   }
 
   private void saveAndOpenSqlFile(final Project project, final String sql) {

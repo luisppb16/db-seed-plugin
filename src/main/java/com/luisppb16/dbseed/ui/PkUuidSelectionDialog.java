@@ -17,6 +17,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -28,7 +29,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
+import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.JButton;
@@ -43,6 +46,7 @@ import org.jetbrains.annotations.NotNull;
 
 public final class PkUuidSelectionDialog extends DialogWrapper {
 
+  public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private final List<Table> tables;
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
   private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
@@ -51,8 +55,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
-    setTitle("PKs UUID Generation Preferences");
+    setTitle("PKs UUID & Exclusions - Step 3/3");
     initDefaults();
+    setOKButtonText("Generate");
     init();
   }
 
@@ -76,6 +81,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           defaults.forEach(pkCol -> uuidValues.put(pkCol, UUID.randomUUID().toString()));
           uuidValuesByTable.put(table.name(), uuidValues);
         });
+  }
+
+  @Override
+  protected Action @NotNull [] createActions() {
+    return new Action[] {new BackAction(), getOKAction(), getCancelAction()};
   }
 
   @Override
@@ -369,5 +379,16 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final Map<String, Set<String>> out = new LinkedHashMap<>();
     excludedColumnsByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
     return out;
+  }
+
+  private final class BackAction extends AbstractAction {
+    private BackAction() {
+      super("Back");
+    }
+
+    @Override
+    public void actionPerformed(final ActionEvent e) {
+      close(BACK_EXIT_CODE);
+    }
   }
 }

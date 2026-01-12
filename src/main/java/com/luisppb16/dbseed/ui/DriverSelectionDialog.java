@@ -44,7 +44,7 @@ public class DriverSelectionDialog extends DialogWrapper {
       @Nullable final String lastDriverName) {
     super(project);
     this.drivers = drivers;
-    setTitle("Select Database Driver");
+    setTitle("Select Database Driver - Step 1/3");
 
     comboBox = createDriverComboBox(drivers, lastDriverName);
     projectIdField = createProjectIdField();
@@ -58,6 +58,7 @@ public class DriverSelectionDialog extends DialogWrapper {
     comboBox.addActionListener(e -> updateProjectIdVisibility((String) comboBox.getSelectedItem()));
     updateProjectIdVisibility((String) comboBox.getSelectedItem());
 
+    setOKButtonText("Next");
     init();
   }
 

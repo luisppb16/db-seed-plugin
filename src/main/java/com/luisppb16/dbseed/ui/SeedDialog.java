@@ -16,6 +16,7 @@ import com.luisppb16.dbseed.config.GenerationConfig;
 import java.awt.Cursor;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
@@ -26,6 +27,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.swing.AbstractAction;
+import javax.swing.Action;
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
 import javax.swing.JCheckBox;
@@ -48,6 +51,7 @@ import org.jetbrains.annotations.Nullable;
 
 public final class SeedDialog extends DialogWrapper {
 
+  public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private static final String DEFAULT_POSTGRES_USER = "postgres";
   private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
   private final JTextField urlField;
@@ -60,7 +64,7 @@ public final class SeedDialog extends DialogWrapper {
 
   public SeedDialog(@Nullable final String urlTemplate) {
     super(true);
-    setTitle("DBSeed4SQL");
+    setTitle("Connection Settings - Step 2/3");
 
     urlField = new JTextField(urlTemplate != null ? urlTemplate : DEFAULT_POSTGRES_URL);
 
@@ -85,6 +89,7 @@ public final class SeedDialog extends DialogWrapper {
       textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
     }
 
+    setOKButtonText("Next");
     init();
   }
 
@@ -108,6 +113,11 @@ public final class SeedDialog extends DialogWrapper {
     c.fill = GridBagConstraints.HORIZONTAL;
     c.anchor = GridBagConstraints.WEST;
     panel.add(field, c);
+  }
+
+  @Override
+  protected Action @NotNull [] createActions() {
+    return new Action[] {new BackAction(), getOKAction(), getCancelAction()};
   }
 
   @Override
@@ -284,5 +294,16 @@ public final class SeedDialog extends DialogWrapper {
 
   public Map<String, List<String>> getExcludedColumnsByTable() {
     return Collections.emptyMap();
+  }
+
+  private final class BackAction extends AbstractAction {
+    private BackAction() {
+      super("Back");
+    }
+
+    @Override
+    public void actionPerformed(final ActionEvent e) {
+      close(BACK_EXIT_CODE);
+    }
   }
 }

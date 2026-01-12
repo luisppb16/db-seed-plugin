@@ -20,8 +20,8 @@ sourceSets {
     }
 }
 
-group 'com.LuisPPB16'
-version '1.2.1-dev'
+group = 'com.LuisPPB16'
+version = '1.2.1-dev'
 
 repositories {
     mavenCentral()

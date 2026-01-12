@@ -66,10 +66,7 @@ public class DataGenerator {
 
     // Convert excludedColumns from Map<String, List<String>> to Map<String, Set<String>>
     Map<String, Set<String>> excludedColumnsSet =
-        params
-            .excludedColumns()
-            .entrySet()
-            .stream()
+        params.excludedColumns().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
     return generateInternal(
@@ -109,12 +106,7 @@ public class DataGenerator {
           overridden.put(
               t.name(),
               new Table(
-                  t.name(),
-                  newCols,
-                  t.primaryKey(),
-                  t.foreignKeys(),
-                  t.checks(),
-                  t.uniqueKeys()));
+                  t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
         });
     return overridden;
   }
@@ -399,15 +391,11 @@ public class DataGenerator {
     context.orderedTables().forEach(table -> resolveForeignKeysForTable(table, fkContext));
   }
 
-  private static void resolveForeignKeysForTable(
-      Table table, ForeignKeyResolutionContext context) {
+  private static void resolveForeignKeysForTable(Table table, ForeignKeyResolutionContext context) {
     List<Row> rows = Objects.requireNonNull(context.data().get(table));
 
     Predicate<ForeignKey> fkIsNullable =
-        fk ->
-            fk.columnMapping().keySet().stream()
-                .map(table::column)
-                .allMatch(Column::nullable);
+        fk -> fk.columnMapping().keySet().stream().map(table::column).allMatch(Column::nullable);
 
     List<List<String>> uniqueKeysOnFks =
         table.uniqueKeys().stream()
@@ -481,12 +469,7 @@ public class DataGenerator {
       if (parent != null && parentRows != null && !parentRows.isEmpty()) {
         Row parentRow =
             getParentRowForForeignKey(
-                fk,
-                parentRows,
-                context.uniqueFkParentQueues(),
-                table.name(),
-                parent.name(),
-                false);
+                fk, parentRows, context.uniqueFkParentQueues(), table.name(), parent.name(), false);
         if (parentRow != null) {
           fk.columnMapping()
               .forEach(

@@ -12,7 +12,6 @@ import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -409,9 +408,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private void addSearchFunctionality(
-      final JPanel topPanel,
-      final JPanel listPanel,
-      final BiConsumer<JPanel, String> filterLogic) {
+      final JPanel topPanel, final JPanel listPanel, final BiConsumer<JPanel, String> filterLogic) {
     final JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     final JTextField searchField = new JTextField(20);
     searchField

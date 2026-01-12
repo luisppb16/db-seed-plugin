@@ -176,8 +176,7 @@ public class SeedDatabaseAction extends AnAction {
                             ApplicationManager.getApplication()
                                 .invokeLater(
                                     () ->
-                                        continueGeneration(
-                                            project, config, tables, chosenDriver)));
+                                        continueGeneration(project, config, tables, chosenDriver)));
               }
             });
   }

@@ -152,7 +152,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   });
         });
 
-    return createTogglableListPanel(listPanel, checkBoxes, false);
+    return createTogglableListPanel(listPanel, checkBoxes, true, selectionByTable);
   }
 
   private JComponent createColumnExclusionPanel() {
@@ -192,11 +192,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   });
         });
 
-    return createTogglableListPanel(listPanel, checkBoxes, true);
+    return createTogglableListPanel(listPanel, checkBoxes, true, excludedColumnsByTable);
   }
 
   private JComponent createTogglableListPanel(
-      final JPanel listPanel, final List<JCheckBox> checkBoxes, final boolean withSearch) {
+      final JPanel listPanel,
+      final List<JCheckBox> checkBoxes,
+      final boolean withSearch,
+      final Map<String, Set<String>> targetMap) {
     final JButton toggleButton = new JButton();
     final AtomicBoolean isBulkUpdating = new AtomicBoolean(false);
 
@@ -229,8 +232,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                     final String tableName = getTableNameForComponent(box);
                     final String columnName = getColumnNameForCheckBox(box);
                     if (tableName != null && columnName != null) {
-                      final Map<String, Set<String>> targetMap =
-                          withSearch ? excludedColumnsByTable : selectionByTable;
                       targetMap.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
                       if (selectAll) {
                         targetMap.get(tableName).add(columnName);

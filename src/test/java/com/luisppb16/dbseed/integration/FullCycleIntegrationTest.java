@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.luisppb16.dbseed.db.DataGenerator;
-import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.model.Table;
@@ -23,7 +22,6 @@ import java.sql.Statement;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

@@ -20,6 +20,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,6 +56,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
   private final Set<String> excludedTables = new LinkedHashSet<>();
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
+
+  // Maps to hold checkbox references for cross-tab synchronization
+  private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
+  private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
 
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
     super(true);
@@ -98,10 +103,43 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
     tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
 
+    // Initial synchronization of states
+    synchronizeInitialStates();
+
     final JPanel content = new JPanel(new BorderLayout());
     content.add(tabbedPane, BorderLayout.CENTER);
     content.setPreferredSize(new Dimension(550, 400));
     return content;
+  }
+
+  private void synchronizeInitialStates() {
+    // If a PK is selected, disable the corresponding exclude checkbox
+    pkCheckBoxes.forEach(
+        (tableName, cols) ->
+            cols.forEach(
+                (colName, pkBox) -> {
+                  if (pkBox.isSelected()) {
+                    final JCheckBox excludeBox =
+                        excludeCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+                    if (excludeBox != null) {
+                      excludeBox.setEnabled(false);
+                    }
+                  }
+                }));
+
+    // If a column is excluded, disable the corresponding PK checkbox
+    excludeCheckBoxes.forEach(
+        (tableName, cols) ->
+            cols.forEach(
+                (colName, excludeBox) -> {
+                  if (excludeBox.isSelected()) {
+                    final JCheckBox pkBox =
+                        pkCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+                    if (pkBox != null) {
+                      pkBox.setEnabled(false);
+                    }
+                  }
+                }));
   }
 
   private JPanel createConfiguredListPanel() {
@@ -156,14 +194,37 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                     final JCheckBox box = new JCheckBox("Treat as UUID: " + pkCol);
                     box.setSelected(
                         selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
+
+                    // Store reference
+                    pkCheckBoxes
+                        .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
+                        .put(pkCol, box);
+
                     box.addActionListener(
                         e -> {
+                          final boolean isSelected = box.isSelected();
                           selectionByTable.computeIfAbsent(
                               table.name(), k -> new LinkedHashSet<>());
-                          if (box.isSelected()) {
+                          if (isSelected) {
                             selectionByTable.get(table.name()).add(pkCol);
                           } else {
                             selectionByTable.get(table.name()).remove(pkCol);
+                          }
+
+                          // Sync with Exclude tab
+                          final JCheckBox excludeBox =
+                              excludeCheckBoxes
+                                  .getOrDefault(table.name(), Collections.emptyMap())
+                                  .get(pkCol);
+                          if (excludeBox != null) {
+                            excludeBox.setEnabled(!isSelected);
+                            if (isSelected) {
+                              excludeBox.setSelected(false);
+                              // Also update the model for exclusion
+                              excludedColumnsByTable
+                                  .getOrDefault(table.name(), Collections.emptySet())
+                                  .remove(pkCol);
+                            }
                           }
                         });
                     columnsPanel.add(box, cc);
@@ -191,6 +252,19 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
               selectionByTable.get(tableName).add(columnName);
             } else {
               selectionByTable.get(tableName).remove(columnName);
+            }
+
+            // Sync with Exclude tab
+            final JCheckBox excludeBox =
+                excludeCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
+            if (excludeBox != null) {
+              excludeBox.setEnabled(!isSelected);
+              if (isSelected) {
+                excludeBox.setSelected(false);
+                excludedColumnsByTable
+                    .getOrDefault(tableName, Collections.emptySet())
+                    .remove(columnName);
+              }
             }
           }
         },
@@ -238,14 +312,36 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                         excludedColumnsByTable
                             .getOrDefault(table.name(), Set.of())
                             .contains(column.name()));
+
+                    // Store reference
+                    excludeCheckBoxes
+                        .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
+                        .put(column.name(), box);
+
                     box.addActionListener(
                         e -> {
+                          final boolean isSelected = box.isSelected();
                           excludedColumnsByTable.computeIfAbsent(
                               table.name(), k -> new LinkedHashSet<>());
-                          if (box.isSelected()) {
+                          if (isSelected) {
                             excludedColumnsByTable.get(table.name()).add(column.name());
                           } else {
                             excludedColumnsByTable.get(table.name()).remove(column.name());
+                          }
+
+                          // Sync with PK tab
+                          final JCheckBox pkBox =
+                              pkCheckBoxes
+                                  .getOrDefault(table.name(), Collections.emptyMap())
+                                  .get(column.name());
+                          if (pkBox != null) {
+                            pkBox.setEnabled(!isSelected);
+                            if (isSelected) {
+                              pkBox.setSelected(false);
+                              selectionByTable
+                                  .getOrDefault(table.name(), Collections.emptySet())
+                                  .remove(column.name());
+                            }
                           }
                         });
                     columnsPanel.add(box, cc);
@@ -267,10 +363,24 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                 excludedColumnsByTable.computeIfAbsent(table.name(), k -> new LinkedHashSet<>());
                 for (final JCheckBox colBox : currentTableColumnBoxes) {
                   colBox.setSelected(isSelected);
+                  final String colName = colBox.getText();
                   if (isSelected) {
-                    excludedColumnsByTable.get(table.name()).add(colBox.getText());
+                    excludedColumnsByTable.get(table.name()).add(colName);
                   } else {
-                    excludedColumnsByTable.get(table.name()).remove(colBox.getText());
+                    excludedColumnsByTable.get(table.name()).remove(colName);
+                  }
+
+                  // Sync with PK tab
+                  final JCheckBox pkBox =
+                      pkCheckBoxes.getOrDefault(table.name(), Collections.emptyMap()).get(colName);
+                  if (pkBox != null) {
+                    pkBox.setEnabled(!isSelected);
+                    if (isSelected) {
+                      pkBox.setSelected(false);
+                      selectionByTable
+                          .getOrDefault(table.name(), Collections.emptySet())
+                          .remove(colName);
+                    }
                   }
                 }
               });
@@ -297,12 +407,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             } else {
               excludedTables.remove(tableName);
             }
-            // Also trigger update for children if this comes from "Select All" button
-            // Note: The Select All button iterates all boxes, so children will be updated
-            // individually by the loop in createTogglableListPanel.
-            // However, we need to ensure visual consistency if the user clicks "Select All".
-            // Since "Select All" iterates through ALL checkboxes (including columns),
-            // they will be updated by their own logic in the else block below.
           } else {
             final String tableName = getTableNameForComponent(box);
             final String columnName = getColumnNameForCheckBox(box);
@@ -312,6 +416,19 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                 excludedColumnsByTable.get(tableName).add(columnName);
               } else {
                 excludedColumnsByTable.get(tableName).remove(columnName);
+              }
+
+              // Sync with PK tab
+              final JCheckBox pkBox =
+                  pkCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
+              if (pkBox != null) {
+                pkBox.setEnabled(!isSelected);
+                if (isSelected) {
+                  pkBox.setSelected(false);
+                  selectionByTable
+                      .getOrDefault(tableName, Collections.emptySet())
+                      .remove(columnName);
+                }
               }
             }
           }

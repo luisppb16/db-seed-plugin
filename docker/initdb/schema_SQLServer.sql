@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 CREATE TABLE users (
                        id CHAR(36) PRIMARY KEY,
                        username VARCHAR(50) UNIQUE,

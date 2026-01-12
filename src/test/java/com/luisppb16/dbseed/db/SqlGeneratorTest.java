@@ -1,6 +1,6 @@
 /*
- *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
- *  All rights reserved.
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
  */
 
 package com.luisppb16.dbseed.db;
@@ -279,8 +279,7 @@ class SqlGeneratorTest {
 
     String sql = SqlGenerator.generate(data, Collections.emptyList(), false);
 
-    String expectedSql =
-        "INSERT INTO \"texts\" (\"description\") VALUES\n('Line1''Quote');\n";
+    String expectedSql = "INSERT INTO \"texts\" (\"description\") VALUES\n('Line1''Quote');\n";
     assertEquals(expectedSql, sql);
   }
 
@@ -516,14 +515,16 @@ class SqlGeneratorTest {
             .build();
 
     // Generate 1001 rows to exceed the BATCH_SIZE (1000)
-    List<Row> rows = IntStream.rangeClosed(1, 1001)
-        .mapToObj(i -> {
-          Map<String, Object> rowValues = new LinkedHashMap<>();
-          rowValues.put("id", i);
-          rowValues.put("name", "User" + i);
-          return new Row(rowValues);
-        })
-        .collect(Collectors.toList());
+    List<Row> rows =
+        IntStream.rangeClosed(1, 1001)
+            .mapToObj(
+                i -> {
+                  Map<String, Object> rowValues = new LinkedHashMap<>();
+                  rowValues.put("id", i);
+                  rowValues.put("name", "User" + i);
+                  return new Row(rowValues);
+                })
+            .collect(Collectors.toList());
 
     Map<Table, List<Row>> data = new LinkedHashMap<>();
     data.put(table, rows);
@@ -533,12 +534,14 @@ class SqlGeneratorTest {
     // Construct the expected SQL for two batches
     StringBuilder expectedSqlBuilder = new StringBuilder();
     expectedSqlBuilder.append("INSERT INTO \"large_table\" (\"id\", \"name\") VALUES\n");
-    IntStream.rangeClosed(1, 1000).forEach(i -> {
-      expectedSqlBuilder.append("(").append(i).append(", 'User").append(i).append("')");
-      if (i < 1000) {
-        expectedSqlBuilder.append(",\n");
-      }
-    });
+    IntStream.rangeClosed(1, 1000)
+        .forEach(
+            i -> {
+              expectedSqlBuilder.append("(").append(i).append(", 'User").append(i).append("')");
+              if (i < 1000) {
+                expectedSqlBuilder.append(",\n");
+              }
+            });
     expectedSqlBuilder.append(";\n");
 
     expectedSqlBuilder.append("INSERT INTO \"large_table\" (\"id\", \"name\") VALUES\n");

@@ -1,6 +1,6 @@
 /*
- *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
- *  All rights reserved.
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
  */
 
 package com.luisppb16.dbseed.db;
@@ -57,17 +57,6 @@ public class DataGenerator {
   private static final int UUID_GENERATION_LIMIT = 1_000_000;
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
   private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
-
-  @Builder
-  public record GenerationParameters(
-      List<Table> tables,
-      int rowsPerTable,
-      boolean deferred,
-      Map<String, Map<String, String>> pkUuidOverrides,
-      Map<String, List<String>> excludedColumns,
-      boolean useLatinDictionary,
-      boolean useEnglishDictionary,
-      boolean useSpanishDictionary) {}
 
   public static GenerationResult generate(GenerationParameters params) {
 
@@ -130,16 +119,6 @@ public class DataGenerator {
     return overridden;
   }
 
-  @Builder
-  private record GenerationInternalParameters(
-      List<Table> tables,
-      int rowsPerTable,
-      boolean deferred,
-      Map<String, Set<String>> excludedColumns,
-      boolean useLatinDictionary,
-      boolean useEnglishDictionary,
-      boolean useSpanishDictionary) {}
-
   private static GenerationResult generateInternal(GenerationInternalParameters params) {
 
     Instant start = Instant.now();
@@ -187,49 +166,6 @@ public class DataGenerator {
     return new GenerationResult(context.data(), context.updates());
   }
 
-  private record GenerationContext(
-      List<Table> orderedTables,
-      int rowsPerTable,
-      Map<String, Set<String>> excludedColumns,
-      Faker faker,
-      Set<UUID> usedUuids,
-      Map<String, Map<String, ParsedConstraint>> tableConstraints,
-      Map<Table, List<Row>> data,
-      List<String> dictionaryWords,
-      Map<String, Table> tableMap,
-      boolean deferred,
-      List<PendingUpdate> updates,
-      Set<String> inserted,
-      Map<String, Deque<Row>> uniqueFkParentQueues) {
-
-    GenerationContext(
-        List<Table> orderedTables,
-        int rowsPerTable,
-        Map<String, Set<String>> excludedColumns,
-        Faker faker,
-        Set<UUID> usedUuids,
-        Map<String, Map<String, ParsedConstraint>> tableConstraints,
-        Map<Table, List<Row>> data,
-        List<String> dictionaryWords,
-        Map<String, Table> tableMap,
-        boolean deferred) {
-      this(
-          orderedTables,
-          rowsPerTable,
-          excludedColumns,
-          faker,
-          usedUuids,
-          tableConstraints,
-          data,
-          dictionaryWords,
-          tableMap,
-          deferred,
-          new ArrayList<>(),
-          new HashSet<>(),
-          new HashMap<>());
-    }
-  }
-
   private static void executeGenerationSteps(GenerationContext context) {
     generateTableRows(
         GenerateTableRowsParameters.builder()
@@ -247,17 +183,6 @@ public class DataGenerator {
     ensureUuidUniqueness(context.data(), context.orderedTables(), context.usedUuids());
     resolveForeignKeys(context);
   }
-
-  @Builder
-  private record GenerateTableRowsParameters(
-      List<Table> orderedTables,
-      int rowsPerTable,
-      Map<String, Set<String>> excludedColumns,
-      Faker faker,
-      Set<UUID> usedUuids,
-      Map<String, Map<String, ParsedConstraint>> tableConstraints,
-      Map<Table, List<Row>> data,
-      List<String> dictionaryWords) {}
 
   private static void generateTableRows(GenerateTableRowsParameters params) {
 
@@ -321,17 +246,6 @@ public class DataGenerator {
             });
   }
 
-  @Builder
-  private record GenerateSingleRowParameters(
-      Faker faker,
-      Table table,
-      int index,
-      Set<UUID> usedUuids,
-      Map<String, ParsedConstraint> constraints,
-      Predicate<Column> isFkColumn,
-      Set<String> excluded,
-      List<String> dictionaryWords) {}
-
   private static Map<String, Object> generateSingleRow(GenerateSingleRowParameters params) {
 
     Map<String, Object> values = new LinkedHashMap<>();
@@ -378,19 +292,6 @@ public class DataGenerator {
     }
     return generatedValue;
   }
-
-  @Builder
-  private record GenerateAndValidateRowParameters(
-      Table table,
-      int generatedCount,
-      Faker faker,
-      Set<UUID> usedUuids,
-      Map<String, ParsedConstraint> constraints,
-      Predicate<Column> isFkColumn,
-      Set<String> excluded,
-      List<String> dictionaryWords,
-      Set<String> seenPrimaryKeys,
-      Map<String, Set<String>> seenUniqueKeyCombinations) {}
 
   private static Optional<Row> generateAndValidateRow(GenerateAndValidateRowParameters params) {
 
@@ -1307,6 +1208,105 @@ public class DataGenerator {
       }
     }
   }
+
+  @Builder
+  public record GenerationParameters(
+      List<Table> tables,
+      int rowsPerTable,
+      boolean deferred,
+      Map<String, Map<String, String>> pkUuidOverrides,
+      Map<String, List<String>> excludedColumns,
+      boolean useLatinDictionary,
+      boolean useEnglishDictionary,
+      boolean useSpanishDictionary) {}
+
+  @Builder
+  private record GenerationInternalParameters(
+      List<Table> tables,
+      int rowsPerTable,
+      boolean deferred,
+      Map<String, Set<String>> excludedColumns,
+      boolean useLatinDictionary,
+      boolean useEnglishDictionary,
+      boolean useSpanishDictionary) {}
+
+  private record GenerationContext(
+      List<Table> orderedTables,
+      int rowsPerTable,
+      Map<String, Set<String>> excludedColumns,
+      Faker faker,
+      Set<UUID> usedUuids,
+      Map<String, Map<String, ParsedConstraint>> tableConstraints,
+      Map<Table, List<Row>> data,
+      List<String> dictionaryWords,
+      Map<String, Table> tableMap,
+      boolean deferred,
+      List<PendingUpdate> updates,
+      Set<String> inserted,
+      Map<String, Deque<Row>> uniqueFkParentQueues) {
+
+    GenerationContext(
+        List<Table> orderedTables,
+        int rowsPerTable,
+        Map<String, Set<String>> excludedColumns,
+        Faker faker,
+        Set<UUID> usedUuids,
+        Map<String, Map<String, ParsedConstraint>> tableConstraints,
+        Map<Table, List<Row>> data,
+        List<String> dictionaryWords,
+        Map<String, Table> tableMap,
+        boolean deferred) {
+      this(
+          orderedTables,
+          rowsPerTable,
+          excludedColumns,
+          faker,
+          usedUuids,
+          tableConstraints,
+          data,
+          dictionaryWords,
+          tableMap,
+          deferred,
+          new ArrayList<>(),
+          new HashSet<>(),
+          new HashMap<>());
+    }
+  }
+
+  @Builder
+  private record GenerateTableRowsParameters(
+      List<Table> orderedTables,
+      int rowsPerTable,
+      Map<String, Set<String>> excludedColumns,
+      Faker faker,
+      Set<UUID> usedUuids,
+      Map<String, Map<String, ParsedConstraint>> tableConstraints,
+      Map<Table, List<Row>> data,
+      List<String> dictionaryWords) {}
+
+  @Builder
+  private record GenerateSingleRowParameters(
+      Faker faker,
+      Table table,
+      int index,
+      Set<UUID> usedUuids,
+      Map<String, ParsedConstraint> constraints,
+      Predicate<Column> isFkColumn,
+      Set<String> excluded,
+      List<String> dictionaryWords) {}
+
+  @Builder
+  private record GenerateAndValidateRowParameters(
+      Table table,
+      int generatedCount,
+      Faker faker,
+      Set<UUID> usedUuids,
+      Map<String, ParsedConstraint> constraints,
+      Predicate<Column> isFkColumn,
+      Set<String> excluded,
+      List<String> dictionaryWords,
+      Set<String> seenPrimaryKeys,
+      Map<String, Set<String>> seenUniqueKeyCombinations) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,

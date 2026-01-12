@@ -1,6 +1,6 @@
 /*
- *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
- *  All rights reserved.
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
  */
 
 package com.luisppb16.dbseed.integration;
@@ -83,17 +83,19 @@ class FullCycleIntegrationTest {
       // Verify composite PK uniqueness is implicit by insertion success
       // Verify unique constraint on email by checking generated data
       // Note: The insertion success implicitly verifies uniqueness enforcement by the DB.
-      // We explicitly check that distinct count matches non-null count to verify generator behavior.
+      // We explicitly check that distinct count matches non-null count to verify generator
+      // behavior.
 
       try (Statement stmt = conn.createStatement();
-           ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM EMPLOYEES WHERE email IS NOT NULL")) {
-          assertTrue(rs.next());
-          int nonNullCount = rs.getInt(1);
+          ResultSet rs =
+              stmt.executeQuery("SELECT COUNT(*) FROM EMPLOYEES WHERE email IS NOT NULL")) {
+        assertTrue(rs.next());
+        int nonNullCount = rs.getInt(1);
 
-          try (ResultSet rs2 = stmt.executeQuery("SELECT COUNT(DISTINCT email) FROM EMPLOYEES")) {
-             assertTrue(rs2.next());
-             assertEquals(nonNullCount, rs2.getInt(1), "All non-null emails must be unique");
-          }
+        try (ResultSet rs2 = stmt.executeQuery("SELECT COUNT(DISTINCT email) FROM EMPLOYEES")) {
+          assertTrue(rs2.next());
+          assertEquals(nonNullCount, rs2.getInt(1), "All non-null emails must be unique");
+        }
       }
     }
   }
@@ -105,8 +107,10 @@ class FullCycleIntegrationTest {
     try (Connection conn = DriverManager.getConnection(url, "sa", "")) {
       try (Statement stmt = conn.createStatement()) {
         // Self-referencing table: Manager is also an employee
-        // Manager ID is nullable to allow breaking the cycle (root node) or deferred update if non-nullable (but infinite recursion if strict)
-        // H2 allows deferred constraints? Application logic handles it by inserting NULL first if nullable.
+        // Manager ID is nullable to allow breaking the cycle (root node) or deferred update if
+        // non-nullable (but infinite recursion if strict)
+        // H2 allows deferred constraints? Application logic handles it by inserting NULL first if
+        // nullable.
         stmt.execute(
             "CREATE TABLE STAFF ("
                 + "id INT PRIMARY KEY, "
@@ -124,7 +128,8 @@ class FullCycleIntegrationTest {
       // Verify that updates are generated if cycles are detected and handled via updates.
       // For non-deferred generation, cycles are broken by inserting NULL (if nullable)
       // and adding an UPDATE statement.
-      assertFalse(genResult.updates().isEmpty(), "Should have pending updates for self-reference cycle");
+      assertFalse(
+          genResult.updates().isEmpty(), "Should have pending updates for self-reference cycle");
 
       // Execute SQL
       String sql = SqlGenerator.generate(genResult.rows(), genResult.updates(), false);
@@ -132,11 +137,12 @@ class FullCycleIntegrationTest {
 
       // Verify data
       try (Statement stmt = conn.createStatement();
-           ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM STAFF WHERE manager_id IS NOT NULL")) {
-          assertTrue(rs.next());
-          // Most rows should have a manager (randomly picked from 50 rows)
-          // Since updates apply to all rows to set FKs.
-          assertTrue(rs.getInt(1) > 0, "Some staff should have managers");
+          ResultSet rs =
+              stmt.executeQuery("SELECT COUNT(*) FROM STAFF WHERE manager_id IS NOT NULL")) {
+        assertTrue(rs.next());
+        // Most rows should have a manager (randomly picked from 50 rows)
+        // Since updates apply to all rows to set FKs.
+        assertTrue(rs.getInt(1) > 0, "Some staff should have managers");
       }
     }
   }
@@ -170,30 +176,33 @@ class FullCycleIntegrationTest {
 
       // Verify
       try (Statement stmt = conn.createStatement();
-           ResultSet rs = stmt.executeQuery("SELECT * FROM PRODUCTS")) {
-           while(rs.next()) {
-               String code = rs.getString("code");
-               String category = rs.getString("category");
-               double price = rs.getDouble("price");
+          ResultSet rs = stmt.executeQuery("SELECT * FROM PRODUCTS")) {
+        while (rs.next()) {
+          String code = rs.getString("code");
+          String category = rs.getString("category");
+          double price = rs.getDouble("price");
 
-               if (code != null) {
-                   assertTrue(code.length() >= 5, "Code length check failed: " + code);
-               }
-               if (category != null) {
-                   assertTrue(List.of("ELECTRONICS", "BOOKS", "TOYS").contains(category), "Category check failed: " + category);
-               }
-               // Price is double, rs.getDouble returns 0.0 if null? No, only for primitive.
-               // But we made them NOT NULL in DDL above, so they shouldn't be null.
-               // If we keep assertion assuming non-null, it's fine now.
+          if (code != null) {
+            assertTrue(code.length() >= 5, "Code length check failed: " + code);
+          }
+          if (category != null) {
+            assertTrue(
+                List.of("ELECTRONICS", "BOOKS", "TOYS").contains(category),
+                "Category check failed: " + category);
+          }
+          // Price is double, rs.getDouble returns 0.0 if null? No, only for primitive.
+          // But we made them NOT NULL in DDL above, so they shouldn't be null.
+          // If we keep assertion assuming non-null, it's fine now.
 
-               assertTrue(price > 0, "Price check failed: " + price);
-               assertNotNull(rs.getObject("id")); // UUID check
-           }
+          assertTrue(price > 0, "Price check failed: " + price);
+          assertNotNull(rs.getObject("id")); // UUID check
+        }
       }
     }
   }
 
-  private void executeCycleAndVerify(Connection conn, int expectedTables, Map<String, Integer> expectedRows) throws Exception {
+  private void executeCycleAndVerify(
+      Connection conn, int expectedTables, Map<String, Integer> expectedRows) throws Exception {
     List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC");
     assertEquals(expectedTables, tables.size());
 
@@ -211,36 +220,35 @@ class FullCycleIntegrationTest {
     executeSql(conn, sql);
 
     try (Statement stmt = conn.createStatement()) {
-        for (Map.Entry<String, Integer> entry : expectedRows.entrySet()) {
-            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + entry.getKey())) {
-                assertTrue(rs.next());
-                assertEquals(entry.getValue(), rs.getInt(1), "Row count mismatch for " + entry.getKey());
-            }
+      for (Map.Entry<String, Integer> entry : expectedRows.entrySet()) {
+        try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM " + entry.getKey())) {
+          assertTrue(rs.next());
+          assertEquals(entry.getValue(), rs.getInt(1), "Row count mismatch for " + entry.getKey());
         }
+      }
     }
   }
 
   private DataGenerator.GenerationResult generateData(List<Table> tables, int rows) {
-      return DataGenerator.generate(
-          DataGenerator.GenerationParameters.builder()
-              .tables(tables)
-              .rowsPerTable(rows)
-              .deferred(false)
-              .pkUuidOverrides(Collections.emptyMap())
-              .excludedColumns(Collections.emptyMap())
-              .useEnglishDictionary(false)
-              .useSpanishDictionary(false)
-              .build()
-      );
+    return DataGenerator.generate(
+        DataGenerator.GenerationParameters.builder()
+            .tables(tables)
+            .rowsPerTable(rows)
+            .deferred(false)
+            .pkUuidOverrides(Collections.emptyMap())
+            .excludedColumns(Collections.emptyMap())
+            .useEnglishDictionary(false)
+            .useSpanishDictionary(false)
+            .build());
   }
 
   private void executeSql(Connection conn, String sql) throws SQLException {
     try (Statement stmt = conn.createStatement()) {
-        String[] statements = sql.split(";\n");
-        for (String s : statements) {
-            if (s.trim().isEmpty()) continue;
-            stmt.execute(s);
-        }
+      String[] statements = sql.split(";\n");
+      for (String s : statements) {
+        if (s.trim().isEmpty()) continue;
+        stmt.execute(s);
+      }
     }
   }
 }

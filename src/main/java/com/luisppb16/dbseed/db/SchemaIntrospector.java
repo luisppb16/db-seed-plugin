@@ -1,6 +1,6 @@
 /*
- *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
- *  All rights reserved.
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
  */
 
 package com.luisppb16.dbseed.db;
@@ -46,7 +46,8 @@ public class SchemaIntrospector {
         final String tableSchema = rs.getString("TABLE_SCHEM");
         final String effectiveSchema = tableSchema != null ? tableSchema : schema;
 
-        final List<String> checks = loadTableCheckConstraints(conn, meta, effectiveSchema, tableName);
+        final List<String> checks =
+            loadTableCheckConstraints(conn, meta, effectiveSchema, tableName);
         final List<Column> columns = loadColumns(meta, effectiveSchema, tableName, checks);
         final List<String> pkCols = loadPrimaryKeys(meta, effectiveSchema, tableName);
         final List<List<String>> uniqueKeys = loadUniqueKeys(meta, effectiveSchema, tableName);
@@ -214,9 +215,9 @@ public class SchemaIntrospector {
         }
       }
     } catch (SQLException e) {
-      log.warn(
-          "Failed to load H2 check constraints for table {} in schema {}", table, schema, e);
-      // Propagate or just warn? For introspection, missing checks might be better than full failure.
+      log.warn("Failed to load H2 check constraints for table {} in schema {}", table, schema, e);
+      // Propagate or just warn? For introspection, missing checks might be better than full
+      // failure.
       // But typically introspection should be consistent.
       // We'll throw to be safe, but log first.
       throw e;

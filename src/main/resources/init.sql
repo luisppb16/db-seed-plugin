@@ -177,6 +177,11 @@ CREATE TABLE shopping_cart
     notes       VARCHAR(255)
 );
 
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 -- Sample Data
 INSERT INTO users (username, password_hash, email, first_name, last_name)
 VALUES ('luispepe', 'hash123', 'luis.pepe@example.com', 'Luis', 'Pepe');

@@ -1,6 +1,6 @@
 /*
- *  Copyright (c) 2025 Luis Pepe (@LuisPPB16).
- *  All rights reserved.
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
  */
 
 package com.luisppb16.dbseed.util;

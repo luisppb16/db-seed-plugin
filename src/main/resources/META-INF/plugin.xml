@@ -1,3 +1,8 @@
+<!--
+  ~ Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+  ~ All rights reserved.
+  -->
+
 <idea-plugin>
     <id>com.luisppb16.dbseed</id>
     <name>DBSeed4SQL</name>

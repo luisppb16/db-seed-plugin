@@ -5,7 +5,7 @@
 
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.10.4'
+    id 'org.jetbrains.intellij.platform' version '2.10.5'
     id 'jacoco'
 }
 
@@ -77,5 +77,9 @@ tasks.named('jacocoTestReport', JacocoReport) {
 }
 
 tasks.named('buildSearchableOptions') {
+    enabled = false
+}
+
+tasks.named('jarSearchableOptions') {
     enabled = false
 }

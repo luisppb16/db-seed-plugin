@@ -136,19 +136,41 @@ public final class SeedDialog extends DialogWrapper {
     if (project != null) {
       final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      final String url =
-          Objects.requireNonNullElse(
-              urlTemplate != null ? urlTemplate : config.url(), DEFAULT_POSTGRES_URL);
+      // Determine which URL to use.
+      // If a template is provided (user selected a driver), we prefer the template structure.
+      // However, if the saved config matches the driver type, we might want to reuse the saved URL.
+      // But typically, if the user explicitly selects a driver, they expect the default template for that driver,
+      // OR the last used configuration for THAT driver if available.
+      
+      // Current logic:
+      // 1. If urlTemplate is null, use config.url() or default.
+      // 2. If urlTemplate is NOT null (driver selected):
+      //    a. Check if config.url() matches the driver type of urlTemplate.
+      //    b. If it matches, use config.url() (restore previous session).
+      //    c. If it doesn't match (switching drivers), use urlTemplate.
 
-      if (url.startsWith("jdbc:sqlserver")) {
+      String urlToUse = urlTemplate;
+      boolean usingSavedConfig = false;
+
+      if (urlToUse == null) {
+        urlToUse = Objects.requireNonNullElse(config.url(), DEFAULT_POSTGRES_URL);
+        usingSavedConfig = true; // Implicitly using saved config if available
+      } else {
+        if (config.url() != null && isSameDriverType(urlTemplate, config.url())) {
+          urlToUse = config.url();
+          usingSavedConfig = true;
+        }
+      }
+
+      if (urlToUse.startsWith("jdbc:sqlserver")) {
         String dbName = "";
-        String urlWithoutDb = url;
+        String urlWithoutDb = urlToUse;
 
         final Pattern p = Pattern.compile("databaseName=([^;]+)");
-        final Matcher m = p.matcher(url);
+        final Matcher m = p.matcher(urlToUse);
         if (m.find()) {
           dbName = m.group(1);
-          urlWithoutDb = url.replace(m.group(0), "");
+          urlWithoutDb = urlToUse.replace(m.group(0), "");
           urlWithoutDb = urlWithoutDb.replace(";;", ";");
           if (urlWithoutDb.endsWith(";")) {
             urlWithoutDb = urlWithoutDb.substring(0, urlWithoutDb.length() - 1);
@@ -157,21 +179,67 @@ public final class SeedDialog extends DialogWrapper {
         urlField.setText(urlWithoutDb);
         databaseField.setText(dbName);
       } else {
-        final int lastSlashIndex = url.lastIndexOf('/');
-        if (lastSlashIndex > 0 && lastSlashIndex < url.length() - 1) {
-          urlField.setText(url.substring(0, lastSlashIndex + 1));
-          databaseField.setText(url.substring(lastSlashIndex + 1));
+        final int lastSlashIndex = urlToUse.lastIndexOf('/');
+        // Only split if we are restoring a full URL (saved config) or if the template happens to have a default DB.
+        // If we are using a raw template that ends in /, we might want to keep it as is and clear the DB field.
+        
+        if (lastSlashIndex > 0 && lastSlashIndex < urlToUse.length() - 1) {
+           urlField.setText(urlToUse.substring(0, lastSlashIndex + 1));
+           databaseField.setText(urlToUse.substring(lastSlashIndex + 1));
         } else {
-          urlField.setText(url);
+           urlField.setText(urlToUse);
+           // If we switched drivers (not using saved config), we should probably reset the database field
+           // to avoid showing a leftover DB name from a previous driver if the URL parsing didn't overwrite it.
+           // But databaseField is initialized to "postgres" or empty depending on logic.
+           // If we are using the template, let's try to extract a default DB if present, or clear it.
+           if (!usingSavedConfig) {
+               // If the template ends with /, it means no DB is specified yet.
+               if (urlToUse.endsWith("/")) {
+                   databaseField.setText("");
+               } else {
+                   // Some templates might be "jdbc:mysql://localhost:3306/db".
+                   // The split logic above handles it if there is a slash.
+                   // If no slash, maybe it's a file path or something else.
+                   // For safety when switching drivers, if we can't parse a DB name, reset it to default or empty.
+                   // But let's stick to the existing behavior unless it's clearly wrong.
+                   // The issue reported is "not putting the correct default URL".
+                   // This usually happens when switching drivers and the old URL persists or the template isn't used.
+               }
+           }
         }
       }
 
-      userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
-      passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
-      schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
-      rowsSpinner.setValue(config.rowsPerTable());
-      deferredBox.setSelected(config.deferred());
+      // Only restore other fields if we are using the saved configuration (same driver type).
+      // Otherwise, use defaults for the new driver.
+      if (usingSavedConfig) {
+        userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
+        passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
+        schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
+        rowsSpinner.setValue(config.rowsPerTable());
+        deferredBox.setSelected(config.deferred());
+      } else {
+        // Reset to defaults for a new driver selection
+        userField.setText(DEFAULT_POSTGRES_USER);
+        passwordField.setText("");
+        schemaField.setText("public");
+        // Keep rows and deferred as they are generic settings, or reset them?
+        // Usually better to keep generic preferences.
+        rowsSpinner.setValue(config.rowsPerTable() > 0 ? config.rowsPerTable() : 10);
+        deferredBox.setSelected(config.deferred());
+      }
     }
+  }
+
+  private boolean isSameDriverType(String template, String savedUrl) {
+    if (template == null || savedUrl == null) return false;
+    // Simple heuristic: check if the protocol part (e.g., jdbc:postgresql:) matches.
+    int firstColon = template.indexOf(':');
+    int secondColon = template.indexOf(':', firstColon + 1);
+    if (secondColon > 0) {
+      String prefix = template.substring(0, secondColon + 1);
+      return savedUrl.startsWith(prefix);
+    }
+    return false;
   }
 
   private void saveConfiguration() {

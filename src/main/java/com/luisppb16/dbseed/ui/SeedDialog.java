@@ -24,6 +24,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
 import javax.swing.JCheckBox;
@@ -42,12 +44,13 @@ import javax.swing.SpinnerNumberModel;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 public final class SeedDialog extends DialogWrapper {
 
   private static final String DEFAULT_POSTGRES_USER = "postgres";
   private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
-  private final JTextField urlField = new JTextField("jdbc:postgresql://localhost:5432/");
+  private final JTextField urlField;
   private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JPasswordField passwordField = new JPasswordField();
@@ -55,14 +58,16 @@ public final class SeedDialog extends DialogWrapper {
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
 
-  public SeedDialog() {
+  public SeedDialog(@Nullable final String urlTemplate) {
     super(true);
     setTitle("DBSeed4SQL");
+
+    urlField = new JTextField(urlTemplate != null ? urlTemplate : DEFAULT_POSTGRES_URL);
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.columnSpinnerStep));
 
-    loadConfiguration();
+    loadConfiguration(urlTemplate);
 
     final JComponent editor = rowsSpinner.getEditor();
     if (editor instanceof final DefaultEditor defaultEditor) {
@@ -116,18 +121,39 @@ public final class SeedDialog extends DialogWrapper {
     saveConfiguration();
   }
 
-  private void loadConfiguration() {
+  private void loadConfiguration(@Nullable final String urlTemplate) {
     final Project project = getCurrentProject();
     if (project != null) {
       final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      final String url = Objects.requireNonNullElse(config.url(), DEFAULT_POSTGRES_URL);
-      final int lastSlashIndex = url.lastIndexOf('/');
-      if (lastSlashIndex > 0 && lastSlashIndex < url.length() - 1) {
-        urlField.setText(url.substring(0, lastSlashIndex + 1));
-        databaseField.setText(url.substring(lastSlashIndex + 1));
+      final String url =
+          Objects.requireNonNullElse(
+              urlTemplate != null ? urlTemplate : config.url(), DEFAULT_POSTGRES_URL);
+
+      if (url.startsWith("jdbc:sqlserver")) {
+        String dbName = "";
+        String urlWithoutDb = url;
+
+        final Pattern p = Pattern.compile("databaseName=([^;]+)");
+        final Matcher m = p.matcher(url);
+        if (m.find()) {
+          dbName = m.group(1);
+          urlWithoutDb = url.replace(m.group(0), "");
+          urlWithoutDb = urlWithoutDb.replace(";;", ";");
+          if (urlWithoutDb.endsWith(";")) {
+            urlWithoutDb = urlWithoutDb.substring(0, urlWithoutDb.length() - 1);
+          }
+        }
+        urlField.setText(urlWithoutDb);
+        databaseField.setText(dbName);
       } else {
-        urlField.setText(url);
+        final int lastSlashIndex = url.lastIndexOf('/');
+        if (lastSlashIndex > 0 && lastSlashIndex < url.length() - 1) {
+          urlField.setText(url.substring(0, lastSlashIndex + 1));
+          databaseField.setText(url.substring(lastSlashIndex + 1));
+        } else {
+          urlField.setText(url);
+        }
       }
 
       userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
@@ -228,10 +254,22 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   public GenerationConfig getConfiguration() {
-    final String url = urlField.getText().trim();
+    String url = urlField.getText().trim();
     final String database = databaseField.getText().trim();
+
+    if (url.startsWith("jdbc:sqlserver")) {
+      // Remove existing databaseName if present to avoid duplication
+      url = url.replaceAll("databaseName=[^;]+;?", "");
+      if (!url.endsWith(";")) {
+        url += ";";
+      }
+      url += "databaseName=" + database;
+    } else {
+      url = url.endsWith("/") ? url + database : url + "/" + database;
+    }
+
     return GenerationConfig.builder()
-        .url(url.endsWith("/") ? url + database : url + "/" + database)
+        .url(url)
         .user(userField.getText().trim())
         .password(new String(passwordField.getPassword()))
         .schema(schemaField.getText().trim())

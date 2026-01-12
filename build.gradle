@@ -16,7 +16,7 @@ sourceSets {
 }
 
 group 'com.LuisPPB16'
-version '1.2.0'
+version '1.2.1-dev'
 
 repositories {
     mavenCentral()
@@ -33,8 +33,6 @@ dependencies {
     }
 
     implementation 'net.datafaker:datafaker:2.0.2'
-    implementation 'org.postgresql:postgresql:42.7.3'
-    implementation 'com.h2database:h2:2.2.224'
 
     compileOnly 'org.projectlombok:lombok:1.18.32'
     annotationProcessor 'org.projectlombok:lombok:1.18.32'

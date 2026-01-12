@@ -1,7 +1,6 @@
 <idea-plugin>
     <id>com.luisppb16.dbseed</id>
     <name>DBSeed4SQL</name>
-    <version>1.2.0</version>
     <vendor email="ironkrozz@gmail.com">Luis Pepe</vendor>
     <description>
         <![CDATA[

@@ -11,12 +11,47 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./initdb:/docker-entrypoint-initdb.d
+      - ./initdb/schema_Postgres.sql:/docker-entrypoint-initdb.d/schema_Postgres.sql
+    networks:
+      - db_net
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: test
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./initdb/schema_MySQL.sql:/docker-entrypoint-initdb.d/schema_MySQL.sql
+    networks:
+      - db_net
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_USER: sa
+      MSSQL_SA_PASSWORD: yourStrong(!)Password
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+      - ./initdb/schema_SQLServer.sql:/docker-entrypoint-initdb.d/schema_SQLServer.sql
     networks:
       - db_net
 
 volumes:
   postgres_data: { }
+  mysql_data: { }
+  sqlserver_data: { }
 
 networks:
   db_net:

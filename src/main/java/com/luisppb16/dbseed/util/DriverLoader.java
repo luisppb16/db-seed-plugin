@@ -66,18 +66,14 @@ public class DriverLoader {
 
   private static void loadDriver(final URL jarUrl, final String driverClass)
       throws ReflectiveOperationException, SQLException {
-    try (final URLClassLoader cl =
-        new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader())) {
-      final Class<?> clazz = Class.forName(driverClass, true, cl);
-      if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
-        DriverManager.registerDriver(new DriverShim(driver));
-        log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
-      } else {
-        throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
-      }
-    } catch (final IOException e) {
-      log.error("Error closing URLClassLoader for driver {}: {}", driverClass, e.getMessage(), e);
-      throw new DriverLoadingException("Error closing URLClassLoader for driver " + driverClass, e);
+    final URLClassLoader cl =
+        new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
+    final Class<?> clazz = Class.forName(driverClass, true, cl);
+    if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
+      DriverManager.registerDriver(new DriverShim(driver));
+      log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
+    } else {
+      throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
     }
   }
 }

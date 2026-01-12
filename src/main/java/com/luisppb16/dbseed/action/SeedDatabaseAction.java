@@ -96,44 +96,40 @@ public class SeedDatabaseAction extends AnAction {
       return;
     }
 
-    final List<DriverInfo> drivers = DriverRegistry.getDrivers();
-    if (drivers.isEmpty()) {
-      notifyError(project, "No drivers found in drivers.json");
-      return;
-    }
-
-    final PropertiesComponent props = PropertiesComponent.getInstance(project);
-    final String lastDriverName = props.getValue(PREF_LAST_DRIVER);
-
-    final DriverSelectionDialog driverDialog =
-        new DriverSelectionDialog(project, drivers, lastDriverName);
-    if (!driverDialog.showAndGet()) {
-      log.debug("Driver selection canceled.");
-      return;
-    }
-
-    final Optional<DriverInfo> chosenDriverOpt = driverDialog.getSelectedDriver();
-    if (chosenDriverOpt.isEmpty()) {
-      log.debug("No driver selected or BigQuery ProjectId missing.");
-      return;
-    }
-    final DriverInfo chosenDriver = chosenDriverOpt.get();
-    props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
-
     try {
+      final List<DriverInfo> drivers = DriverRegistry.getDrivers();
+      if (drivers.isEmpty()) {
+        notifyError(project, "No drivers found in drivers.json");
+        return;
+      }
+
+      final PropertiesComponent props = PropertiesComponent.getInstance(project);
+      final String lastDriverName = props.getValue(PREF_LAST_DRIVER);
+
+      final DriverSelectionDialog driverDialog =
+          new DriverSelectionDialog(project, drivers, lastDriverName);
+      if (!driverDialog.showAndGet()) {
+        log.debug("Driver selection canceled.");
+        return;
+      }
+
+      final Optional<DriverInfo> chosenDriverOpt = driverDialog.getSelectedDriver();
+      if (chosenDriverOpt.isEmpty()) {
+        log.debug("No driver selected or BigQuery ProjectId missing.");
+        return;
+      }
+      final DriverInfo chosenDriver = chosenDriverOpt.get();
+      props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
+
       DriverLoader.ensureDriverPresent(chosenDriver);
-      final SeedDialog seedDialog = new SeedDialog();
+      final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
       if (seedDialog.showAndGet()) {
         runSeedGeneration(project, seedDialog.getConfiguration());
       } else {
         log.debug("Seed generation dialog canceled.");
       }
-    } catch (final IOException
-        | ReflectiveOperationException
-        | URISyntaxException
-        | SQLException ex) {
-      log.error("Error preparing driver: {}", chosenDriver.name(), ex);
-      notifyError(project, "Error preparing driver: " + ex.getMessage());
+    } catch (final Exception ex) {
+      handleException(project, "Error preparing driver: ", ex);
     }
   }
 
@@ -154,8 +150,7 @@ public class SeedDatabaseAction extends AnAction {
                   tablesRef.set(SchemaIntrospector.introspect(conn, config.schema()));
                   log.info("Schema introspection successful for schema: {}", config.schema());
                 } catch (final SQLException ex) {
-                  log.warn("Error introspecting schema for URL: {}", config.url(), ex);
-                  notifyError(project, "Error introspecting schema: " + ex.getMessage());
+                  handleException(project, "Error introspecting schema: ", ex);
                 }
               }
 
@@ -192,7 +187,7 @@ public class SeedDatabaseAction extends AnAction {
 
       if (result == Messages.CANCEL) {
         log.debug("User canceled large data seeding operation. Returning to previous step.");
-        final SeedDialog seedDialog = new SeedDialog();
+        final SeedDialog seedDialog = new SeedDialog(config.url());
         if (seedDialog.showAndGet()) {
           runSeedGeneration(project, seedDialog.getConfiguration());
         } else {
@@ -216,7 +211,6 @@ public class SeedDatabaseAction extends AnAction {
     final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
     final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
 
-    // Convert Map<String, Set<String>> to Map<String, Map<String, String>> for pkUuidOverrides
     final Map<String, Map<String, String>> pkUuidOverrides =
         selectedPkUuidColumns.entrySet().stream()
             .collect(
@@ -226,12 +220,10 @@ public class SeedDatabaseAction extends AnAction {
                         entry.getValue().stream()
                             .collect(Collectors.toMap(Function.identity(), col -> ""))));
 
-    // Convert Map<String, Set<String>> to Map<String, List<String>> for excludedColumns
     final Map<String, List<String>> excludedColumns =
         excludedColumnsSet.entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
-    // Get dictionary usage from settings
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
     ProgressManager.getInstance()
@@ -239,44 +231,43 @@ public class SeedDatabaseAction extends AnAction {
             new Task.Backgroundable(project, "Generating SQL", false) {
               @Override
               public void run(@NotNull final ProgressIndicator indicator) {
-                indicator.setIndeterminate(false);
-                indicator.setText("Generating data...");
-                indicator.setFraction(0.3);
+                try {
+                  indicator.setIndeterminate(false);
+                  indicator.setText("Generating data...");
+                  indicator.setFraction(0.3);
 
-                final boolean mustForceDeferred =
-                    requiresDeferredDueToNonNullableCycles(sort, tableByName);
-                final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
-                log.debug("Effective deferred: {}", effectiveDeferred);
+                  final boolean mustForceDeferred =
+                      requiresDeferredDueToNonNullableCycles(sort, tableByName);
+                  final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
+                  log.debug("Effective deferred: {}", effectiveDeferred);
 
-                final DataGenerator.GenerationResult gen =
-                    DataGenerator.generate(
-                        DataGenerator.GenerationParameters.builder()
-                            .tables(ordered)
-                            .rowsPerTable(config.rowsPerTable())
-                            .deferred(effectiveDeferred)
-                            .pkUuidOverrides(pkUuidOverrides)
-                            .excludedColumns(excludedColumns)
-                            .useEnglishDictionary(settings.useEnglishDictionary)
-                            .useSpanishDictionary(settings.useSpanishDictionary)
-                            .build());
-                log.info("Data generation completed for {} rows per table.", config.rowsPerTable());
+                  final DataGenerator.GenerationResult gen =
+                      DataGenerator.generate(
+                          DataGenerator.GenerationParameters.builder()
+                              .tables(ordered)
+                              .rowsPerTable(config.rowsPerTable())
+                              .deferred(effectiveDeferred)
+                              .pkUuidOverrides(pkUuidOverrides)
+                              .excludedColumns(excludedColumns)
+                              .useEnglishDictionary(settings.useEnglishDictionary)
+                              .useSpanishDictionary(settings.useSpanishDictionary)
+                              .build());
+                  log.info(
+                      "Data generation completed for {} rows per table.", config.rowsPerTable());
 
-                indicator.setText("Building SQL...");
-                indicator.setFraction(0.8);
-                final String sql =
-                    SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
-                log.info("SQL script built successfully.");
+                  indicator.setText("Building SQL...");
+                  indicator.setFraction(0.8);
+                  final String sql =
+                      SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
+                  log.info("SQL script built successfully.");
 
-                indicator.setText("Opening editor...");
-                indicator.setFraction(1.0);
-                ApplicationManager.getApplication()
-                    .invokeLater(() -> saveAndOpenSqlFile(project, sql));
-              }
-
-              @Override
-              public void onThrowable(@NotNull final Throwable error) {
-                log.error("Error during SQL generation.", error);
-                notifyError(project, "Error during SQL generation: " + error.getMessage());
+                  indicator.setText("Opening editor...");
+                  indicator.setFraction(1.0);
+                  ApplicationManager.getApplication()
+                      .invokeLater(() -> saveAndOpenSqlFile(project, sql));
+                } catch (final Exception ex) {
+                  handleException(project, "Error during SQL generation: ", ex);
+                }
               }
             });
   }
@@ -303,9 +294,13 @@ public class SeedDatabaseAction extends AnAction {
         notifyError(project, "Could not open generated SQL file.");
       }
     } catch (final IOException e) {
-      log.error("Error saving SQL file: {}", path, e);
-      notifyError(project, "Error saving SQL file: " + e.getMessage());
+      handleException(project, "Error saving SQL file: ", e);
     }
+  }
+
+  private void handleException(final Project project, final String message, final Exception ex) {
+    log.error(message, ex);
+    notifyError(project, message + ex.getMessage());
   }
 
   private void notifyError(final Project project, final String message) {

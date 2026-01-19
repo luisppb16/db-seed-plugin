@@ -47,7 +47,10 @@ public class DbSeedSettingsConfigurable implements Configurable {
             mySettingsComponent.getDefaultOutputDirectory(), settings.defaultOutputDirectory)
         || mySettingsComponent.getUseLatinDictionary() != settings.useLatinDictionary
         || mySettingsComponent.getUseEnglishDictionary() != settings.useEnglishDictionary
-        || mySettingsComponent.getUseSpanishDictionary() != settings.useSpanishDictionary;
+        || mySettingsComponent.getUseSpanishDictionary() != settings.useSpanishDictionary
+        || !Objects.equals(mySettingsComponent.getSoftDeleteColumns(), settings.softDeleteColumns)
+        || mySettingsComponent.getSoftDeleteUseSchemaDefault() != settings.softDeleteUseSchemaDefault
+        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.softDeleteValue);
   }
 
   @Override
@@ -58,6 +61,10 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.useLatinDictionary = mySettingsComponent.getUseLatinDictionary();
     settings.useEnglishDictionary = mySettingsComponent.getUseEnglishDictionary();
     settings.useSpanishDictionary = mySettingsComponent.getUseSpanishDictionary();
+    
+    settings.softDeleteColumns = mySettingsComponent.getSoftDeleteColumns();
+    settings.softDeleteUseSchemaDefault = mySettingsComponent.getSoftDeleteUseSchemaDefault();
+    settings.softDeleteValue = mySettingsComponent.getSoftDeleteValue();
   }
 
   @Override
@@ -68,6 +75,10 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setUseLatinDictionary(settings.useLatinDictionary);
     mySettingsComponent.setUseEnglishDictionary(settings.useEnglishDictionary);
     mySettingsComponent.setUseSpanishDictionary(settings.useSpanishDictionary);
+    
+    mySettingsComponent.setSoftDeleteColumns(settings.softDeleteColumns);
+    mySettingsComponent.setSoftDeleteUseSchemaDefault(settings.softDeleteUseSchemaDefault);
+    mySettingsComponent.setSoftDeleteValue(settings.softDeleteValue);
   }
 
   @Override

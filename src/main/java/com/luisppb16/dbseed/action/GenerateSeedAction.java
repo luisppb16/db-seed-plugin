@@ -30,9 +30,11 @@ import com.luisppb16.dbseed.db.DataGenerator;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
+import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
+import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
 import java.sql.Connection;
@@ -42,6 +44,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -108,15 +112,48 @@ public final class GenerateSeedAction extends AnAction {
 
       DriverLoader.ensureDriverPresent(chosenDriver);
 
-      final SeedDialog dialog = new SeedDialog(chosenDriver.urlTemplate());
-      if (!dialog.showAndGet()) {
+      final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
+      if (!seedDialog.showAndGet()) {
         log.info("User canceled the seed generation operation.");
         return;
       }
 
-      final GenerationConfig config = dialog.getConfiguration();
+      final GenerationConfig config = seedDialog.getConfiguration();
       final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
+      // Step 1: Introspect Schema (Background)
+      final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
+      
+      ProgressManager.getInstance().run(new Task.Modal(project, "Introspecting Schema", true) {
+          @Override
+          public void run(@NotNull ProgressIndicator indicator) {
+              indicator.setIndeterminate(true);
+              try (Connection conn = DriverManager.getConnection(config.url(), config.user(), config.password())) {
+                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
+                  tablesRef.set(tables);
+              } catch (Exception ex) {
+                  ApplicationManager.getApplication().invokeLater(() -> handleException(project, ex));
+              }
+          }
+      });
+      
+      final List<Table> tables = tablesRef.get();
+      if (tables == null || tables.isEmpty()) {
+          if (tables != null) notifyError(project, "No tables found in schema " + config.schema());
+          return;
+      }
+
+      // Step 2: Show PkUuidSelectionDialog (EDT)
+      final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(tables);
+      if (!pkDialog.showAndGet()) {
+          return;
+      }
+      
+      final Map<String, Set<String>> pkUuidOverrides = pkDialog.getSelectionByTable();
+      final Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
+      final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
+
+      // Step 3: Generate Data (Background)
       ProgressManager.getInstance()
           .run(
               new Task.Backgroundable(project, APP_NAME.getValue(), false) {
@@ -126,7 +163,10 @@ public final class GenerateSeedAction extends AnAction {
                     final String sql =
                         generateSeedSql(
                             config,
-                            dialog,
+                            tables,
+                            pkUuidOverrides,
+                            excludedColumns,
+                            repetitionRules,
                             indicator,
                             settings.useLatinDictionary,
                             settings.useEnglishDictionary,
@@ -145,19 +185,24 @@ public final class GenerateSeedAction extends AnAction {
 
   private String generateSeedSql(
       @NotNull final GenerationConfig config,
-      @NotNull final SeedDialog dialog,
+      @NotNull final List<Table> tables,
+      Map<String, Set<String>> pkUuidOverrides,
+      Map<String, Set<String>> excludedColumns,
+      Map<String, List<RepetitionRule>> repetitionRules,
       @NotNull final ProgressIndicator indicator,
       final boolean useLatinDictionary,
       final boolean useEnglishDictionary,
       final boolean useSpanishDictionary)
       throws Exception {
 
-    try (final Connection conn =
-        DriverManager.getConnection(config.url(), config.user(), config.password())) {
-
-      indicator.setText("Introspecting schema...");
-      final List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
-      log.debug("Schema introspected with {} tables.", tables.size());
+      Map<String, Map<String, String>> pkUuidOverridesAdapted = pkUuidOverrides.entrySet().stream()
+          .collect(Collectors.toMap(
+              Map.Entry::getKey,
+              e -> e.getValue().stream().collect(Collectors.toMap(c -> c, c -> ""))
+          ));
+      
+      Map<String, List<String>> excludedColumnsList = excludedColumns.entrySet().stream()
+          .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
       indicator.setText("Sorting tables...");
       final TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
@@ -180,8 +225,9 @@ public final class GenerateSeedAction extends AnAction {
                   .tables(ordered)
                   .rowsPerTable(config.rowsPerTable())
                   .deferred(effectiveDeferred)
-                  .pkUuidOverrides(dialog.getSelectionByTable())
-                  .excludedColumns(dialog.getExcludedColumnsByTable())
+                  .pkUuidOverrides(pkUuidOverridesAdapted)
+                  .excludedColumns(excludedColumnsList)
+                  .repetitionRules(repetitionRules)
                   .useLatinDictionary(useLatinDictionary)
                   .useEnglishDictionary(useEnglishDictionary)
                   .useSpanishDictionary(useSpanishDictionary)
@@ -192,7 +238,6 @@ public final class GenerateSeedAction extends AnAction {
 
       log.info("Seed SQL generated successfully.");
       return sql;
-    }
   }
 
   private void openEditor(final Project project, final String sql) {

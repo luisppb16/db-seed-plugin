@@ -17,6 +17,7 @@ public record Column(
     boolean primaryKey,
     boolean uuid,
     int length,
+    int scale,
     int minValue,
     int maxValue,
     Set<String> allowedValues) {

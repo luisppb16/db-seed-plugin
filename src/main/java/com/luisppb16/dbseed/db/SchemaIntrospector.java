@@ -74,6 +74,7 @@ public class SchemaIntrospector {
         final String typeName = rs.getString("TYPE_NAME"); // Fetch type name
         final boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
         final int length = rs.getInt("COLUMN_SIZE");
+        final int scale = rs.getInt("DECIMAL_DIGITS");
 
         int minValue = 0;
         int maxValue = 0;
@@ -99,6 +100,7 @@ public class SchemaIntrospector {
                 pkCols.contains(name),
                 isUuid,
                 length,
+                scale,
                 minValue,
                 maxValue,
                 allowedValues));

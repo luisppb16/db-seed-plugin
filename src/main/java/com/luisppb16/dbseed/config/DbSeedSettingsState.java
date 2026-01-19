@@ -21,11 +21,17 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   private static final String DEFAULT_OUTPUT_DIRECTORY = "src/main/resources/db/seeder";
   private static final int DEFAULT_COLUMN_SPINNER_STEP = 3;
+  
   public boolean useLatinDictionary = true;
   public boolean useEnglishDictionary = false;
   public boolean useSpanishDictionary = false;
   public int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
   public String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
+  
+  // Soft Delete Configuration
+  public String softDeleteColumns = "deleted_at,deleted";
+  public boolean softDeleteUseSchemaDefault = true;
+  public String softDeleteValue = "NULL";
 
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
@@ -53,5 +59,10 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.useLatinDictionary = state.useLatinDictionary;
     this.useEnglishDictionary = state.useEnglishDictionary;
     this.useSpanishDictionary = state.useSpanishDictionary;
+    
+    // Soft Delete defaults
+    this.softDeleteColumns = Objects.requireNonNullElse(state.softDeleteColumns, "deleted_at,deleted");
+    this.softDeleteValue = Objects.requireNonNullElse(state.softDeleteValue, "NULL");
+    this.softDeleteUseSchemaDefault = state.softDeleteUseSchemaDefault;
   }
 }

@@ -10,6 +10,7 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Column;
+import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -56,6 +57,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
   private final Set<String> excludedTables = new LinkedHashSet<>();
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
+  private final RepetitionRulesPanel repetitionRulesPanel;
 
   // Maps to hold checkbox references for cross-tab synchronization
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
@@ -64,6 +66,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
+    this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
     setTitle("PKs UUID & Exclusions - Step 3/3");
     initDefaults();
     setOKButtonText("Generate");
@@ -102,13 +105,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final JBTabbedPane tabbedPane = new JBTabbedPane();
     tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
     tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
+    tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
 
     // Initial synchronization of states
     synchronizeInitialStates();
 
     final JPanel content = new JPanel(new BorderLayout());
     content.add(tabbedPane, BorderLayout.CENTER);
-    content.setPreferredSize(new Dimension(550, 400));
+    content.setPreferredSize(new Dimension(650, 500));
     return content;
   }
 
@@ -634,6 +638,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public Set<String> getExcludedTables() {
     return Set.copyOf(excludedTables);
+  }
+
+  public Map<String, List<RepetitionRule>> getRepetitionRules() {
+    return repetitionRulesPanel.getRules();
   }
 
   private final class BackAction extends AbstractAction {

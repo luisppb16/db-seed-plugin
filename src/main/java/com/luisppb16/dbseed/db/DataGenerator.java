@@ -7,9 +7,12 @@ package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
+import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -75,6 +78,7 @@ public class DataGenerator {
             .rowsPerTable(params.rowsPerTable())
             .deferred(params.deferred())
             .excludedColumns(excludedColumnsSet)
+            .repetitionRules(params.repetitionRules())
             .useLatinDictionary(params.useLatinDictionary())
             .useEnglishDictionary(params.useEnglishDictionary())
             .useSpanishDictionary(params.useSpanishDictionary())
@@ -135,6 +139,7 @@ public class DataGenerator {
             orderedTables,
             params.rowsPerTable(),
             params.excludedColumns(),
+            params.repetitionRules(),
             faker,
             usedUuids,
             tableConstraints,
@@ -164,6 +169,7 @@ public class DataGenerator {
             .orderedTables(context.orderedTables())
             .rowsPerTable(context.rowsPerTable())
             .excludedColumns(context.excludedColumns())
+            .repetitionRules(context.repetitionRules())
             .faker(context.faker())
             .usedUuids(context.usedUuids())
             .tableConstraints(context.tableConstraints())
@@ -207,6 +213,77 @@ public class DataGenerator {
               Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
 
               AtomicInteger generatedCount = new AtomicInteger(0);
+              
+              // 1. Process Repetition Rules first
+              List<RepetitionRule> rules = params.repetitionRules().getOrDefault(table.name(), Collections.emptyList());
+              for (RepetitionRule rule : rules) {
+                  // Generate base values for this rule
+                  Map<String, Object> baseValues = new HashMap<>();
+                  
+                  // For columns that should be constant (either specific value or random constant)
+                  // we generate them once here.
+                  
+                  // First, handle fixed values provided by user
+                  rule.fixedValues().forEach((colName, val) -> baseValues.put(colName, val));
+                  
+                  // Then handle random constant columns - generate one random value to reuse
+                  rule.randomConstantColumns().forEach(colName -> {
+                      Column col = table.column(colName);
+                      if (col != null) {
+                          Object val = generateColumnValue(
+                              GenerateSingleRowParameters.builder()
+                                  .faker(params.faker())
+                                  .table(table)
+                                  .index(generatedCount.get()) // Use current count as seed index
+                                  .usedUuids(params.usedUuids())
+                                  .constraints(constraints)
+                                  .isFkColumn(isFkColumn)
+                                  .excluded(excluded)
+                                  .dictionaryWords(params.dictionaryWords())
+                                  .build(),
+                              col
+                          );
+                          baseValues.put(colName, val);
+                      }
+                  });
+
+                  // Now generate 'count' rows using these base values
+                  for (int i = 0; i < rule.count(); i++) {
+                      // For each row in the repetition set, we take base values and generate new values for others
+                      // BUT we must respect PK/Unique constraints.
+                      // If a column is part of PK and is fixed in baseValues, we might have a problem if count > 1.
+                      // The user is responsible for not violating constraints, but we should try to handle it if possible?
+                      // For now, we assume non-fixed columns will provide uniqueness if needed (e.g. ID).
+                      
+                      int attempts = 0;
+                      while (attempts < MAX_GENERATE_ATTEMPTS) {
+                          Optional<Row> generatedRow = generateAndValidateRowWithBase(
+                              GenerateAndValidateRowParameters.builder()
+                                  .table(table)
+                                  .generatedCount(generatedCount.get())
+                                  .faker(params.faker())
+                                  .usedUuids(params.usedUuids())
+                                  .constraints(constraints)
+                                  .isFkColumn(isFkColumn)
+                                  .excluded(excluded)
+                                  .dictionaryWords(params.dictionaryWords())
+                                  .seenPrimaryKeys(seenPrimaryKeys)
+                                  .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
+                                  .build(),
+                              baseValues
+                          );
+                          
+                          if (generatedRow.isPresent()) {
+                              rows.add(generatedRow.get());
+                              generatedCount.incrementAndGet();
+                              break;
+                          }
+                          attempts++;
+                      }
+                  }
+              }
+
+              // 2. Fill remaining rows up to rowsPerTable
               int attempts = 0;
               while (generatedCount.get() < params.rowsPerTable()
                   && attempts < params.rowsPerTable() * MAX_GENERATE_ATTEMPTS) {
@@ -286,19 +363,37 @@ public class DataGenerator {
   }
 
   private static Optional<Row> generateAndValidateRow(GenerateAndValidateRowParameters params) {
+      return generateAndValidateRowWithBase(params, Collections.emptyMap());
+  }
 
-    Map<String, Object> values =
-        generateSingleRow(
-            GenerateSingleRowParameters.builder()
-                .faker(params.faker())
-                .table(params.table())
-                .index(params.generatedCount())
-                .usedUuids(params.usedUuids())
-                .constraints(params.constraints())
-                .isFkColumn(params.isFkColumn())
-                .excluded(params.excluded())
-                .dictionaryWords(params.dictionaryWords())
-                .build());
+  private static Optional<Row> generateAndValidateRowWithBase(
+      GenerateAndValidateRowParameters params, Map<String, Object> baseValues) {
+
+    Map<String, Object> values = new LinkedHashMap<>();
+    
+    // First populate with base values (fixed/constant for this rule)
+    if (baseValues != null) {
+        values.putAll(baseValues);
+    }
+
+    // Then generate remaining columns
+    params.table().columns().forEach(column -> {
+        if (!values.containsKey(column.name())) {
+             values.put(column.name(), generateColumnValue(
+                 GenerateSingleRowParameters.builder()
+                    .faker(params.faker())
+                    .table(params.table())
+                    .index(params.generatedCount())
+                    .usedUuids(params.usedUuids())
+                    .constraints(params.constraints())
+                    .isFkColumn(params.isFkColumn())
+                    .excluded(params.excluded())
+                    .dictionaryWords(params.dictionaryWords())
+                    .build(),
+                 column
+             ));
+        }
+    });
 
     if (!isPrimaryKeyUnique(params.table(), values, params.seenPrimaryKeys())) {
       return Optional.empty();
@@ -693,8 +788,8 @@ public class DataGenerator {
           Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
       case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
           Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
-      case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL ->
-          boundedDecimal(column);
+      case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
+      case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
       default -> index;
     };
   }
@@ -709,8 +804,8 @@ public class DataGenerator {
       return switch (jdbcType) {
         case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(v);
         case Types.BIGINT -> Long.parseLong(v);
-        case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL ->
-            Double.parseDouble(v);
+        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(v);
+        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(v);
         case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(v);
         default -> v;
       };
@@ -786,17 +881,36 @@ public class DataGenerator {
   private static double getDoubleMin(Column column, ParsedConstraint pc) {
     boolean hasMin = pc != null && pc.min() != null;
     double colMinValue = column.minValue() != 0 ? column.minValue() : 1.0;
-    return hasMin ? pc.min() : colMinValue;
+    if (hasMin) return pc.min();
+
+    // Adjust min if default 1.0 is out of bounds for small precision/scale
+    if (column.minValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
+      double max = getDoubleMax(column, pc);
+      if (colMinValue > max) {
+        return 0.0;
+      }
+    }
+    return colMinValue;
   }
 
   private static double getDoubleMax(Column column, ParsedConstraint pc) {
     boolean hasMax = pc != null && pc.max() != null;
     double colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_DECIMAL_MAX;
-    return hasMax ? pc.max() : colMaxValue;
+    if (hasMax) return pc.max();
+
+    // Respect precision/scale for DECIMAL/NUMERIC if no explicit max is set
+    if (column.maxValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
+      if (column.length() > 0) {
+        int precision = column.length();
+        int scale = column.scale();
+        return Math.pow(10, precision - scale) - Math.pow(10, -scale);
+      }
+    }
+    return colMaxValue;
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Double boundedDecimal(Column column) {
+  private static BigDecimal boundedBigDecimal(Column column) {
     double min = getDoubleMin(column, null); // Pass null for pc
     double max = getDoubleMax(column, null); // Pass null for pc
     if (min > max) {
@@ -804,7 +918,24 @@ public class DataGenerator {
       min = max;
       max = t;
     }
-    return min + (max - min) * ThreadLocalRandom.current().nextDouble();
+    double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
+    return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP);
+  }
+
+  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
+  private static Double boundedDouble(Column column) {
+    double min = getDoubleMin(column, null); // Pass null for pc
+    double max = getDoubleMax(column, null); // Pass null for pc
+    if (min > max) {
+      double t = min;
+      min = max;
+      max = t;
+    }
+    double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
+    if (column.scale() > 0) {
+      return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP).doubleValue();
+    }
+    return val;
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
@@ -830,7 +961,7 @@ public class DataGenerator {
         }
         return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
       }
-      case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL -> {
+      case Types.DECIMAL, Types.NUMERIC -> {
         double min = getDoubleMin(column, pc);
         double max = getDoubleMax(column, pc);
         if (min > max) {
@@ -838,7 +969,22 @@ public class DataGenerator {
           min = max;
           max = t;
         }
-        return min + (max - min) * ThreadLocalRandom.current().nextDouble();
+        double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
+        return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP);
+      }
+      case Types.FLOAT, Types.DOUBLE, Types.REAL -> {
+        double min = getDoubleMin(column, pc);
+        double max = getDoubleMax(column, pc);
+        if (min > max) {
+          double t = min;
+          min = max;
+          max = t;
+        }
+        double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
+        if (column.scale() > 0) {
+          return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP).doubleValue();
+        }
+        return val;
       }
       default -> {
         return null;
@@ -1199,6 +1345,7 @@ public class DataGenerator {
       boolean deferred,
       Map<String, Map<String, String>> pkUuidOverrides,
       Map<String, List<String>> excludedColumns,
+      Map<String, List<RepetitionRule>> repetitionRules,
       boolean useLatinDictionary,
       boolean useEnglishDictionary,
       boolean useSpanishDictionary) {}
@@ -1209,6 +1356,7 @@ public class DataGenerator {
       int rowsPerTable,
       boolean deferred,
       Map<String, Set<String>> excludedColumns,
+      Map<String, List<RepetitionRule>> repetitionRules,
       boolean useLatinDictionary,
       boolean useEnglishDictionary,
       boolean useSpanishDictionary) {}
@@ -1217,6 +1365,7 @@ public class DataGenerator {
       List<Table> orderedTables,
       int rowsPerTable,
       Map<String, Set<String>> excludedColumns,
+      Map<String, List<RepetitionRule>> repetitionRules,
       Faker faker,
       Set<UUID> usedUuids,
       Map<String, Map<String, ParsedConstraint>> tableConstraints,
@@ -1232,6 +1381,7 @@ public class DataGenerator {
         List<Table> orderedTables,
         int rowsPerTable,
         Map<String, Set<String>> excludedColumns,
+        Map<String, List<RepetitionRule>> repetitionRules,
         Faker faker,
         Set<UUID> usedUuids,
         Map<String, Map<String, ParsedConstraint>> tableConstraints,
@@ -1243,6 +1393,7 @@ public class DataGenerator {
           orderedTables,
           rowsPerTable,
           excludedColumns,
+          repetitionRules,
           faker,
           usedUuids,
           tableConstraints,
@@ -1261,6 +1412,7 @@ public class DataGenerator {
       List<Table> orderedTables,
       int rowsPerTable,
       Map<String, Set<String>> excludedColumns,
+      Map<String, List<RepetitionRule>> repetitionRules,
       Faker faker,
       Set<UUID> usedUuids,
       Map<String, Map<String, ParsedConstraint>> tableConstraints,

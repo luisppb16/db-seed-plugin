@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.db;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Date;
@@ -406,9 +407,9 @@ class SqlGeneratorTest {
     String expectedSql =
         """
         BEGIN;
+        SET CONSTRAINTS ALL DEFERRED;
         INSERT INTO "users" ("id", "name") VALUES
         (1, 'Alice');
-        SET CONSTRAINTS ALL DEFERRED;
         UPDATE "table1" SET "col1"=10 WHERE "id"=1;
         UPDATE "table2" SET "col2"='test' WHERE "pk"=2;
         COMMIT;
@@ -548,5 +549,107 @@ class SqlGeneratorTest {
     expectedSqlBuilder.append("(1001, 'User1001');\n");
 
     assertEquals(expectedSqlBuilder.toString(), sql);
+  }
+
+  @Test
+  @DisplayName("Should use MySQL dialect quoting")
+  void shouldUseMySqlDialect() {
+    DriverInfo driver = DriverInfo.builder().driverClass("com.mysql.cj.jdbc.Driver").build();
+    Column id = Column.builder().name("id").jdbcType(Types.INTEGER).build();
+    Table table =
+        Table.builder()
+            .name("users")
+            .columns(List.of(id))
+            .primaryKey(List.of("id"))
+            .foreignKeys(Collections.emptyList())
+            .checks(Collections.emptyList())
+            .uniqueKeys(Collections.emptyList())
+            .build();
+
+    Map<String, Object> rowValues = new LinkedHashMap<>();
+    rowValues.put("id", 1);
+    Row row = new Row(rowValues);
+
+    Map<Table, List<Row>> data = Map.of(table, List.of(row));
+
+    String sql = SqlGenerator.generate(data, Collections.emptyList(), false, driver);
+
+    String expectedSql = "INSERT INTO `users` (`id`) VALUES\n(1);\n";
+    assertEquals(expectedSql, sql);
+  }
+
+  @Test
+  @DisplayName("Should use SQL Server dialect quoting")
+  void shouldUseSqlServerDialect() {
+    DriverInfo driver =
+        DriverInfo.builder().driverClass("com.microsoft.sqlserver.jdbc.SQLServerDriver").build();
+    Column id = Column.builder().name("id").jdbcType(Types.INTEGER).build();
+    Table table =
+        Table.builder()
+            .name("users")
+            .columns(List.of(id))
+            .primaryKey(List.of("id"))
+            .foreignKeys(Collections.emptyList())
+            .checks(Collections.emptyList())
+            .uniqueKeys(Collections.emptyList())
+            .build();
+
+    Map<String, Object> rowValues = new LinkedHashMap<>();
+    rowValues.put("id", 1);
+    Row row = new Row(rowValues);
+
+    Map<Table, List<Row>> data = Map.of(table, List.of(row));
+
+    String sql = SqlGenerator.generate(data, Collections.emptyList(), false, driver);
+
+    String expectedSql = "INSERT INTO [users] ([id]) VALUES\n(1);\n";
+    assertEquals(expectedSql, sql);
+  }
+
+  @Test
+  @DisplayName("Should generate SQL with both inserts and deferred updates for MySQL")
+  void shouldGenerateSqlWithBothInsertsAndDeferredUpdatesMySQL() {
+    DriverInfo driver = DriverInfo.builder().driverClass("com.mysql.cj.jdbc.Driver").build();
+    
+    // Insert data
+    Column userId = Column.builder().name("id").jdbcType(Types.INTEGER).build();
+    Column userName = Column.builder().name("name").jdbcType(Types.VARCHAR).build();
+    Table usersTable =
+        Table.builder()
+            .name("users")
+            .columns(List.of(userId, userName))
+            .primaryKey(List.of("id"))
+            .foreignKeys(Collections.emptyList())
+            .checks(Collections.emptyList())
+            .uniqueKeys(Collections.emptyList())
+            .build();
+
+    Map<String, Object> userRowValues = new LinkedHashMap<>();
+    userRowValues.put("id", 1);
+    userRowValues.put("name", "Alice");
+    Row userRow = new Row(userRowValues);
+
+    Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(usersTable, List.of(userRow));
+
+    // Deferred updates
+    PendingUpdate update1 = new PendingUpdate("table1", Map.of("col1", 10), Map.of("id", 1));
+    PendingUpdate update2 = new PendingUpdate("table2", Map.of("col2", "test"), Map.of("pk", 2));
+    List<PendingUpdate> pendingUpdates = List.of(update1, update2);
+
+    String sql = SqlGenerator.generate(data, pendingUpdates, true, driver);
+    
+    String expectedSql = 
+        """
+        START TRANSACTION;
+        SET FOREIGN_KEY_CHECKS = 0;
+        INSERT INTO `users` (`id`, `name`) VALUES
+        (1, 'Alice');
+        UPDATE `table1` SET `col1`=10 WHERE `id`=1;
+        UPDATE `table2` SET `col2`='test' WHERE `pk`=2;
+        SET FOREIGN_KEY_CHECKS = 1;
+        COMMIT;
+        """;
+    assertEquals(expectedSql, sql);
   }
 }

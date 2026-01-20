@@ -286,7 +286,7 @@ public class SeedDatabaseAction extends AnAction {
                     indicator.setText("Building SQL...");
                     indicator.setFraction(0.8);
                     final String sql =
-                        SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
+                        SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
                     log.info("SQL script built successfully.");
 
                     indicator.setText("Opening editor...");

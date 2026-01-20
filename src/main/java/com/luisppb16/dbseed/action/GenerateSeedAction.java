@@ -176,7 +176,8 @@ public final class GenerateSeedAction extends AnAction {
                             excludedColumns,
                             repetitionRules,
                             indicator,
-                            settings);
+                            settings,
+                            chosenDriver);
                     ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
                   } catch (final Exception ex) {
                     handleException(project, ex);
@@ -196,7 +197,8 @@ public final class GenerateSeedAction extends AnAction {
       Map<String, Set<String>> excludedColumns,
       Map<String, List<RepetitionRule>> repetitionRules,
       @NotNull final ProgressIndicator indicator,
-      DbSeedSettingsState settings)
+      DbSeedSettingsState settings,
+      DriverInfo driverInfo)
       throws Exception {
 
       Map<String, Map<String, String>> pkUuidOverridesAdapted = pkUuidOverrides.entrySet().stream()
@@ -241,7 +243,7 @@ public final class GenerateSeedAction extends AnAction {
                   .build());
 
       indicator.setText("Building SQL...");
-      final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred);
+      final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
 
       log.info("Seed SQL generated successfully.");
       return sql;

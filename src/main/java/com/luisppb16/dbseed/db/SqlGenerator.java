@@ -26,7 +26,7 @@ import lombok.experimental.UtilityClass;
 public class SqlGenerator {
 
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
-  private static final Map<String, Boolean> QUOTING_CACHE = new ConcurrentHashMap<>();
+  private static final Map<String, IdentifierInfo> IDENTIFIER_CACHE = new ConcurrentHashMap<>();
   private static final int BATCH_SIZE = 1000; // Optimal batch size for most DBs
 
   private static final Set<String> RESERVED_KEYWORDS =
@@ -132,23 +132,19 @@ public class SqlGenerator {
     if (Objects.isNull(identifier)) {
       throw new IllegalArgumentException("Identifier cannot be null.");
     }
-    boolean forceQuote = opts.quoteIdentifiers() || needsQuoting(identifier);
-    String safe = identifier.replace("\"", "\"\"");
-    return forceQuote ? "\"".concat(safe).concat("\"") : identifier;
-  }
 
-  private static boolean needsQuoting(String identifier) {
-    if (Objects.isNull(identifier)) {
-      return false;
-    }
-    return QUOTING_CACHE.computeIfAbsent(
-        identifier,
-        id -> {
-          if (!UNQUOTED.matcher(id).matches()) {
-            return true;
-          }
-          return RESERVED_KEYWORDS.contains(id.toLowerCase(Locale.ROOT));
-        });
+    IdentifierInfo info =
+        IDENTIFIER_CACHE.computeIfAbsent(
+            identifier,
+            id -> {
+              boolean needed =
+                  !UNQUOTED.matcher(id).matches()
+                      || RESERVED_KEYWORDS.contains(id.toLowerCase(Locale.ROOT));
+              String quoted = "\"".concat(id.replace("\"", "\"\"")).concat("\"");
+              return new IdentifierInfo(needed, quoted);
+            });
+
+    return (opts.quoteIdentifiers() || info.needsQuoting) ? info.quoted : identifier;
   }
 
   private static String formatValue(Object value) {
@@ -171,4 +167,6 @@ public class SqlGenerator {
 
   @Builder(toBuilder = true)
   private record SqlOptions(boolean quoteIdentifiers) {}
+
+  private record IdentifierInfo(boolean needsQuoting, String quoted) {}
 }

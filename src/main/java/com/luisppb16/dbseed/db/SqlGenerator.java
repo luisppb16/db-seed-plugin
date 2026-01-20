@@ -78,18 +78,21 @@ public class SqlGenerator {
                 .append(") VALUES\n");
 
             List<Row> batch = rows.subList(i, Math.min(i + BATCH_SIZE, rows.size()));
-            String values =
-                batch.stream()
-                    .map(
-                        row ->
-                            "("
-                                + columnOrder.stream()
-                                    .map(col -> formatValue(row.values().get(col)))
-                                    .collect(Collectors.joining(", "))
-                                + ")")
-                    .collect(Collectors.joining(",\n"));
-
-            sb.append(values).append(";\n");
+            for (int j = 0; j < batch.size(); j++) {
+              Row row = batch.get(j);
+              sb.append('(');
+              for (int k = 0; k < columnOrder.size(); k++) {
+                sb.append(formatValue(row.values().get(columnOrder.get(k))));
+                if (k < columnOrder.size() - 1) {
+                  sb.append(", ");
+                }
+              }
+              sb.append(')');
+              if (j < batch.size() - 1) {
+                sb.append(",\n");
+              }
+            }
+            sb.append(";\n");
           }
         });
   }

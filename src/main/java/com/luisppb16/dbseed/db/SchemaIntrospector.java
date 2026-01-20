@@ -14,6 +14,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -33,78 +34,128 @@ public class SchemaIntrospector {
 
   private static final String COLUMN_NAME = "COLUMN_NAME";
 
+  private record TableRawData(String name, String schema, String remarks) {}
+
+  private record ColumnRawData(
+      String name,
+      int type,
+      String typeName,
+      boolean nullable,
+      int length,
+      int scale,
+      String remarks) {}
+
+  private record TableKey(String schema, String table) {}
+
   public static List<Table> introspect(final Connection conn, final String schema)
       throws SQLException {
     Objects.requireNonNull(conn, "Connection cannot be null");
     final DatabaseMetaData meta = conn.getMetaData();
     final List<Table> tables = new ArrayList<>();
 
-    try (final ResultSet rs = meta.getTables(null, schema, "%", new String[] {"TABLE"})) {
-      while (rs.next()) {
-        final String tableName = rs.getString("TABLE_NAME");
-        final String tableSchema = rs.getString("TABLE_SCHEM");
-        final String effectiveSchema = tableSchema != null ? tableSchema : schema;
+    final List<TableRawData> rawTables = loadAllTables(meta, schema);
+    final Map<TableKey, List<ColumnRawData>> rawColumns = loadAllColumns(meta, schema);
+    final Map<TableKey, List<String>> allChecks =
+        loadAllCheckConstraints(conn, meta, schema, rawTables, rawColumns);
 
-        final List<String> checks =
-            loadTableCheckConstraints(conn, meta, effectiveSchema, tableName);
-        final List<Column> columns = loadColumns(meta, effectiveSchema, tableName, checks);
-        final List<String> pkCols = loadPrimaryKeys(meta, effectiveSchema, tableName);
-        final List<List<String>> uniqueKeys = loadUniqueKeys(meta, effectiveSchema, tableName);
-        final List<ForeignKey> fks = loadForeignKeys(meta, effectiveSchema, tableName, uniqueKeys);
+    for (final TableRawData tableData : rawTables) {
+      final String tableName = tableData.name();
+      final String tableSchema = tableData.schema();
+      final String effectiveSchema = tableSchema != null ? tableSchema : schema;
+      final TableKey key = new TableKey(tableSchema, tableName);
 
-        tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
-      }
+      final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
+      final List<ColumnRawData> tableCols =
+          rawColumns.getOrDefault(key, Collections.emptyList());
+
+      // We still need to load PKs to identify PK columns.
+      // Optimization: loadPrimaryKeys is called once per table here.
+      final List<String> pkCols = loadPrimaryKeys(meta, effectiveSchema, tableName);
+
+      final List<Column> columns = buildColumns(tableCols, pkCols, checks);
+      final List<List<String>> uniqueKeys = loadUniqueKeys(meta, effectiveSchema, tableName);
+      final List<ForeignKey> fks = loadForeignKeys(meta, effectiveSchema, tableName, uniqueKeys);
+
+      tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
     }
     return tables;
   }
 
-  private static List<Column> loadColumns(
-      final DatabaseMetaData meta,
-      final String schema,
-      final String table,
-      final List<String> checkConstraints)
+  private static List<TableRawData> loadAllTables(final DatabaseMetaData meta, final String schema)
       throws SQLException {
-    final List<Column> columns = new ArrayList<>();
-    final Set<String> pkCols = new LinkedHashSet<>(loadPrimaryKeys(meta, schema, table));
-
-    try (final ResultSet rs = meta.getColumns(null, schema, table, "%")) {
+    final List<TableRawData> list = new ArrayList<>();
+    try (final ResultSet rs = meta.getTables(null, schema, "%", new String[] {"TABLE"})) {
       while (rs.next()) {
-        final String name = rs.getString(COLUMN_NAME);
-        final int type = rs.getInt("DATA_TYPE");
-        final String typeName = rs.getString("TYPE_NAME"); // Fetch type name
-        final boolean nullable = "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE"));
-        final int length = rs.getInt("COLUMN_SIZE");
-        final int scale = rs.getInt("DECIMAL_DIGITS");
-
-        int minValue = 0;
-        int maxValue = 0;
-
-        final int[] bounds = inferBoundsFromChecks(checkConstraints, name);
-        if (bounds.length == 2) {
-          minValue = bounds[0];
-          maxValue = bounds[1];
-        }
-
-        final Set<String> allowedValues = loadAllowedValues();
-        final boolean isUuid =
-            name.toLowerCase(Locale.ROOT).endsWith("guid")
-                || name.toLowerCase(Locale.ROOT).endsWith("uuid") // Check for UUID name convention
-                || type == java.sql.Types.OTHER // H2 often maps UUID to OTHER
-                || (typeName != null && typeName.toLowerCase(Locale.ROOT).contains("uuid"));
-
-        columns.add(
-            new Column(
-                name,
-                type,
-                nullable,
-                pkCols.contains(name),
-                isUuid,
-                length,
-                scale,
-                minValue,
-                maxValue,
-                allowedValues));
+        list.add(
+            new TableRawData(
+                rs.getString("TABLE_NAME"),
+                rs.getString("TABLE_SCHEM"),
+                safe(rs.getString("REMARKS"))));
       }
+    }
+    return list;
+  }
+
+  private static Map<TableKey, List<ColumnRawData>> loadAllColumns(
+      final DatabaseMetaData meta, final String schema) throws SQLException {
+    final Map<TableKey, List<ColumnRawData>> map = new LinkedHashMap<>();
+    try (final ResultSet rs = meta.getColumns(null, schema, "%", "%")) {
+      while (rs.next()) {
+        final String tableName = rs.getString("TABLE_NAME");
+        final String tableSchema = rs.getString("TABLE_SCHEM");
+        final TableKey key = new TableKey(tableSchema, tableName);
+        final ColumnRawData col =
+            new ColumnRawData(
+                rs.getString(COLUMN_NAME),
+                rs.getInt("DATA_TYPE"),
+                rs.getString("TYPE_NAME"),
+                "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")),
+                rs.getInt("COLUMN_SIZE"),
+                rs.getInt("DECIMAL_DIGITS"),
+                safe(rs.getString("REMARKS")));
+        map.computeIfAbsent(key, k -> new ArrayList<>()).add(col);
+      }
+    }
+    return map;
+  }
+
+  private static List<Column> buildColumns(
+      final List<ColumnRawData> rawColumns,
+      final List<String> pkCols,
+      final List<String> checkConstraints) {
+    final List<Column> columns = new ArrayList<>();
+    final Set<String> pkSet = new LinkedHashSet<>(pkCols);
+
+    for (final ColumnRawData raw : rawColumns) {
+      int minValue = 0;
+      int maxValue = 0;
+
+      final int[] bounds = inferBoundsFromChecks(checkConstraints, raw.name());
+      if (bounds.length == 2) {
+        minValue = bounds[0];
+        maxValue = bounds[1];
+      }
+
+      final Set<String> allowedValues = loadAllowedValues();
+      final boolean isUuid =
+          raw.name().toLowerCase(Locale.ROOT).endsWith("guid")
+              || raw.name().toLowerCase(Locale.ROOT).endsWith("uuid")
+              || raw.type() == java.sql.Types.OTHER
+              || (raw.typeName() != null
+                  && raw.typeName().toLowerCase(Locale.ROOT).contains("uuid"));
+
+      columns.add(
+          new Column(
+              raw.name(),
+              raw.type(),
+              raw.nullable(),
+              pkSet.contains(raw.name()),
+              isUuid,
+              raw.length(),
+              raw.scale(),
+              minValue,
+              maxValue,
+              allowedValues));
     }
     return columns;
   }
@@ -178,101 +229,111 @@ public class SchemaIntrospector {
     return new LinkedHashSet<>();
   }
 
-  private static List<String> loadTableCheckConstraints(
-      final Connection conn, final DatabaseMetaData meta, final String schema, final String table)
+  private static Map<TableKey, List<String>> loadAllCheckConstraints(
+      final Connection conn,
+      final DatabaseMetaData meta,
+      final String schema,
+      final List<TableRawData> tables,
+      final Map<TableKey, List<ColumnRawData>> columns)
       throws SQLException {
-    final List<String> checks = new ArrayList<>();
 
+    final Map<TableKey, List<String>> checks = new HashMap<>();
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
+
     if (product.contains("postgres")) {
-      loadPostgresCheckConstraints(conn, schema, table, checks);
+      loadAllPostgresCheckConstraints(conn, schema, checks);
     } else if (product.contains("h2")) {
-      loadH2CheckConstraints(conn, schema, table, checks);
+      loadAllH2CheckConstraints(conn, schema, checks);
     } else {
-      loadGenericCheckConstraints(meta, schema, table, checks);
-    }
-
-    return checks;
-  }
-
-  private static void loadH2CheckConstraints(
-      final Connection conn, final String schema, final String table, final List<String> checks)
-      throws SQLException {
-    final String sql =
-        "SELECT CHECK_CLAUSE "
-            + "FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc "
-            + "JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME "
-            + "WHERE tc.TABLE_SCHEMA = ? AND tc.TABLE_NAME = ? AND tc.CONSTRAINT_TYPE = 'CHECK'";
-    try (final PreparedStatement ps = conn.prepareStatement(sql)) {
-      ps.setString(1, schema == null ? "PUBLIC" : schema.toUpperCase(Locale.ROOT));
-      ps.setString(2, table.toUpperCase(Locale.ROOT));
-      try (final ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) {
-          final String clause = rs.getString("CHECK_CLAUSE");
-          if (clause != null && !clause.isBlank()) {
-            // H2 returns raw expression like "(AGE >= 18) AND (AGE <= 100)"
-            checks.add(clause);
-          }
+      // Generic: from remarks
+      for (final TableRawData table : tables) {
+        final TableKey key = new TableKey(table.schema(), table.name());
+        final List<String> tableChecks = checks.computeIfAbsent(key, k -> new ArrayList<>());
+        if (!table.remarks().isEmpty()) {
+          extractChecksFromText(table.remarks(), tableChecks);
         }
-      }
-    } catch (SQLException e) {
-      log.warn("Failed to load H2 check constraints for table {} in schema {}", table, schema, e);
-      // Propagate or just warn? For introspection, missing checks might be better than full
-      // failure.
-      // But typically introspection should be consistent.
-      // We'll throw to be safe, but log first.
-      throw e;
-    }
-  }
-
-  private static void loadPostgresCheckConstraints(
-      final Connection conn, final String schema, final String table, final List<String> checks)
-      throws SQLException {
-    final String sql =
-        "SELECT conname, pg_get_constraintdef(con.oid) as condef "
-            + "FROM pg_constraint con "
-            + "JOIN pg_class rel ON rel.oid = con.conrelid "
-            + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
-            + "WHERE con.contype = 'c' AND nsp.nspname = ? AND rel.relname = ?";
-    try (final PreparedStatement ps = conn.prepareStatement(sql)) {
-      ps.setString(1, schema == null ? "public" : schema);
-      ps.setString(2, table);
-      try (final ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) {
-          final String def = rs.getString("condef");
-          if (def != null && !def.isBlank()) {
-            final Matcher m = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)").matcher(def);
-            if (m.find()) {
-              checks.add(m.group(1));
-            } else {
-              checks.add(def);
+        final List<ColumnRawData> cols = columns.get(key);
+        if (cols != null) {
+          for (final ColumnRawData col : cols) {
+            if (!col.remarks().isEmpty()) {
+              extractChecksFromText(col.remarks(), tableChecks);
             }
           }
         }
       }
     }
+    return checks;
   }
 
-  private static void loadGenericCheckConstraints(
-      final DatabaseMetaData meta,
-      final String schema,
-      final String table,
-      final List<String> checks)
+  private static void loadAllH2CheckConstraints(
+      final Connection conn, final String schema, final Map<TableKey, List<String>> checks)
       throws SQLException {
-    try (final ResultSet trs = meta.getTables(null, schema, table, new String[] {"TABLE"})) {
-      if (trs.next()) {
-        final String remarks = safe(trs.getString("REMARKS"));
-        if (!remarks.isEmpty()) {
-          extractChecksFromText(remarks, checks);
-        }
-      }
+    final StringBuilder sql =
+        new StringBuilder(
+            "SELECT tc.TABLE_SCHEMA, tc.TABLE_NAME, CHECK_CLAUSE "
+                + "FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc "
+                + "JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME "
+                + "WHERE tc.CONSTRAINT_TYPE = 'CHECK'");
+
+    if (schema != null) {
+      sql.append(" AND tc.TABLE_SCHEMA = ?");
     }
 
-    try (final ResultSet crs = meta.getColumns(null, schema, table, "%")) {
-      while (crs.next()) {
-        final String remarks = safe(crs.getString("REMARKS"));
-        if (!remarks.isEmpty()) {
-          extractChecksFromText(remarks, checks);
+    try (final PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+      if (schema != null) {
+        ps.setString(1, schema.toUpperCase(Locale.ROOT));
+      }
+      try (final ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) {
+          final String tableSchema = rs.getString("TABLE_SCHEMA");
+          final String tableName = rs.getString("TABLE_NAME");
+          final String clause = rs.getString("CHECK_CLAUSE");
+          if (clause != null && !clause.isBlank()) {
+            final TableKey key = new TableKey(tableSchema, tableName);
+            checks.computeIfAbsent(key, k -> new ArrayList<>()).add(clause);
+          }
+        }
+      }
+    } catch (SQLException e) {
+      log.warn("Failed to load H2 check constraints for schema {}", schema, e);
+      throw e;
+    }
+  }
+
+  private static void loadAllPostgresCheckConstraints(
+      final Connection conn, final String schema, final Map<TableKey, List<String>> checks)
+      throws SQLException {
+    final StringBuilder sql =
+        new StringBuilder(
+            "SELECT nsp.nspname, rel.relname, pg_get_constraintdef(con.oid) as condef "
+                + "FROM pg_constraint con "
+                + "JOIN pg_class rel ON rel.oid = con.conrelid "
+                + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
+                + "WHERE con.contype = 'c'");
+
+    if (schema != null) {
+      sql.append(" AND nsp.nspname = ?");
+    }
+
+    try (final PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+      if (schema != null) {
+        ps.setString(1, schema);
+      }
+      try (final ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) {
+          final String tableSchema = rs.getString("nspname");
+          final String tableName = rs.getString("relname");
+          final String def = rs.getString("condef");
+          if (def != null && !def.isBlank()) {
+            final TableKey key = new TableKey(tableSchema, tableName);
+            final List<String> list = checks.computeIfAbsent(key, k -> new ArrayList<>());
+            final Matcher m = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)").matcher(def);
+            if (m.find()) {
+              list.add(m.group(1));
+            } else {
+              list.add(def);
+            }
+          }
         }
       }
     }

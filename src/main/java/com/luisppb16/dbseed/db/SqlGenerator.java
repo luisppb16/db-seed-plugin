@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.Builder;
@@ -24,6 +25,7 @@ import lombok.experimental.UtilityClass;
 public class SqlGenerator {
 
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
+  private static final Map<String, Boolean> QUOTING_CACHE = new ConcurrentHashMap<>();
   private static final int BATCH_SIZE = 1000; // Optimal batch size for most DBs
 
   private static final Set<String> RESERVED_KEYWORDS =
@@ -138,10 +140,14 @@ public class SqlGenerator {
     if (Objects.isNull(identifier)) {
       return false;
     }
-    if (!UNQUOTED.matcher(identifier).matches()) {
-      return true;
-    }
-    return RESERVED_KEYWORDS.contains(identifier.toLowerCase(Locale.ROOT));
+    return QUOTING_CACHE.computeIfAbsent(
+        identifier,
+        id -> {
+          if (!UNQUOTED.matcher(id).matches()) {
+            return true;
+          }
+          return RESERVED_KEYWORDS.contains(id.toLowerCase(Locale.ROOT));
+        });
   }
 
   private static String formatValue(Object value) {

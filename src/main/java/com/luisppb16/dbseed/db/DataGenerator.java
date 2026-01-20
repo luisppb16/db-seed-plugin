@@ -61,6 +61,10 @@ public class DataGenerator {
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
   private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
 
+  private static volatile List<String> englishDictionaryCache;
+  private static volatile List<String> spanishDictionaryCache;
+  private static final Object DICTIONARY_LOCK = new Object();
+
   public static GenerationResult generate(GenerationParameters params) {
 
     Map<String, Table> overridden = applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
@@ -78,7 +82,10 @@ public class DataGenerator {
             .rowsPerTable(params.rowsPerTable())
             .deferred(params.deferred())
             .excludedColumns(excludedColumnsSet)
-            .repetitionRules(params.repetitionRules())
+            .repetitionRules(
+                params.repetitionRules() != null
+                    ? params.repetitionRules()
+                    : Collections.emptyMap())
             .useLatinDictionary(params.useLatinDictionary())
             .useEnglishDictionary(params.useEnglishDictionary())
             .useSpanishDictionary(params.useSpanishDictionary())
@@ -1028,10 +1035,24 @@ public class DataGenerator {
       boolean useLatinDictionary, boolean useEnglishDictionary, boolean useSpanishDictionary) {
     List<String> words = new ArrayList<>();
     if (useEnglishDictionary) {
-      words.addAll(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
+      if (englishDictionaryCache == null) {
+        synchronized (DICTIONARY_LOCK) {
+          if (englishDictionaryCache == null) {
+            englishDictionaryCache = readWordsFromFile(ENGLISH_DICTIONARY_PATH);
+          }
+        }
+      }
+      words.addAll(englishDictionaryCache);
     }
     if (useSpanishDictionary) {
-      words.addAll(readWordsFromFile(SPANISH_DICTIONARY_PATH));
+      if (spanishDictionaryCache == null) {
+        synchronized (DICTIONARY_LOCK) {
+          if (spanishDictionaryCache == null) {
+            spanishDictionaryCache = readWordsFromFile(SPANISH_DICTIONARY_PATH);
+          }
+        }
+      }
+      words.addAll(spanishDictionaryCache);
     }
     if (useLatinDictionary || words.isEmpty()) {
       return Collections.emptyList();

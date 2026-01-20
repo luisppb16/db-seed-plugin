@@ -40,7 +40,7 @@ class ModelTest {
     @DisplayName("Column constructor should create a valid column")
     void columnConstructorValid() {
       Column column =
-          new Column("id", Types.INTEGER, true, true, false, 10, 0, 0, 100, Set.of("1", "2"));
+          new Column("id", Types.INTEGER, true, true, false, 10, 0, 100, 100, Set.of("1", "2"));
       assertNotNull(column);
       assertEquals("id", column.name());
       assertEquals(Types.INTEGER, column.jdbcType());

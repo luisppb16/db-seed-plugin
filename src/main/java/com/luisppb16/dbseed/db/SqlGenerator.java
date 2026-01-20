@@ -85,7 +85,7 @@ public class SqlGenerator {
               Row row = batch.get(j);
               sb.append('(');
               for (int k = 0; k < columnOrder.size(); k++) {
-                sb.append(formatValue(row.values().get(columnOrder.get(k))));
+                formatValue(row.values().get(columnOrder.get(k)), sb);
                 if (k < columnOrder.size() - 1) {
                   sb.append(", ");
                 }
@@ -148,17 +148,31 @@ public class SqlGenerator {
   }
 
   private static String formatValue(Object value) {
-    return switch (value) {
-      case null -> "NULL";
-      case SqlKeyword k -> k.name();
-      case String s -> "'".concat(escapeSql(s)).concat("'");
-      case Character c -> "'".concat(escapeSql(c.toString())).concat("'");
-      case UUID u -> "'".concat(u.toString()).concat("'");
-      case Date d -> "'".concat(d.toString()).concat("'");
-      case Timestamp t -> "'".concat(t.toString()).concat("'");
-      case Boolean b -> String.valueOf(b).toUpperCase(Locale.ROOT);
-      default -> Objects.toString(value, "NULL");
-    };
+    StringBuilder sb = new StringBuilder();
+    formatValue(value, sb);
+    return sb.toString();
+  }
+
+  private static void formatValue(Object value, StringBuilder sb) {
+    if (value == null) {
+      sb.append("NULL");
+    } else if (value instanceof SqlKeyword k) {
+      sb.append(k.name());
+    } else if (value instanceof String s) {
+      sb.append("'").append(escapeSql(s)).append("'");
+    } else if (value instanceof Character c) {
+      sb.append("'").append(escapeSql(c.toString())).append("'");
+    } else if (value instanceof UUID u) {
+      sb.append("'").append(u.toString()).append("'");
+    } else if (value instanceof Date d) {
+      sb.append("'").append(d.toString()).append("'");
+    } else if (value instanceof Timestamp t) {
+      sb.append("'").append(t.toString()).append("'");
+    } else if (value instanceof Boolean b) {
+      sb.append(String.valueOf(b).toUpperCase(Locale.ROOT));
+    } else {
+      sb.append(Objects.toString(value, "NULL"));
+    }
   }
 
   private static String escapeSql(String s) {

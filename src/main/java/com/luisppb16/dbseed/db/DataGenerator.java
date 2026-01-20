@@ -489,8 +489,15 @@ public class DataGenerator {
   private static void resolveForeignKeysForTable(Table table, ForeignKeyResolutionContext context) {
     List<Row> rows = Objects.requireNonNull(context.data().get(table));
 
-    Predicate<ForeignKey> fkIsNullable =
-        fk -> fk.columnMapping().keySet().stream().map(table::column).allMatch(Column::nullable);
+    Map<ForeignKey, Boolean> fkNullableCache =
+        table.foreignKeys().stream()
+            .collect(
+                Collectors.toMap(
+                    fk -> fk,
+                    fk ->
+                        fk.columnMapping().keySet().stream()
+                            .map(table::column)
+                            .allMatch(Column::nullable)));
 
     List<List<String>> uniqueKeysOnFks =
         table.uniqueKeys().stream()
@@ -508,7 +515,8 @@ public class DataGenerator {
                   .foreignKeys()
                   .forEach(
                       fk ->
-                          resolveSingleForeignKey(fk, table, row, fkIsNullable.test(fk), context)));
+                          resolveSingleForeignKey(
+                              fk, table, row, fkNullableCache.getOrDefault(fk, false), context)));
     }
 
     context.inserted().add(table.name());

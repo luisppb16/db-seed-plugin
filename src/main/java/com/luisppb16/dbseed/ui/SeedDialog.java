@@ -61,6 +61,43 @@ public final class SeedDialog extends DialogWrapper {
   private final JTextField schemaField = new JTextField("public");
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
+  
+  // Soft Delete UI Components - Removed from here, moved to PkUuidSelectionDialog
+  // But we still need to capture the values if they were passed in config to pass them forward?
+  // Actually, SeedDialog is Step 2. PkUuidSelectionDialog is Step 3.
+  // The user requested to move Soft Delete config to Step 3.
+  // So we remove it from here.
+  
+  // However, we need to preserve the values if they exist in the loaded config so we can pass them to the next step?
+  // Or simply let the next step load them from global config / defaults?
+  // The GenerateSeedAction orchestrates this. It gets config from SeedDialog.
+  // Then it introspects schema.
+  // Then it shows PkUuidSelectionDialog.
+  // So SeedDialog needs to return a GenerationConfig.
+  // If we remove the UI fields from here, we can't let the user edit them here.
+  // But we should still probably carry over the values if we want to persist them in the same GenerationConfig object?
+  // Or we can add fields to PkUuidSelectionDialog and have THAT dialog return the final config or updated values.
+  
+  // Let's remove the UI components from here first.
+  // We will store the soft delete values temporarily if needed, or just ignore them here and let Step 3 handle it.
+  // Since GenerationConfig is immutable, we build it at the end of this dialog.
+  // We can just set null/defaults here for soft delete, and let Step 3 fill them in?
+  // Wait, GenerateSeedAction uses `seedDialog.getConfiguration()` to get the config.
+  // Then it passes that config to `SchemaIntrospector`.
+  // Then it creates `PkUuidSelectionDialog`.
+  // If we move the config to Step 3, `PkUuidSelectionDialog` needs to expose these settings.
+  // And `GenerateSeedAction` needs to merge the results.
+  
+  // So for this file: Remove Soft Delete UI.
+  // We will keep the fields in GenerationConfig, but here we can just pass null or defaults.
+  // Actually, better to pass what we loaded from persistence, so we don't lose it if the user cancels step 3?
+  // No, if user cancels step 3, nothing is saved.
+  // But we want to pre-fill Step 3 with saved values.
+  // So we should probably read the saved config in Step 3 as well, or pass it from here.
+  
+  private String loadedSoftDeleteColumns;
+  private boolean loadedSoftDeleteUseSchemaDefault;
+  private String loadedSoftDeleteValue;
 
   public SeedDialog(@Nullable final String urlTemplate) {
     super(true);
@@ -136,25 +173,12 @@ public final class SeedDialog extends DialogWrapper {
     if (project != null) {
       final GenerationConfig config = ConnectionConfigPersistence.load(project);
 
-      // Determine which URL to use.
-      // If a template is provided (user selected a driver), we prefer the template structure.
-      // However, if the saved config matches the driver type, we might want to reuse the saved URL.
-      // But typically, if the user explicitly selects a driver, they expect the default template for that driver,
-      // OR the last used configuration for THAT driver if available.
-      
-      // Current logic:
-      // 1. If urlTemplate is null, use config.url() or default.
-      // 2. If urlTemplate is NOT null (driver selected):
-      //    a. Check if config.url() matches the driver type of urlTemplate.
-      //    b. If it matches, use config.url() (restore previous session).
-      //    c. If it doesn't match (switching drivers), use urlTemplate.
-
       String urlToUse = urlTemplate;
       boolean usingSavedConfig = false;
 
       if (urlToUse == null) {
         urlToUse = Objects.requireNonNullElse(config.url(), DEFAULT_POSTGRES_URL);
-        usingSavedConfig = true; // Implicitly using saved config if available
+        usingSavedConfig = true; 
       } else {
         if (config.url() != null && isSameDriverType(urlTemplate, config.url())) {
           urlToUse = config.url();
@@ -180,59 +204,50 @@ public final class SeedDialog extends DialogWrapper {
         databaseField.setText(dbName);
       } else {
         final int lastSlashIndex = urlToUse.lastIndexOf('/');
-        // Only split if we are restoring a full URL (saved config) or if the template happens to have a default DB.
-        // If we are using a raw template that ends in /, we might want to keep it as is and clear the DB field.
         
         if (lastSlashIndex > 0 && lastSlashIndex < urlToUse.length() - 1) {
            urlField.setText(urlToUse.substring(0, lastSlashIndex + 1));
            databaseField.setText(urlToUse.substring(lastSlashIndex + 1));
         } else {
            urlField.setText(urlToUse);
-           // If we switched drivers (not using saved config), we should probably reset the database field
-           // to avoid showing a leftover DB name from a previous driver if the URL parsing didn't overwrite it.
-           // But databaseField is initialized to "postgres" or empty depending on logic.
-           // If we are using the template, let's try to extract a default DB if present, or clear it.
            if (!usingSavedConfig) {
-               // If the template ends with /, it means no DB is specified yet.
                if (urlToUse.endsWith("/")) {
                    databaseField.setText("");
-               } else {
-                   // Some templates might be "jdbc:mysql://localhost:3306/db".
-                   // The split logic above handles it if there is a slash.
-                   // If no slash, maybe it's a file path or something else.
-                   // For safety when switching drivers, if we can't parse a DB name, reset it to default or empty.
-                   // But let's stick to the existing behavior unless it's clearly wrong.
-                   // The issue reported is "not putting the correct default URL".
-                   // This usually happens when switching drivers and the old URL persists or the template isn't used.
                }
            }
         }
       }
 
-      // Only restore other fields if we are using the saved configuration (same driver type).
-      // Otherwise, use defaults for the new driver.
       if (usingSavedConfig) {
         userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
         passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
         schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
         rowsSpinner.setValue(config.rowsPerTable());
         deferredBox.setSelected(config.deferred());
+        
+        // Capture loaded values to pass them through, even if not edited here
+        loadedSoftDeleteColumns = config.softDeleteColumns();
+        loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
+        loadedSoftDeleteValue = config.softDeleteValue();
+        
       } else {
-        // Reset to defaults for a new driver selection
         userField.setText(DEFAULT_POSTGRES_USER);
         passwordField.setText("");
         schemaField.setText("public");
-        // Keep rows and deferred as they are generic settings, or reset them?
-        // Usually better to keep generic preferences.
         rowsSpinner.setValue(config.rowsPerTable() > 0 ? config.rowsPerTable() : 10);
         deferredBox.setSelected(config.deferred());
+        
+        // Defaults
+        DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
+        loadedSoftDeleteColumns = globalSettings.softDeleteColumns;
+        loadedSoftDeleteUseSchemaDefault = globalSettings.softDeleteUseSchemaDefault;
+        loadedSoftDeleteValue = globalSettings.softDeleteValue;
       }
     }
   }
 
   private boolean isSameDriverType(String template, String savedUrl) {
     if (template == null || savedUrl == null) return false;
-    // Simple heuristic: check if the protocol part (e.g., jdbc:postgresql:) matches.
     int firstColon = template.indexOf(':');
     int secondColon = template.indexOf(':', firstColon + 1);
     if (secondColon > 0) {
@@ -273,13 +288,13 @@ public final class SeedDialog extends DialogWrapper {
     addRow(panel, c, row++, "JDBC URL:", urlField);
     addRow(panel, c, row++, "User:", userField);
     addRow(
-        panel, c, row++, "Password:", createPasswordFieldWithToggle()); // Use the new helper method
+        panel, c, row++, "Password:", createPasswordFieldWithToggle());
     addRow(panel, c, row++, "Database:", databaseField);
     addRow(panel, c, row++, "Schema:", schemaField);
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
 
     c.gridx = 0;
-    c.gridy = row;
+    c.gridy = row++;
     c.gridwidth = 2;
     c.anchor = GridBagConstraints.WEST;
     panel.add(deferredBox, c);
@@ -288,17 +303,13 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private JLayeredPane createPasswordFieldWithToggle() {
-    // Create a JLayeredPane for the password field and the show/hide button
     final JLayeredPane passwordLayeredPane = new JLayeredPane();
-    passwordLayeredPane.setPreferredSize(passwordField.getPreferredSize()); // Set initial size
+    passwordLayeredPane.setPreferredSize(passwordField.getPreferredSize());
 
-    // Get the original border of the JPasswordField
     final Border originalBorder = passwordField.getBorder();
-    // Create a CompoundBorder: original border + empty border on the right for the button
     passwordField.setBorder(new CompoundBorder(originalBorder, JBUI.Borders.emptyRight(30)));
     passwordLayeredPane.add(passwordField, JLayeredPane.DEFAULT_LAYER);
 
-    // Configure showPasswordButton
     final JToggleButton showPasswordButton = new JToggleButton(AllIcons.Actions.Show);
     showPasswordButton.setFocusPainted(false);
     showPasswordButton.setContentAreaFilled(false);
@@ -307,22 +318,21 @@ public final class SeedDialog extends DialogWrapper {
     showPasswordButton.addActionListener(
         e -> {
           if (showPasswordButton.isSelected()) {
-            passwordField.setEchoChar((char) 0); // Show password
+            passwordField.setEchoChar((char) 0);
           } else {
-            passwordField.setEchoChar('•'); // Hide password
+            passwordField.setEchoChar('•');
           }
         });
     passwordLayeredPane.add(
-        showPasswordButton, JLayeredPane.PALETTE_LAYER); // Add to a higher layer
+        showPasswordButton, JLayeredPane.PALETTE_LAYER);
 
-    // Add a component listener to resize and reposition components within the layered pane
     passwordLayeredPane.addComponentListener(
         new ComponentAdapter() {
           @Override
           public void componentResized(ComponentEvent e) {
             passwordField.setBounds(
                 0, 0, passwordLayeredPane.getWidth(), passwordLayeredPane.getHeight());
-            final int buttonWidth = 24; // Approximate width of the button
+            final int buttonWidth = 24;
             final int buttonHeight = passwordLayeredPane.getHeight();
             showPasswordButton.setBounds(
                 passwordLayeredPane.getWidth() - buttonWidth - 2, 0, buttonWidth, buttonHeight);
@@ -336,7 +346,6 @@ public final class SeedDialog extends DialogWrapper {
     final String database = databaseField.getText().trim();
 
     if (url.startsWith("jdbc:sqlserver")) {
-      // Remove existing databaseName if present to avoid duplication
       url = url.replaceAll("databaseName=[^;]+;?", "");
       if (!url.endsWith(";")) {
         url += ";";
@@ -353,6 +362,10 @@ public final class SeedDialog extends DialogWrapper {
         .schema(schemaField.getText().trim())
         .rowsPerTable((Integer) rowsSpinner.getValue())
         .deferred(deferredBox.isSelected())
+        // Pass through loaded values
+        .softDeleteColumns(loadedSoftDeleteColumns)
+        .softDeleteUseSchemaDefault(loadedSoftDeleteUseSchemaDefault)
+        .softDeleteValue(loadedSoftDeleteValue)
         .build();
   }
 

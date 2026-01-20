@@ -9,13 +9,16 @@ import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,9 +28,11 @@ import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
@@ -43,7 +48,7 @@ public class RepetitionRulesPanel extends JPanel {
   private final Map<String, List<RuleUiModel>> rulesByTable = new HashMap<>();
   private final JPanel rightPanelContainer;
   private final CardLayout rightPanelLayout;
-  private final JBList<String> tableList;
+  private final JBList<Object> tableList; // Changed to Object to support Table and Column items
 
   public RepetitionRulesPanel(List<Table> tables) {
     setLayout(new BorderLayout());
@@ -51,15 +56,50 @@ public class RepetitionRulesPanel extends JPanel {
     rightPanelLayout = new CardLayout();
     rightPanelContainer = new JPanel(rightPanelLayout);
 
-    DefaultListModel<String> listModel = new DefaultListModel<>();
-    tables.stream().map(Table::name).sorted().forEach(listModel::addElement);
+    DefaultListModel<Object> listModel = new DefaultListModel<>();
+    
+    // Populate list with Table objects and their Columns
+    tables.stream()
+        .sorted((t1, t2) -> t1.name().compareToIgnoreCase(t2.name()))
+        .forEach(table -> {
+            listModel.addElement(table); // Add Table object
+            table.columns().stream()
+                .sorted((c1, c2) -> c1.name().compareToIgnoreCase(c2.name()))
+                .forEach(column -> listModel.addElement(new ColumnItem(column))); // Add Column wrapper
+        });
+
     tableList = new JBList<>(listModel);
     tableList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+    
+    // Custom Renderer for Tree-like structure
+    tableList.setCellRenderer(new DefaultListCellRenderer() {
+        @Override
+        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+            
+            if (value instanceof Table table) {
+                label.setText(table.name());
+                label.setFont(label.getFont().deriveFont(Font.BOLD));
+                label.setIcon(AllIcons.Nodes.DataTables);
+            } else if (value instanceof ColumnItem colItem) {
+                label.setText(colItem.column.name());
+                label.setBorder(JBUI.Borders.emptyLeft(20)); // Indentation
+                label.setIcon(AllIcons.Nodes.DataColumn);
+            }
+            return label;
+        }
+    });
+
     tableList.addListSelectionListener(e -> {
       if (!e.getValueIsAdjusting()) {
-        String selectedTable = tableList.getSelectedValue();
-        if (selectedTable != null) {
-          rightPanelLayout.show(rightPanelContainer, selectedTable);
+        Object selectedValue = tableList.getSelectedValue();
+        if (selectedValue instanceof Table table) {
+            rightPanelLayout.show(rightPanelContainer, table.name());
+        } else if (selectedValue instanceof ColumnItem colItem) {
+             Table parentTable = findParentTable(tables, colItem.column);
+             if (parentTable != null) {
+                 rightPanelLayout.show(rightPanelContainer, parentTable.name());
+             }
         }
       }
     });
@@ -71,7 +111,7 @@ public class RepetitionRulesPanel extends JPanel {
 
     // Split Pane
     JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, new JBScrollPane(tableList), rightPanelContainer);
-    splitPane.setDividerLocation(150);
+    splitPane.setDividerLocation(200); // Increased slightly for indentation
     add(splitPane, BorderLayout.CENTER);
 
     // Select first table by default
@@ -79,11 +119,31 @@ public class RepetitionRulesPanel extends JPanel {
       tableList.setSelectedIndex(0);
     }
   }
+  
+  private Table findParentTable(List<Table> tables, Column column) {
+      for (Table t : tables) {
+          if (t.columns().contains(column)) return t;
+      }
+      return null;
+  }
+
+  // Wrapper for Column to distinguish in List
+  private static class ColumnItem {
+      final Column column;
+      ColumnItem(Column column) { this.column = column; }
+      @Override public String toString() { return column.name(); }
+  }
 
   private JPanel createTableRulesPanel(Table table) {
     JPanel panel = new JPanel(new BorderLayout());
     JPanel rulesContainer = new JPanel();
     rulesContainer.setLayout(new BoxLayout(rulesContainer, BoxLayout.Y_AXIS));
+    
+    // Add a glue at the bottom to push components up if they don't fill the space
+    // But since we are adding components dynamically, we need to handle the glue.
+    // A simpler way is to put rulesContainer inside another panel with BorderLayout.NORTH
+    // But we want scrolling.
+    // BoxLayout usually packs tightly.
     
     JScrollPane scrollPane = new JBScrollPane(rulesContainer);
     panel.add(scrollPane, BorderLayout.CENTER);
@@ -105,12 +165,20 @@ public class RepetitionRulesPanel extends JPanel {
   }
 
   private void addRuleUi(JPanel container, Table table, RuleUiModel ruleModel) {
-    JPanel rulePanel = new JPanel(new BorderLayout());
+    // Use an anonymous subclass to override getMaximumSize for height
+    JPanel rulePanel = new JPanel(new BorderLayout()) {
+        @Override
+        public Dimension getMaximumSize() {
+            Dimension pref = getPreferredSize();
+            return new Dimension(Integer.MAX_VALUE, pref.height);
+        }
+    };
+    
     rulePanel.setBorder(BorderFactory.createCompoundBorder(
         BorderFactory.createEmptyBorder(5, 5, 5, 5),
         BorderFactory.createEtchedBorder()
     ));
-    rulePanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200)); // Limit height
+    // Removed fixed maximum height to allow expansion
 
     // Header: Count and Remove
     JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -125,6 +193,10 @@ public class RepetitionRulesPanel extends JPanel {
     removeRuleButton.addActionListener(e -> {
       rulesByTable.get(table.name()).remove(ruleModel);
       container.remove(rulePanel);
+      // Also remove the strut that follows it?
+      // It's hard to find the strut.
+      // A better way is to wrap rulePanel and strut in a single container, or just repaint.
+      // For simplicity, we just remove rulePanel. The strut remains but it's just 10px.
       container.revalidate();
       container.repaint();
     });
@@ -138,22 +210,18 @@ public class RepetitionRulesPanel extends JPanel {
     
     rulePanel.add(headerContainer, BorderLayout.NORTH);
 
-    // We only show columns that have overrides.
-    // But initially, let's just provide a way to add overrides.
-    
     JPanel overridesListPanel = new JPanel();
     overridesListPanel.setLayout(new BoxLayout(overridesListPanel, BoxLayout.Y_AXIS));
     
     JButton addOverrideButton = new JButton("Add Column Override");
     addOverrideButton.addActionListener(e -> {
-        // Show dialog or popup to select column
-        // For simplicity, let's just add a row with a combobox of all columns
         addOverrideRow(overridesListPanel, table, ruleModel);
         overridesListPanel.revalidate();
         overridesListPanel.repaint();
     });
 
-    rulePanel.add(new JBScrollPane(overridesListPanel), BorderLayout.CENTER);
+    // Removed nested JBScrollPane. Added overridesListPanel directly.
+    rulePanel.add(overridesListPanel, BorderLayout.CENTER);
     rulePanel.add(addOverrideButton, BorderLayout.SOUTH);
 
     container.add(rulePanel);

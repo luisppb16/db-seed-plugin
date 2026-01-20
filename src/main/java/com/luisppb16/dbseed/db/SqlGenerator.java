@@ -6,6 +6,7 @@
 package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.model.Column;
+import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -153,6 +154,7 @@ public class SqlGenerator {
   private static String formatValue(Object value) {
     return switch (value) {
       case null -> "NULL";
+      case SqlKeyword k -> k.name();
       case String s -> "'".concat(escapeSql(s)).concat("'");
       case Character c -> "'".concat(escapeSql(c.toString())).concat("'");
       case UUID u -> "'".concat(u.toString()).concat("'");

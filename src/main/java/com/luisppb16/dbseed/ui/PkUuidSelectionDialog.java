@@ -9,6 +9,8 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.util.ui.JBUI;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
+import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
@@ -53,24 +55,36 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private final List<Table> tables;
+  private final GenerationConfig initialConfig;
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
   private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
   private final Set<String> excludedTables = new LinkedHashSet<>();
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
   private final RepetitionRulesPanel repetitionRulesPanel;
 
+  // Soft Delete UI Components
+  private final JTextField softDeleteColumnsField = new JTextField();
+  private final JCheckBox softDeleteUseSchemaDefaultBox = new JCheckBox("Use Schema Default Value");
+  private final JTextField softDeleteValueField = new JTextField();
+
   // Maps to hold checkbox references for cross-tab synchronization
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
 
-  public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
+  public PkUuidSelectionDialog(@NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
+    this.initialConfig = Objects.requireNonNull(initialConfig, "Initial config cannot be null.");
     this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
-    setTitle("PKs UUID & Exclusions - Step 3/3");
+    setTitle("Data Configuration - Step 3/3");
     initDefaults();
     setOKButtonText("Generate");
     init();
+  }
+
+  // Overloaded constructor for backward compatibility if needed, though we should update callers
+  public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
+      this(tables, GenerationConfig.builder().build()); // Empty config if not provided
   }
 
   private void initDefaults() {
@@ -93,6 +107,29 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           defaults.forEach(pkCol -> uuidValues.put(pkCol, UUID.randomUUID().toString()));
           uuidValuesByTable.put(table.name(), uuidValues);
         });
+        
+    // Initialize Soft Delete fields from passed config or global defaults
+    String cols = initialConfig.softDeleteColumns();
+    if (cols == null) {
+        cols = DbSeedSettingsState.getInstance().softDeleteColumns;
+    }
+    softDeleteColumnsField.setText(cols);
+    
+    // For boolean, we can't distinguish between "not set" and "false" easily in the record if we didn't use Boolean wrapper.
+    // But we passed loaded values from SeedDialog.
+    // Let's assume initialConfig has the correct values passed from SeedDialog (which loaded them from persistence or defaults).
+    softDeleteUseSchemaDefaultBox.setSelected(initialConfig.softDeleteUseSchemaDefault());
+    
+    String val = initialConfig.softDeleteValue();
+    if (val == null) {
+        val = DbSeedSettingsState.getInstance().softDeleteValue;
+    }
+    softDeleteValueField.setText(val);
+    
+    softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected());
+    softDeleteUseSchemaDefaultBox.addActionListener(e -> 
+        softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected())
+    );
   }
 
   @Override
@@ -106,6 +143,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
     tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
     tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
+    tabbedPane.addTab("Soft Delete", createSoftDeletePanel());
 
     // Initial synchronization of states
     synchronizeInitialStates();
@@ -114,6 +152,38 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     content.add(tabbedPane, BorderLayout.CENTER);
     content.setPreferredSize(new Dimension(650, 500));
     return content;
+  }
+  
+  private JPanel createSoftDeletePanel() {
+      JPanel panel = new JPanel(new GridBagLayout());
+      panel.setBorder(JBUI.Borders.empty(10));
+      GridBagConstraints c = new GridBagConstraints();
+      c.fill = GridBagConstraints.HORIZONTAL;
+      c.anchor = GridBagConstraints.NORTHWEST;
+      c.insets = JBUI.insets(5);
+      c.weightx = 1.0;
+      
+      c.gridx = 0; c.gridy = 0;
+      panel.add(new JLabel("Soft Delete Columns (comma separated):"), c);
+      
+      c.gridy++;
+      panel.add(softDeleteColumnsField, c);
+      
+      c.gridy++;
+      panel.add(softDeleteUseSchemaDefaultBox, c);
+      
+      c.gridy++;
+      panel.add(new JLabel("Soft Delete Value (if not using schema default):"), c);
+      
+      c.gridy++;
+      panel.add(softDeleteValueField, c);
+      
+      // Filler
+      c.gridy++;
+      c.weighty = 1.0;
+      panel.add(new JPanel(), c);
+      
+      return panel;
   }
 
   private void synchronizeInitialStates() {
@@ -642,6 +712,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public Map<String, List<RepetitionRule>> getRepetitionRules() {
     return repetitionRulesPanel.getRules();
+  }
+  
+  public String getSoftDeleteColumns() {
+      return softDeleteColumnsField.getText().trim();
+  }
+  
+  public boolean getSoftDeleteUseSchemaDefault() {
+      return softDeleteUseSchemaDefaultBox.isSelected();
+  }
+  
+  public String getSoftDeleteValue() {
+      return softDeleteValueField.getText().trim();
   }
 
   private final class BackAction extends AbstractAction {

@@ -8,6 +8,7 @@ package com.luisppb16.dbseed.db;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.RepetitionRule;
+import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import java.io.IOException;
 import java.io.InputStream;
@@ -89,6 +90,9 @@ public class DataGenerator {
             .useLatinDictionary(params.useLatinDictionary())
             .useEnglishDictionary(params.useEnglishDictionary())
             .useSpanishDictionary(params.useSpanishDictionary())
+            .softDeleteColumns(params.softDeleteColumns())
+            .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+            .softDeleteValue(params.softDeleteValue())
             .build());
   }
 
@@ -153,7 +157,10 @@ public class DataGenerator {
             data,
             dictionaryWords,
             tableMap,
-            params.deferred());
+            params.deferred(),
+            params.softDeleteColumns(),
+            params.softDeleteUseSchemaDefault(),
+            params.softDeleteValue());
 
     executeGenerationSteps(context);
 
@@ -182,6 +189,9 @@ public class DataGenerator {
             .tableConstraints(context.tableConstraints())
             .data(context.data())
             .dictionaryWords(context.dictionaryWords())
+            .softDeleteColumns(context.softDeleteColumns())
+            .softDeleteUseSchemaDefault(context.softDeleteUseSchemaDefault())
+            .softDeleteValue(context.softDeleteValue())
             .build());
 
     validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data());
@@ -190,6 +200,14 @@ public class DataGenerator {
   }
 
   private static void generateTableRows(GenerateTableRowsParameters params) {
+
+    Set<String> softDeleteCols = new HashSet<>();
+    if (params.softDeleteColumns() != null) {
+        Arrays.stream(params.softDeleteColumns().split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .forEach(softDeleteCols::add);
+    }
 
     params
         .orderedTables()
@@ -222,7 +240,11 @@ public class DataGenerator {
               AtomicInteger generatedCount = new AtomicInteger(0);
               
               // 1. Process Repetition Rules first
-              List<RepetitionRule> rules = params.repetitionRules().getOrDefault(table.name(), Collections.emptyList());
+              List<RepetitionRule> rules = Collections.emptyList();
+              if (params.repetitionRules() != null) {
+                  rules = params.repetitionRules().getOrDefault(table.name(), Collections.emptyList());
+              }
+
               for (RepetitionRule rule : rules) {
                   // Generate base values for this rule
                   Map<String, Object> baseValues = new HashMap<>();
@@ -247,6 +269,9 @@ public class DataGenerator {
                                   .isFkColumn(isFkColumn)
                                   .excluded(excluded)
                                   .dictionaryWords(params.dictionaryWords())
+                                  .softDeleteCols(softDeleteCols)
+                                  .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                                  .softDeleteValue(params.softDeleteValue())
                                   .build(),
                               col
                           );
@@ -276,6 +301,9 @@ public class DataGenerator {
                                   .dictionaryWords(params.dictionaryWords())
                                   .seenPrimaryKeys(seenPrimaryKeys)
                                   .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
+                                  .softDeleteCols(softDeleteCols)
+                                  .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                                  .softDeleteValue(params.softDeleteValue())
                                   .build(),
                               baseValues
                           );
@@ -308,6 +336,9 @@ public class DataGenerator {
                             .dictionaryWords(params.dictionaryWords())
                             .seenPrimaryKeys(seenPrimaryKeys)
                             .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
+                            .softDeleteCols(softDeleteCols)
+                            .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                            .softDeleteValue(params.softDeleteValue())
                             .build());
 
                 generatedRow.ifPresent(
@@ -338,6 +369,16 @@ public class DataGenerator {
       return null;
     }
 
+    // Soft Delete Check
+    if (params.softDeleteCols() != null && params.softDeleteCols().contains(column.name())) {
+        if (params.softDeleteUseSchemaDefault()) {
+            return SqlKeyword.DEFAULT; // Use DEFAULT keyword
+        } else {
+            // Try to parse the user provided value based on column type
+            return parseSoftDeleteValue(params.softDeleteValue(), column);
+        }
+    }
+
     if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
       return null;
     }
@@ -353,6 +394,23 @@ public class DataGenerator {
             params.dictionaryWords());
 
     return applyNumericConstraints(column, pc, gen);
+  }
+
+  private static Object parseSoftDeleteValue(String value, Column column) {
+      if (value == null || "NULL".equalsIgnoreCase(value)) return null;
+      try {
+          return switch (column.jdbcType()) {
+              case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
+              case Types.BIGINT -> Long.parseLong(value);
+              case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(value);
+              case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
+              case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
+              default -> value;
+          };
+      } catch (Exception e) {
+          log.warn("Failed to parse soft delete value '{}' for column {}. Using NULL.", value, column.name());
+          return null;
+      }
   }
 
   private static Object applyNumericConstraints(
@@ -396,6 +454,9 @@ public class DataGenerator {
                     .isFkColumn(params.isFkColumn())
                     .excluded(params.excluded())
                     .dictionaryWords(params.dictionaryWords())
+                    .softDeleteCols(params.softDeleteCols())
+                    .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                    .softDeleteValue(params.softDeleteValue())
                     .build(),
                  column
              ));
@@ -1377,7 +1438,10 @@ public class DataGenerator {
       Map<String, List<RepetitionRule>> repetitionRules,
       boolean useLatinDictionary,
       boolean useEnglishDictionary,
-      boolean useSpanishDictionary) {}
+      boolean useSpanishDictionary,
+      String softDeleteColumns,
+      boolean softDeleteUseSchemaDefault,
+      String softDeleteValue) {}
 
   @Builder
   private record GenerationInternalParameters(
@@ -1388,7 +1452,10 @@ public class DataGenerator {
       Map<String, List<RepetitionRule>> repetitionRules,
       boolean useLatinDictionary,
       boolean useEnglishDictionary,
-      boolean useSpanishDictionary) {}
+      boolean useSpanishDictionary,
+      String softDeleteColumns,
+      boolean softDeleteUseSchemaDefault,
+      String softDeleteValue) {}
 
   private record GenerationContext(
       List<Table> orderedTables,
@@ -1404,7 +1471,10 @@ public class DataGenerator {
       boolean deferred,
       List<PendingUpdate> updates,
       Set<String> inserted,
-      Map<String, Deque<Row>> uniqueFkParentQueues) {
+      Map<String, Deque<Row>> uniqueFkParentQueues,
+      String softDeleteColumns,
+      boolean softDeleteUseSchemaDefault,
+      String softDeleteValue) {
 
     GenerationContext(
         List<Table> orderedTables,
@@ -1417,7 +1487,10 @@ public class DataGenerator {
         Map<Table, List<Row>> data,
         List<String> dictionaryWords,
         Map<String, Table> tableMap,
-        boolean deferred) {
+        boolean deferred,
+        String softDeleteColumns,
+        boolean softDeleteUseSchemaDefault,
+        String softDeleteValue) {
       this(
           orderedTables,
           rowsPerTable,
@@ -1432,7 +1505,10 @@ public class DataGenerator {
           deferred,
           new ArrayList<>(),
           new HashSet<>(),
-          new HashMap<>());
+          new HashMap<>(),
+          softDeleteColumns,
+          softDeleteUseSchemaDefault,
+          softDeleteValue);
     }
   }
 
@@ -1446,7 +1522,10 @@ public class DataGenerator {
       Set<UUID> usedUuids,
       Map<String, Map<String, ParsedConstraint>> tableConstraints,
       Map<Table, List<Row>> data,
-      List<String> dictionaryWords) {}
+      List<String> dictionaryWords,
+      String softDeleteColumns,
+      boolean softDeleteUseSchemaDefault,
+      String softDeleteValue) {}
 
   @Builder
   private record GenerateSingleRowParameters(
@@ -1457,7 +1536,10 @@ public class DataGenerator {
       Map<String, ParsedConstraint> constraints,
       Predicate<Column> isFkColumn,
       Set<String> excluded,
-      List<String> dictionaryWords) {}
+      List<String> dictionaryWords,
+      Set<String> softDeleteCols,
+      boolean softDeleteUseSchemaDefault,
+      String softDeleteValue) {}
 
   @Builder
   private record GenerateAndValidateRowParameters(
@@ -1470,7 +1552,10 @@ public class DataGenerator {
       Set<String> excluded,
       List<String> dictionaryWords,
       Set<String> seenPrimaryKeys,
-      Map<String, Set<String>> seenUniqueKeyCombinations) {}
+      Map<String, Set<String>> seenUniqueKeyCombinations,
+      Set<String> softDeleteCols,
+      boolean softDeleteUseSchemaDefault,
+      String softDeleteValue) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,

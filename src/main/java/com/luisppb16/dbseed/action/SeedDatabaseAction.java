@@ -30,6 +30,7 @@ import com.luisppb16.dbseed.db.DataGenerator;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
+import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
@@ -217,13 +218,14 @@ public class SeedDatabaseAction extends AnAction {
     final List<Table> ordered =
         sort.ordered().stream().map(tableByName::get).filter(Objects::nonNull).toList();
 
-    final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(ordered);
+    final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(ordered, config);
     pkDialog.show();
 
     final int exitCode = pkDialog.getExitCode();
     if (exitCode == DialogWrapper.OK_EXIT_CODE) {
       final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
       final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
+      final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
 
       final Map<String, Map<String, String>> pkUuidOverrides =
           selectedPkUuidColumns.entrySet().stream()
@@ -239,6 +241,13 @@ public class SeedDatabaseAction extends AnAction {
               .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
       final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+      
+      // Update config with Soft Delete settings from Step 3
+      final GenerationConfig finalConfig = config.toBuilder()
+          .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+          .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+          .softDeleteValue(pkDialog.getSoftDeleteValue())
+          .build();
 
       ProgressManager.getInstance()
           .run(
@@ -252,22 +261,27 @@ public class SeedDatabaseAction extends AnAction {
 
                     final boolean mustForceDeferred =
                         requiresDeferredDueToNonNullableCycles(sort, tableByName);
-                    final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
+                    final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
                     log.debug("Effective deferred: {}", effectiveDeferred);
 
                     final DataGenerator.GenerationResult gen =
                         DataGenerator.generate(
                             DataGenerator.GenerationParameters.builder()
                                 .tables(ordered)
-                                .rowsPerTable(config.rowsPerTable())
+                                .rowsPerTable(finalConfig.rowsPerTable())
                                 .deferred(effectiveDeferred)
                                 .pkUuidOverrides(pkUuidOverrides)
                                 .excludedColumns(excludedColumns)
+                                .repetitionRules(repetitionRules)
+                                .useLatinDictionary(settings.useLatinDictionary)
                                 .useEnglishDictionary(settings.useEnglishDictionary)
                                 .useSpanishDictionary(settings.useSpanishDictionary)
+                                .softDeleteColumns(finalConfig.softDeleteColumns())
+                                .softDeleteUseSchemaDefault(finalConfig.softDeleteUseSchemaDefault())
+                                .softDeleteValue(finalConfig.softDeleteValue())
                                 .build());
                     log.info(
-                        "Data generation completed for {} rows per table.", config.rowsPerTable());
+                        "Data generation completed for {} rows per table.", finalConfig.rowsPerTable());
 
                     indicator.setText("Building SQL...");
                     indicator.setFraction(0.8);

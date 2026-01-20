@@ -144,7 +144,8 @@ public final class GenerateSeedAction extends AnAction {
       }
 
       // Step 2: Show PkUuidSelectionDialog (EDT)
-      final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(tables);
+      // Pass the config from Step 2 to Step 3 so it can be updated with Soft Delete settings
+      final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(tables, config);
       if (!pkDialog.showAndGet()) {
           return;
       }
@@ -152,6 +153,13 @@ public final class GenerateSeedAction extends AnAction {
       final Map<String, Set<String>> pkUuidOverrides = pkDialog.getSelectionByTable();
       final Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
       final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
+      
+      // Update config with Soft Delete settings from Step 3
+      final GenerationConfig finalConfig = config.toBuilder()
+          .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+          .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+          .softDeleteValue(pkDialog.getSoftDeleteValue())
+          .build();
 
       // Step 3: Generate Data (Background)
       ProgressManager.getInstance()
@@ -162,15 +170,13 @@ public final class GenerateSeedAction extends AnAction {
                   try {
                     final String sql =
                         generateSeedSql(
-                            config,
+                            finalConfig,
                             tables,
                             pkUuidOverrides,
                             excludedColumns,
                             repetitionRules,
                             indicator,
-                            settings.useLatinDictionary,
-                            settings.useEnglishDictionary,
-                            settings.useSpanishDictionary);
+                            settings);
                     ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
                   } catch (final Exception ex) {
                     handleException(project, ex);
@@ -190,9 +196,7 @@ public final class GenerateSeedAction extends AnAction {
       Map<String, Set<String>> excludedColumns,
       Map<String, List<RepetitionRule>> repetitionRules,
       @NotNull final ProgressIndicator indicator,
-      final boolean useLatinDictionary,
-      final boolean useEnglishDictionary,
-      final boolean useSpanishDictionary)
+      DbSeedSettingsState settings)
       throws Exception {
 
       Map<String, Map<String, String>> pkUuidOverridesAdapted = pkUuidOverrides.entrySet().stream()
@@ -228,9 +232,12 @@ public final class GenerateSeedAction extends AnAction {
                   .pkUuidOverrides(pkUuidOverridesAdapted)
                   .excludedColumns(excludedColumnsList)
                   .repetitionRules(repetitionRules)
-                  .useLatinDictionary(useLatinDictionary)
-                  .useEnglishDictionary(useEnglishDictionary)
-                  .useSpanishDictionary(useSpanishDictionary)
+                  .useLatinDictionary(settings.useLatinDictionary)
+                  .useEnglishDictionary(settings.useEnglishDictionary)
+                  .useSpanishDictionary(settings.useSpanishDictionary)
+                  .softDeleteColumns(config.softDeleteColumns())
+                  .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
+                  .softDeleteValue(config.softDeleteValue())
                   .build());
 
       indicator.setText("Building SQL...");

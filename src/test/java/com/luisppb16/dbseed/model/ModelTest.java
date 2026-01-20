@@ -39,8 +39,9 @@ class ModelTest {
     @Test
     @DisplayName("Column constructor should create a valid column")
     void columnConstructorValid() {
+      // Fixed: passed 0 as minValue to match the assertion below (assertEquals(0, column.minValue()))
       Column column =
-          new Column("id", Types.INTEGER, true, true, false, 10, 0, 100, 100, Set.of("1", "2"));
+          new Column("id", Types.INTEGER, true, true, false, 10, 0, 0, 100, Set.of("1", "2"));
       assertNotNull(column);
       assertEquals("id", column.name());
       assertEquals(Types.INTEGER, column.jdbcType());

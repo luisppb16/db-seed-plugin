@@ -9,9 +9,9 @@ import static com.luisppb16.dbseed.model.Constant.APP_NAME;
 import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -78,6 +78,16 @@ public final class GenerateSeedAction extends AnAction {
   }
 
   @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
+  }
+
+  @Override
+  public boolean isDumbAware() {
+    return true;
+  }
+
+  @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
     if (project == null) {
@@ -110,8 +120,36 @@ public final class GenerateSeedAction extends AnAction {
       final DriverInfo chosenDriver = chosenDriverOpt.get();
       props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
 
-      DriverLoader.ensureDriverPresent(chosenDriver);
+      // Note: This action seems legacy compared to SeedDatabaseAction,
+      // but we apply the fix here as well to avoid freezing if invoked.
+      // Ideally, we should refactor to use the same async loading flow.
+      // Since wrapping the entire logic below in a callback is complex,
+      // and this action is not registered in plugin.xml, we will just
+      // perform the blocking call inside a Modal Task here to be safe.
 
+      ProgressManager.getInstance()
+          .run(
+              new Task.Modal(project, "Downloading Driver", true) {
+                @Override
+                public void run(@NotNull final ProgressIndicator indicator) {
+                  try {
+                    DriverLoader.ensureDriverPresent(chosenDriver);
+
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> continueAction(project, chosenDriver));
+                  } catch (final Exception ex) {
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> handleException(project, ex));
+                  }
+                }
+              });
+    } catch (final Exception ex) {
+      handleException(project, ex);
+    }
+  }
+
+  private void continueAction(final Project project, final DriverInfo chosenDriver) {
+    try {
       final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
       if (!seedDialog.showAndGet()) {
         log.info("User canceled the seed generation operation.");
@@ -123,43 +161,49 @@ public final class GenerateSeedAction extends AnAction {
 
       // Step 1: Introspect Schema (Background)
       final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
-      
-      ProgressManager.getInstance().run(new Task.Modal(project, "Introspecting Schema", true) {
-          @Override
-          public void run(@NotNull ProgressIndicator indicator) {
-              indicator.setIndeterminate(true);
-              try (Connection conn = DriverManager.getConnection(config.url(), config.user(), config.password())) {
-                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
-                  tablesRef.set(tables);
-              } catch (Exception ex) {
-                  ApplicationManager.getApplication().invokeLater(() -> handleException(project, ex));
-              }
-          }
-      });
-      
+
+      ProgressManager.getInstance()
+          .run(
+              new Task.Modal(project, "Introspecting Schema", true) {
+                @Override
+                public void run(@NotNull final ProgressIndicator indicator) {
+                  indicator.setIndeterminate(true);
+                  try (final Connection conn =
+                      DriverManager.getConnection(
+                          config.url(), config.user(), config.password())) {
+                    final List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
+                    tablesRef.set(tables);
+                  } catch (final Exception ex) {
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> handleException(project, ex));
+                  }
+                }
+              });
+
       final List<Table> tables = tablesRef.get();
       if (tables == null || tables.isEmpty()) {
-          if (tables != null) notifyError(project, "No tables found in schema " + config.schema());
-          return;
+        if (tables != null) notifyError(project, "No tables found in schema " + config.schema());
+        return;
       }
 
       // Step 2: Show PkUuidSelectionDialog (EDT)
       // Pass the config from Step 2 to Step 3 so it can be updated with Soft Delete settings
       final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(tables, config);
       if (!pkDialog.showAndGet()) {
-          return;
+        return;
       }
-      
+
       final Map<String, Set<String>> pkUuidOverrides = pkDialog.getSelectionByTable();
       final Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
       final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
-      
+
       // Update config with Soft Delete settings from Step 3
-      final GenerationConfig finalConfig = config.toBuilder()
-          .softDeleteColumns(pkDialog.getSoftDeleteColumns())
-          .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
-          .softDeleteValue(pkDialog.getSoftDeleteValue())
-          .build();
+      final GenerationConfig finalConfig =
+          config.toBuilder()
+              .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+              .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+              .softDeleteValue(pkDialog.getSoftDeleteValue())
+              .build();
 
       // Step 3: Generate Data (Background)
       ProgressManager.getInstance()
@@ -266,8 +310,9 @@ public final class GenerateSeedAction extends AnAction {
   }
 
   private void notifyError(final Project project, final String message) {
-    Notifications.Bus.notify(
-        new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
-        project);
+    NotificationGroupManager.getInstance()
+        .getNotificationGroup("DBSeed4SQL")
+        .createNotification("Error", message, NotificationType.ERROR)
+        .notify(project);
   }
 }

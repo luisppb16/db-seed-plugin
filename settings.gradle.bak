@@ -1,0 +1,10 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
+rootProject.name = 'db-seed-plugin'

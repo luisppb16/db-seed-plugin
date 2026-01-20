@@ -8,9 +8,9 @@ package com.luisppb16.dbseed.action;
 import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
 import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -100,6 +100,16 @@ public class SeedDatabaseAction extends AnAction {
     showDriverSelection(project);
   }
 
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
+  }
+
+  @Override
+  public boolean isDumbAware() {
+    return true;
+  }
+
   private void showDriverSelection(final Project project) {
     try {
       final List<DriverInfo> drivers = DriverRegistry.getDrivers();
@@ -126,8 +136,24 @@ public class SeedDatabaseAction extends AnAction {
       final DriverInfo chosenDriver = chosenDriverOpt.get();
       props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
 
-      DriverLoader.ensureDriverPresent(chosenDriver);
-      showSeedDialog(project, chosenDriver);
+      ProgressManager.getInstance()
+          .run(
+              new Task.Modal(project, "Downloading Driver", true) {
+                @Override
+                public void run(@NotNull final ProgressIndicator indicator) {
+                  indicator.setIndeterminate(true);
+                  try {
+                    DriverLoader.ensureDriverPresent(chosenDriver);
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> showSeedDialog(project, chosenDriver));
+                  } catch (final Exception ex) {
+                    ApplicationManager.getApplication()
+                        .invokeLater(
+                            () -> handleException(project, "Error preparing driver: ", ex));
+                  }
+                }
+              });
+
     } catch (final Exception ex) {
       handleException(project, "Error preparing driver: ", ex);
     }
@@ -337,8 +363,9 @@ public class SeedDatabaseAction extends AnAction {
   }
 
   private void notifyError(final Project project, final String message) {
-    Notifications.Bus.notify(
-        new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
-        project);
+    NotificationGroupManager.getInstance()
+        .getNotificationGroup("DBSeed4SQL")
+        .createNotification("Error", message, NotificationType.ERROR)
+        .notify(project);
   }
 }

@@ -5,6 +5,7 @@
 
 package com.luisppb16.dbseed.util;
 
+import com.intellij.openapi.application.PathManager;
 import com.luisppb16.dbseed.config.DriverInfo;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,11 +15,12 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Collections;
+import java.util.Enumeration;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -26,8 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 @UtilityClass
 public class DriverLoader {
 
-  private static final Path DRIVER_DIR =
-      Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
+  private static final Path DRIVER_DIR = PathManager.getConfigDir().resolve("db-seed-plugin").resolve("drivers");
 
   static {
     try {
@@ -74,6 +75,20 @@ public class DriverLoader {
       log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
     } else {
       throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
+    }
+  }
+
+  public static void unloadDrivers() {
+    final Enumeration<Driver> drivers = DriverManager.getDrivers();
+    for (final Driver driver : Collections.list(drivers)) {
+      if (driver instanceof DriverShim) {
+        try {
+          DriverManager.deregisterDriver(driver);
+          log.info("Deregistered driver: {}", driver);
+        } catch (final SQLException e) {
+          log.warn("Failed to deregister driver: {}", driver, e);
+        }
+      }
     }
   }
 }

@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -25,8 +27,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT) // Relax strictness due to bulk loading optimization
 class SchemaIntrospectorTest {
 
   @Mock private Connection connection;
@@ -95,11 +100,15 @@ class SchemaIntrospectorTest {
   @DisplayName("Should return empty list if no tables found")
   void shouldReturnEmptyListIfNoTables() throws SQLException {
     when(connection.getMetaData()).thenReturn(metaData);
-    // Removed: when(metaData.getDatabaseProductName()).thenReturn("H2"); // Not called in this path
 
     ResultSet tableRs = mock(ResultSet.class);
     when(tableRs.next()).thenReturn(false); // No tables
     when(metaData.getTables(null, "public", "%", new String[] {"TABLE"})).thenReturn(tableRs);
+
+    // Mock getColumns to return empty
+    ResultSet colRs = mock(ResultSet.class);
+    when(colRs.next()).thenReturn(false);
+    when(metaData.getColumns(null, "public", "%", "%")).thenReturn(colRs);
 
     List<Table> tables = SchemaIntrospector.introspect(connection, "public");
     assertTrue(tables.isEmpty());
@@ -114,28 +123,20 @@ class SchemaIntrospectorTest {
     when(connection.getMetaData()).thenReturn(metaData);
     when(metaData.getDatabaseProductName()).thenReturn("GenericDB");
 
-    // Mock getTables
+    // Mock getTables - called in loadAllTables
     ResultSet tableRs = mock(ResultSet.class);
     when(tableRs.next()).thenReturn(true).thenReturn(false);
     when(tableRs.getString("TABLE_NAME")).thenReturn(tableName);
     when(metaData.getTables(null, schema, "%", new String[] {"TABLE"})).thenReturn(tableRs);
 
-    // Mock getTables for check constraints (no relevant checks for this test)
-    ResultSet checkRs = mock(ResultSet.class);
-    when(checkRs.next()).thenReturn(false);
-    when(metaData.getTables(null, schema, tableName, new String[] {"TABLE"})).thenReturn(checkRs);
-
-    // Mock getColumns for check constraints (no relevant checks for this test)
-    ResultSet colRsChecks = mock(ResultSet.class);
-    when(colRsChecks.next()).thenReturn(false);
-
-    // Mock getColumns for actual column loading
+    // Mock getColumns - called in loadAllColumns
     ResultSet colRsLoad = mock(ResultSet.class);
     when(colRsLoad.next())
         .thenReturn(true)
         .thenReturn(true)
         .thenReturn(true)
         .thenReturn(false); // Three columns
+    when(colRsLoad.getString("TABLE_NAME")).thenReturn(tableName); // Needed for grouping
     when(colRsLoad.getString("COLUMN_NAME"))
         .thenReturn("id")
         .thenReturn("name")
@@ -151,22 +152,16 @@ class SchemaIntrospectorTest {
     when(colRsLoad.getString("IS_NULLABLE")).thenReturn("NO").thenReturn("YES").thenReturn("NO");
     when(colRsLoad.getInt("COLUMN_SIZE")).thenReturn(10).thenReturn(255).thenReturn(0);
 
-    when(metaData.getColumns(null, schema, tableName, "%"))
-        .thenReturn(colRsChecks)
+    when(metaData.getColumns(null, schema, "%", "%"))
         .thenReturn(colRsLoad);
 
-    // Mock getPrimaryKeys - called twice: once in introspect, once in loadColumns
-    ResultSet pkRs1 = mock(ResultSet.class);
-    when(pkRs1.next()).thenReturn(true).thenReturn(false);
-    when(pkRs1.getString("COLUMN_NAME")).thenReturn("id");
-
-    ResultSet pkRs2 = mock(ResultSet.class);
-    when(pkRs2.next()).thenReturn(true).thenReturn(false);
-    when(pkRs2.getString("COLUMN_NAME")).thenReturn("id");
+    // Mock getPrimaryKeys - called once per table loop
+    ResultSet pkRs = mock(ResultSet.class);
+    when(pkRs.next()).thenReturn(true).thenReturn(false);
+    when(pkRs.getString("COLUMN_NAME")).thenReturn("id");
 
     when(metaData.getPrimaryKeys(null, schema, tableName))
-        .thenReturn(pkRs1) // First call (in introspect)
-        .thenReturn(pkRs2); // Second call (in loadColumns)
+        .thenReturn(pkRs);
 
     // Mock getUniqueKeys
     ResultSet ukRs = mock(ResultSet.class);
@@ -240,56 +235,41 @@ class SchemaIntrospectorTest {
       throws SQLException {
     when(connection.getMetaData()).thenReturn(metaData);
 
-    // 1. getTables (main loop)
+    // 1. getTables (main loop + check constraints loading via remarks)
     ResultSet tableRs = mock(ResultSet.class);
     when(tableRs.next()).thenReturn(true).thenReturn(false);
     when(tableRs.getString("TABLE_NAME")).thenReturn(tableName);
+    when(tableRs.getString("REMARKS")).thenReturn(checkDefinition); // Table-level check in remarks
     when(metaData.getTables(null, schema, "%", new String[] {"TABLE"})).thenReturn(tableRs);
 
-    // Switch DB name to "GenericDB" to force generic REMARKS path for these existing unit tests
-    // which rely on REMARKS to simulate checks.
+    // Switch DB name to "GenericDB" to force generic REMARKS path
     when(metaData.getDatabaseProductName()).thenReturn("GenericDB");
 
-    // 2. loadTableCheckConstraints -> getTables (for remarks fallback)
-    ResultSet checkRs = mock(ResultSet.class);
-    when(checkRs.next()).thenReturn(true).thenReturn(false);
-    when(checkRs.getString("REMARKS")).thenReturn(checkDefinition);
-    when(metaData.getTables(null, schema, tableName, new String[] {"TABLE"})).thenReturn(checkRs);
-
-    // 3. loadTableCheckConstraints -> getColumns (for remarks fallback)
-    ResultSet colRsChecks = mock(ResultSet.class);
-    when(colRsChecks.next()).thenReturn(true).thenReturn(false);
-    when(colRsChecks.getString("REMARKS"))
-        .thenReturn(""); // assume check is on table, not column here
-
-    // 4. loadColumns -> getColumns (actual loading)
+    // 2. loadAllColumns -> getColumns
     ResultSet colRsLoad = mock(ResultSet.class);
     when(colRsLoad.next()).thenReturn(true).thenReturn(false);
+    when(colRsLoad.getString("TABLE_NAME")).thenReturn(tableName);
     when(colRsLoad.getString("COLUMN_NAME")).thenReturn(colName);
     when(colRsLoad.getInt("DATA_TYPE")).thenReturn(jdbcType);
     when(colRsLoad.getString("IS_NULLABLE")).thenReturn("NO");
     when(colRsLoad.getInt("COLUMN_SIZE")).thenReturn(10);
     when(colRsLoad.getString("TYPE_NAME")).thenReturn("VARCHAR");
+    when(colRsLoad.getString("REMARKS")).thenReturn(""); // Column remarks
 
-    when(metaData.getColumns(null, schema, tableName, "%"))
-        .thenReturn(colRsChecks)
+    when(metaData.getColumns(null, schema, "%", "%"))
         .thenReturn(colRsLoad);
 
-    // 5. loadPrimaryKeys (called by loadColumns AND introspect)
-    ResultSet pkRs1 = mock(ResultSet.class); // for loadColumns
-    when(pkRs1.next()).thenReturn(false);
+    // 3. loadPrimaryKeys
+    ResultSet pkRs = mock(ResultSet.class);
+    when(pkRs.next()).thenReturn(false);
+    when(metaData.getPrimaryKeys(null, schema, tableName)).thenReturn(pkRs);
 
-    ResultSet pkRs2 = mock(ResultSet.class); // for introspect
-    when(pkRs2.next()).thenReturn(false);
-
-    when(metaData.getPrimaryKeys(null, schema, tableName)).thenReturn(pkRs1).thenReturn(pkRs2);
-
-    // 6. loadUniqueKeys
+    // 4. loadUniqueKeys
     ResultSet ukRs = mock(ResultSet.class);
     when(ukRs.next()).thenReturn(false);
     when(metaData.getIndexInfo(null, schema, tableName, true, false)).thenReturn(ukRs);
 
-    // 7. loadForeignKeys
+    // 5. loadForeignKeys
     ResultSet fkRs = mock(ResultSet.class);
     when(fkRs.next()).thenReturn(false);
     when(metaData.getImportedKeys(null, schema, tableName)).thenReturn(fkRs);

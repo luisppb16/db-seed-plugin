@@ -195,7 +195,6 @@ public class DataGenerator {
             .build());
 
     validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data());
-    ensureUuidUniqueness(context.data(), context.orderedTables(), context.usedUuids());
     resolveForeignKeys(context);
   }
 
@@ -1375,57 +1374,6 @@ public class DataGenerator {
         Comparator.comparingInt((Table table) -> table.foreignKeys().size())
             .thenComparing(Table::name, String.CASE_INSENSITIVE_ORDER));
     return List.copyOf(ordered);
-  }
-
-  private static void ensureUuidUniqueness(
-      Map<Table, List<Row>> data, List<Table> orderedTables, Set<UUID> usedUuids) {
-    Map<String, Set<UUID>> seenPerColumn = new HashMap<>();
-    for (Table table : orderedTables) {
-      List<Row> rows = data.get(table);
-      if (rows == null) continue;
-      for (Column col : table.columns()) {
-        if (!col.uuid()) continue;
-        processUuidColumn(table, col, rows, usedUuids, seenPerColumn);
-      }
-    }
-  }
-
-  private static void processUuidColumn(
-      Table table,
-      Column col,
-      List<Row> rows,
-      Set<UUID> usedUuids,
-      Map<String, Set<UUID>> seenPerColumn) {
-    String key = table.name().concat(".").concat(col.name());
-    Set<UUID> seen = seenPerColumn.computeIfAbsent(key, k -> new HashSet<>());
-    for (Row row : rows) {
-      Object v = row.values().get(col.name());
-      UUID u = null;
-      if (v instanceof UUID uuid) {
-        u = uuid;
-      } else if (v instanceof String s) {
-        try {
-          u = UUID.fromString(s.trim());
-        } catch (IllegalArgumentException e) {
-          log.debug("Invalid UUID string in row for {}.{}: {}", table.name(), col.name(), s, e);
-        }
-      }
-      if (u == null) {
-        u = generateUuid(usedUuids);
-        row.values().put(col.name(), u);
-        seen.add(u);
-        continue;
-      }
-      if (seen.contains(u)) {
-        UUID newU = generateUuid(usedUuids);
-        row.values().put(col.name(), newU);
-        seen.add(newU);
-        log.warn("Replaced duplicate UUID for {}.{}: {} -> {}", table.name(), col.name(), u, newU);
-      } else {
-        seen.add(u);
-        usedUuids.add(u);
-      }
-    }
   }
 
   @Builder

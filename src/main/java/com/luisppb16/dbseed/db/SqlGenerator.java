@@ -27,13 +27,13 @@ import lombok.experimental.UtilityClass;
 public class SqlGenerator {
 
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
-  private static final int BATCH_SIZE = 1000; // Optimal batch size for most DBs
+  private static final int BATCH_SIZE = 1000;
   private static final String COMMIT_STMT = "COMMIT;\n";
 
   private static final Set<String> RESERVED_KEYWORDS =
       Set.of(
           "select", "from", "where", "group", "order", "limit", "offset", "insert", "update",
-          "delete", "user", "table");
+          "delete", "user", "table", "level", "option", "public", "session", "size", "start");
 
   public static String generate(
       Map<Table, List<Row>> data, List<PendingUpdate> updates, boolean deferred) {
@@ -45,9 +45,9 @@ public class SqlGenerator {
       List<PendingUpdate> updates,
       boolean deferred,
       DriverInfo driverInfo) {
-    StringBuilder sb = new StringBuilder();
-    SqlDialect dialect = SqlDialect.resolve(driverInfo);
-    SqlOptions opts = SqlOptions.builder().quoteIdentifiers(true).build();
+    final StringBuilder sb = new StringBuilder();
+    final SqlDialect dialect = SqlDialect.resolve(driverInfo);
+    final SqlOptions opts = SqlOptions.builder().quoteIdentifiers(true).build();
 
     if (deferred) {
       sb.append(dialect.beginTransaction());
@@ -66,16 +66,16 @@ public class SqlGenerator {
   }
 
   private static void generateInsertStatements(
-      StringBuilder sb, Map<Table, List<Row>> data, SqlOptions opts, SqlDialect dialect) {
+      final StringBuilder sb, final Map<Table, List<Row>> data, final SqlOptions opts, final SqlDialect dialect) {
     data.forEach(
         (table, rows) -> {
           if (rows == null || rows.isEmpty()) {
             return;
           }
 
-          List<String> columnOrder = table.columns().stream().map(Column::name).toList();
-          String tableName = qualified(opts, table.name(), dialect);
-          String columnList =
+          final List<String> columnOrder = table.columns().stream().map(Column::name).toList();
+          final String tableName = qualified(opts, table.name(), dialect);
+          final String columnList =
               columnOrder.stream()
                   .map(col -> qualified(opts, col, dialect))
                   .collect(Collectors.joining(", "));
@@ -87,22 +87,23 @@ public class SqlGenerator {
   }
 
   private static void appendBatch(
-      StringBuilder sb,
-      String tableName,
-      String columnList,
-      List<Row> rows,
-      int startIndex,
-      List<String> columnOrder,
-      SqlDialect dialect) {
+      final StringBuilder sb,
+      final String tableName,
+      final String columnList,
+      final List<Row> rows,
+      final int startIndex,
+      final List<String> columnOrder,
+      final SqlDialect dialect) {
+    
     sb.append("INSERT INTO ")
         .append(tableName)
         .append(" (")
         .append(columnList)
         .append(") VALUES\n");
 
-    List<Row> batch = rows.subList(startIndex, Math.min(startIndex + BATCH_SIZE, rows.size()));
+    final List<Row> batch = rows.subList(startIndex, Math.min(startIndex + BATCH_SIZE, rows.size()));
     for (int j = 0; j < batch.size(); j++) {
-      Row row = batch.get(j);
+      final Row row = batch.get(j);
       sb.append('(');
       for (int k = 0; k < columnOrder.size(); k++) {
         formatValue(row.values().get(columnOrder.get(k)), sb, dialect);
@@ -119,13 +120,12 @@ public class SqlGenerator {
   }
 
   private static void generateUpdateStatements(
-      StringBuilder sb, List<PendingUpdate> updates, SqlOptions opts, SqlDialect dialect) {
-    // Apply deferred updates (FKs in cycles).
+      final StringBuilder sb, final List<PendingUpdate> updates, final SqlOptions opts, final SqlDialect dialect) {
     if (updates != null && !updates.isEmpty()) {
-      for (PendingUpdate update : updates) {
-        String tableName = qualified(opts, update.table(), dialect);
+      for (final PendingUpdate update : updates) {
+        final String tableName = qualified(opts, update.table(), dialect);
 
-        String setPart =
+        final String setPart =
             update.fkValues().entrySet().stream()
                 .map(
                     e ->
@@ -134,7 +134,7 @@ public class SqlGenerator {
                             .concat(formatValue(e.getValue(), dialect)))
                 .collect(Collectors.joining(", "));
 
-        String wherePart =
+        final String wherePart =
             update.pkValues().entrySet().stream()
                 .map(
                     e ->
@@ -154,26 +154,26 @@ public class SqlGenerator {
     }
   }
 
-  private static String qualified(SqlOptions opts, String identifier, SqlDialect dialect) {
+  private static String qualified(final SqlOptions opts, final String identifier, final SqlDialect dialect) {
     if (Objects.isNull(identifier)) {
       throw new IllegalArgumentException("Identifier cannot be null.");
     }
 
-    boolean needed =
+    final boolean needed =
         !UNQUOTED.matcher(identifier).matches()
             || RESERVED_KEYWORDS.contains(identifier.toLowerCase(Locale.ROOT));
-    String quoted = dialect.quote(identifier);
+    final String quoted = dialect.quote(identifier);
 
     return (opts.quoteIdentifiers() || needed) ? quoted : identifier;
   }
 
-  private static String formatValue(Object value, SqlDialect dialect) {
-    StringBuilder sb = new StringBuilder();
+  private static String formatValue(final Object value, final SqlDialect dialect) {
+    final StringBuilder sb = new StringBuilder();
     formatValue(value, sb, dialect);
     return sb.toString();
   }
 
-  private static void formatValue(Object value, StringBuilder sb, SqlDialect dialect) {
+  private static void formatValue(final Object value, final StringBuilder sb, final SqlDialect dialect) {
     if (value == null) {
       sb.append("NULL");
     } else {
@@ -193,14 +193,14 @@ public class SqlGenerator {
     }
   }
 
-  private static String formatDouble(double d) {
+  private static String formatDouble(final double d) {
     if (Double.isNaN(d) || Double.isInfinite(d)) {
       return "NULL";
     }
     return BigDecimal.valueOf(d).stripTrailingZeros().toPlainString();
   }
 
-  private static String escapeSql(String s) {
+  private static String escapeSql(final String s) {
     return s.replace("'", "''");
   }
 
@@ -209,153 +209,96 @@ public class SqlGenerator {
 
   private enum SqlDialect {
     STANDARD {
-      @Override
-      String quote(String id) {
-        return "\"" + id.replace("\"", "\"\"") + "\"";
-      }
-
-      @Override
-      String formatBoolean(boolean b) {
-        return b ? "TRUE" : "FALSE";
-      }
-
-      @Override
-      String beginTransaction() {
-        return "BEGIN;\n";
-      }
-
-      @Override
-      String commitTransaction() {
-        return COMMIT_STMT;
-      }
-
-      @Override
-      String disableConstraints() {
-        return "SET CONSTRAINTS ALL DEFERRED;\n";
-      }
-
-      @Override
-      String enableConstraints() {
-        return "";
-      }
+      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
+      @Override String formatBoolean(boolean b) { return b ? "TRUE" : "FALSE"; }
+      @Override String beginTransaction() { return "BEGIN;\n"; }
+      @Override String commitTransaction() { return COMMIT_STMT; }
+      @Override String disableConstraints() { return "SET CONSTRAINTS ALL DEFERRED;\n"; }
+      @Override String enableConstraints() { return ""; }
     },
     MYSQL {
-      @Override
-      String quote(String id) {
-        return "`" + id.replace("`", "``") + "`";
-      }
-
-      @Override
-      String formatBoolean(boolean b) {
-        return b ? "1" : "0";
-      }
-
-      @Override
-      String beginTransaction() {
-        return "START TRANSACTION;\n";
-      }
-
-      @Override
-      String commitTransaction() {
-        return COMMIT_STMT;
-      }
-
-      @Override
-      String disableConstraints() {
-        return "SET FOREIGN_KEY_CHECKS = 0;\n";
-      }
-
-      @Override
-      String enableConstraints() {
-        return "SET FOREIGN_KEY_CHECKS = 1;\n";
-      }
+      @Override String quote(String id) { return "`" + id.replace("`", "``") + "`"; }
+      @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
+      @Override String beginTransaction() { return "START TRANSACTION;\n"; }
+      @Override String commitTransaction() { return COMMIT_STMT; }
+      @Override String disableConstraints() { return "SET FOREIGN_KEY_CHECKS = 0;\n"; }
+      @Override String enableConstraints() { return "SET FOREIGN_KEY_CHECKS = 1;\n"; }
     },
     SQL_SERVER {
-      @Override
-      String quote(String id) {
-        return "[" + id.replace("]", "]]") + "]";
-      }
-
-      @Override
-      String formatBoolean(boolean b) {
-        return b ? "1" : "0";
-      }
-
-      @Override
-      String beginTransaction() {
-        return "BEGIN TRANSACTION;\n";
-      }
-
-      @Override
-      String commitTransaction() {
-        return "COMMIT TRANSACTION;\n";
-      }
-
-      @Override
-      String disableConstraints() {
-        return "EXEC sp_msforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT all';\n";
-      }
-
-      @Override
-      String enableConstraints() {
-        return "EXEC sp_msforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT all';\n";
-      }
+      @Override String quote(String id) { return "[" + id.replace("]", "]]") + "]"; }
+      @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
+      @Override String beginTransaction() { return "BEGIN TRANSACTION;\n"; }
+      @Override String commitTransaction() { return "COMMIT TRANSACTION;\n"; }
+      @Override String disableConstraints() { return "EXEC sp_msforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';\n"; }
+      @Override String enableConstraints() { return "EXEC sp_msforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL';\n"; }
     },
     POSTGRESQL {
-      @Override
-      String quote(String id) {
-        return "\"" + id.replace("\"", "\"\"") + "\"";
+      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
+      @Override String formatBoolean(boolean b) { return b ? "TRUE" : "FALSE"; }
+      @Override String beginTransaction() { return "BEGIN;\n"; }
+      @Override String commitTransaction() { return COMMIT_STMT; }
+      @Override String disableConstraints() { return "SET CONSTRAINTS ALL DEFERRED;\n"; }
+      @Override String enableConstraints() { return ""; }
+    },
+    ORACLE {
+      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"").toUpperCase(Locale.ROOT) + "\""; }
+      @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
+      @Override String beginTransaction() { return "SET TRANSACTION READ WRITE;\n"; }
+      @Override String commitTransaction() { return COMMIT_STMT; }
+      @Override String disableConstraints() { 
+          return "BEGIN\n" +
+                 "  FOR c IN (SELECT table_name, constraint_name FROM user_constraints WHERE constraint_type = 'R')\n" +
+                 "  LOOP\n" +
+                 "    EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;\n" +
+                 "  END LOOP;\n" +
+                 "END;\n/\n";
       }
-
-      @Override
-      String formatBoolean(boolean b) {
-        return b ? "TRUE" : "FALSE";
+      @Override String enableConstraints() { 
+          return "BEGIN\n" +
+                 "  FOR c IN (SELECT table_name, constraint_name FROM user_constraints WHERE constraint_type = 'R')\n" +
+                 "  LOOP\n" +
+                 "    EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' ENABLE CONSTRAINT ' || c.constraint_name;\n" +
+                 "  END LOOP;\n" +
+                 "END;\n/\n";
       }
-
-      @Override
-      String beginTransaction() {
-        return "BEGIN;\n";
-      }
-
-      @Override
-      String commitTransaction() {
-        return COMMIT_STMT;
-      }
-
-      @Override
-      String disableConstraints() {
-        return "SET CONSTRAINTS ALL DEFERRED;\n";
-      }
-
-      @Override
-      String enableConstraints() {
-        return "";
-      }
+    },
+    SQLITE {
+      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
+      @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
+      @Override String beginTransaction() { return "BEGIN TRANSACTION;\n"; }
+      @Override String commitTransaction() { return COMMIT_STMT; }
+      @Override String disableConstraints() { return "PRAGMA foreign_keys = OFF;\n"; }
+      @Override String enableConstraints() { return "PRAGMA foreign_keys = ON;\n"; }
     };
 
     abstract String quote(String id);
-
     abstract String formatBoolean(boolean b);
-
     abstract String beginTransaction();
-
     abstract String commitTransaction();
-
     abstract String disableConstraints();
-
     abstract String enableConstraints();
 
-    static SqlDialect resolve(DriverInfo driver) {
+    static SqlDialect resolve(final DriverInfo driver) {
       if (driver == null) return STANDARD;
-      String cls = driver.driverClass();
-      if (cls == null) return STANDARD;
+      
+      final String cls = Objects.requireNonNullElse(driver.driverClass(), "").toLowerCase(Locale.ROOT);
+      final String url = Objects.requireNonNullElse(driver.urlTemplate(), "").toLowerCase(Locale.ROOT);
 
-      String lowerCls = cls.toLowerCase(Locale.ROOT);
-      if (lowerCls.contains("mysql") || lowerCls.contains("mariadb")) return MYSQL;
-      if (lowerCls.contains("sqlserver")) return SQL_SERVER;
-      if (lowerCls.contains("postgresql")
-          || lowerCls.contains("redshift")
-          || lowerCls.contains("cockroach")) return POSTGRESQL;
+      if (cls.contains("mysql") || cls.contains("mariadb") || url.contains("mysql") || url.contains("mariadb")) {
+          return MYSQL;
+      }
+      if (cls.contains("sqlserver") || url.contains("sqlserver") || url.contains("jtds:sqlserver")) {
+          return SQL_SERVER;
+      }
+      if (cls.contains("oracle") || url.contains("oracle")) {
+          return ORACLE;
+      }
+      if (cls.contains("sqlite") || url.contains("sqlite")) {
+          return SQLITE;
+      }
+      if (cls.contains("postgresql") || url.contains("postgresql") || url.contains("redshift") || url.contains("cockroach")) {
+          return POSTGRESQL;
+      }
 
       return STANDARD;
     }

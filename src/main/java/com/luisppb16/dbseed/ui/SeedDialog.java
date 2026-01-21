@@ -12,6 +12,7 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
+import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import java.awt.Cursor;
 import java.awt.GridBagConstraints;
@@ -54,6 +55,9 @@ public final class SeedDialog extends DialogWrapper {
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private static final String DEFAULT_POSTGRES_USER = "postgres";
   private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
+  
+  private final DriverInfo driverInfo;
+  
   private final JTextField urlField;
   private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
@@ -67,16 +71,17 @@ public final class SeedDialog extends DialogWrapper {
   private String loadedSoftDeleteValue;
   private int loadedNumericScale;
 
-  public SeedDialog(@Nullable final String urlTemplate) {
+  public SeedDialog(@NotNull final DriverInfo driverInfo) {
     super(true);
+    this.driverInfo = driverInfo;
     setTitle("Connection Settings - Step 2/3");
 
-    urlField = new JTextField(urlTemplate != null ? urlTemplate : DEFAULT_POSTGRES_URL);
+    urlField = new JTextField(driverInfo.urlTemplate() != null ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.columnSpinnerStep));
 
-    loadConfiguration(urlTemplate);
+    loadConfiguration(driverInfo.urlTemplate());
 
     configureSpinner(rowsSpinner);
 
@@ -158,6 +163,7 @@ public final class SeedDialog extends DialogWrapper {
         }
       }
 
+      // Logic to pre-fill fields based on URL structure
       if (urlToUse.startsWith("jdbc:sqlserver")) {
         String dbName = "";
         String urlWithoutDb = urlToUse;
@@ -174,6 +180,9 @@ public final class SeedDialog extends DialogWrapper {
         }
         urlField.setText(urlWithoutDb);
         databaseField.setText(dbName);
+      } else if (urlToUse.startsWith("jdbc:sqlite")) {
+          urlField.setText(urlToUse);
+          databaseField.setText("");
       } else {
         final int lastSlashIndex = urlToUse.lastIndexOf('/');
         
@@ -258,11 +267,23 @@ public final class SeedDialog extends DialogWrapper {
 
     int row = 0;
     addRow(panel, c, row++, "JDBC URL:", urlField);
-    addRow(panel, c, row++, "User:", userField);
-    addRow(
-        panel, c, row++, "Password:", createPasswordFieldWithToggle());
-    addRow(panel, c, row++, "Database:", databaseField);
-    addRow(panel, c, row++, "Schema:", schemaField);
+    
+    if (driverInfo.requiresUser()) {
+        addRow(panel, c, row++, "User:", userField);
+    }
+    
+    if (driverInfo.requiresPassword()) {
+        addRow(panel, c, row++, "Password:", createPasswordFieldWithToggle());
+    }
+    
+    if (driverInfo.requiresDatabaseName()) {
+        addRow(panel, c, row++, "Database:", databaseField);
+    }
+    
+    if (driverInfo.requiresSchema()) {
+        addRow(panel, c, row++, "Schema:", schemaField);
+    }
+    
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
 
     c.gridx = 0;
@@ -317,27 +338,30 @@ public final class SeedDialog extends DialogWrapper {
     String url = urlField.getText().trim();
     final String database = databaseField.getText().trim();
 
-    if (url.startsWith("jdbc:sqlserver")) {
-      url = url.replaceAll("databaseName=[^;]+;?", "");
-      if (!url.endsWith(";")) {
-        url += ";";
-      }
-      url += "databaseName=" + database;
-    } else {
-      url = url.endsWith("/") ? url + database : url + "/" + database;
+    // Only append database if the driver requires it
+    if (driverInfo.requiresDatabaseName()) {
+        if (url.startsWith("jdbc:sqlserver")) {
+          url = url.replaceAll("databaseName=[^;]+;?", "");
+          if (!url.endsWith(";")) {
+            url += ";";
+          }
+          url += "databaseName=" + database;
+        } else {
+          url = url.endsWith("/") ? url + database : url + "/" + database;
+        }
     }
 
     return GenerationConfig.builder()
         .url(url)
-        .user(userField.getText().trim())
-        .password(new String(passwordField.getPassword()))
-        .schema(schemaField.getText().trim())
+        .user(driverInfo.requiresUser() ? userField.getText().trim() : null)
+        .password(driverInfo.requiresPassword() ? new String(passwordField.getPassword()) : null)
+        .schema(driverInfo.requiresSchema() ? schemaField.getText().trim() : null)
         .rowsPerTable((Integer) rowsSpinner.getValue())
         .deferred(deferredBox.isSelected())
         .softDeleteColumns(loadedSoftDeleteColumns)
         .softDeleteUseSchemaDefault(loadedSoftDeleteUseSchemaDefault)
         .softDeleteValue(loadedSoftDeleteValue)
-        .numericScale(loadedNumericScale) // Pass through loaded scale
+        .numericScale(loadedNumericScale)
         .build();
   }
 

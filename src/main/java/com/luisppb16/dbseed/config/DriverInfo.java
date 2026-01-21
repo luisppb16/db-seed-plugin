@@ -14,4 +14,8 @@ public record DriverInfo(
     String mavenArtifactId,
     String version,
     String driverClass,
-    String urlTemplate) {}
+    String urlTemplate,
+    boolean requiresDatabaseName,
+    boolean requiresUser,
+    boolean requiresPassword,
+    boolean requiresSchema) {}

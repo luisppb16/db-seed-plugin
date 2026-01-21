@@ -24,12 +24,14 @@ public class ConnectionConfigPersistence {
   private static final String SOFT_DELETE_COLUMNS_KEY = "dbseed.connection.softDeleteColumns";
   private static final String SOFT_DELETE_USE_DEFAULT_KEY = "dbseed.connection.softDeleteUseDefault";
   private static final String SOFT_DELETE_VALUE_KEY = "dbseed.connection.softDeleteValue";
+  private static final String NUMERIC_SCALE_KEY = "dbseed.connection.numericScale";
 
   private static final String DEFAULT_URL = "jdbc:postgresql://localhost:5432/postgres";
   private static final String DEFAULT_USER = "postgres";
   private static final String DEFAULT_SCHEMA = "public";
   private static final int DEFAULT_ROWS = 10;
   private static final boolean DEFAULT_DEFERRED = false;
+  private static final int DEFAULT_NUMERIC_SCALE = 2;
 
   public static void save(@NotNull final Project project, @NotNull final GenerationConfig config) {
     final PropertiesComponent properties = PropertiesComponent.getInstance(project);
@@ -48,6 +50,8 @@ public class ConnectionConfigPersistence {
     if (config.softDeleteValue() != null) {
         properties.setValue(SOFT_DELETE_VALUE_KEY, config.softDeleteValue());
     }
+    
+    properties.setValue(NUMERIC_SCALE_KEY, String.valueOf(config.numericScale()));
 
     log.info("Connection configuration saved for project {}.", project.getName());
   }
@@ -66,6 +70,7 @@ public class ConnectionConfigPersistence {
     final String softDeleteColumns = properties.getValue(SOFT_DELETE_COLUMNS_KEY);
     final boolean softDeleteUseDefault = properties.getBoolean(SOFT_DELETE_USE_DEFAULT_KEY, true);
     final String softDeleteValue = properties.getValue(SOFT_DELETE_VALUE_KEY);
+    final int numericScale = properties.getInt(NUMERIC_SCALE_KEY, DEFAULT_NUMERIC_SCALE);
 
     final GenerationConfig config =
         GenerationConfig.builder()
@@ -78,6 +83,7 @@ public class ConnectionConfigPersistence {
             .softDeleteColumns(softDeleteColumns)
             .softDeleteUseSchemaDefault(softDeleteUseDefault)
             .softDeleteValue(softDeleteValue)
+            .numericScale(numericScale)
             .build();
 
     log.debug("Configuration loaded: {}", config);

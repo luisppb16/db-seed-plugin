@@ -134,7 +134,7 @@ public class SeedDatabaseAction extends AnAction {
   }
 
   private void showSeedDialog(final Project project, final DriverInfo chosenDriver) {
-    final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
+    final SeedDialog seedDialog = new SeedDialog(chosenDriver);
     seedDialog.show();
 
     final int exitCode = seedDialog.getExitCode();

@@ -112,7 +112,7 @@ public final class GenerateSeedAction extends AnAction {
 
       DriverLoader.ensureDriverPresent(chosenDriver);
 
-      final SeedDialog seedDialog = new SeedDialog(chosenDriver.urlTemplate());
+      final SeedDialog seedDialog = new SeedDialog(chosenDriver);
       if (!seedDialog.showAndGet()) {
         log.info("User canceled the seed generation operation.");
         return;

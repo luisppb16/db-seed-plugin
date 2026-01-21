@@ -32,26 +32,25 @@ services:
     networks:
       - db_net
 
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: sqlserver
+  sqlite:
+    image: keinos/sqlite3:latest
+    container_name: sqlite
     restart: unless-stopped
+    user: root
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_USER: sa
-      MSSQL_SA_PASSWORD: yourStrong(!)Password
-    ports:
-      - "1433:1433"
+      SQLITE_USER: admin
+      SQLITE_DATABASE: test
     volumes:
-      - sqlserver_data:/var/opt/mssql
-      - ./initdb/schema_SQLServer.sql:/docker-entrypoint-initdb.d/schema_SQLServer.sql
+      - ./sqlite_data:/var/lib/sqlite
+      - ./initdb/schema_SQLite.sql:/docker-entrypoint-initdb.d/schema_SQLite.sql
+    command: >
+      sh -c "sqlite3 /var/lib/sqlite/test.db < /docker-entrypoint-initdb.d/schema_SQLite.sql && tail -f /dev/null"
     networks:
       - db_net
 
 volumes:
   postgres_data: { }
   mysql_data: { }
-  sqlserver_data: { }
 
 networks:
   db_net:

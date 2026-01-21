@@ -159,7 +159,11 @@ public class DriverSelectionDialog extends DialogWrapper {
         selectedDriver.mavenArtifactId(),
         selectedDriver.version(),
         selectedDriver.driverClass(),
-        url);
+        url,
+        selectedDriver.requiresDatabaseName(),
+        selectedDriver.requiresUser(),
+        selectedDriver.requiresPassword(),
+        selectedDriver.requiresSchema());
   }
 
   private void updateProjectIdVisibility(final String selected) {

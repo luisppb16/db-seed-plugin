@@ -159,6 +159,7 @@ public final class GenerateSeedAction extends AnAction {
           .softDeleteColumns(pkDialog.getSoftDeleteColumns())
           .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
           .softDeleteValue(pkDialog.getSoftDeleteValue())
+          .numericScale(pkDialog.getNumericScale()) // Get scale from Step 3
           .build();
 
       // Step 3: Generate Data (Background)
@@ -240,6 +241,7 @@ public final class GenerateSeedAction extends AnAction {
                   .softDeleteColumns(config.softDeleteColumns())
                   .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
                   .softDeleteValue(config.softDeleteValue())
+                  .numericScale(config.numericScale()) // Pass scale
                   .build());
 
       indicator.setText("Building SQL...");
@@ -264,7 +266,9 @@ public final class GenerateSeedAction extends AnAction {
       message = "An unexpected error occurred: " + ex.getMessage();
     }
     log.error("Error during seed SQL generation.", ex);
-    notifyError(project, message);
+    
+    // Ensure notification is shown on EDT
+    ApplicationManager.getApplication().invokeLater(() -> notifyError(project, message));
   }
 
   private void notifyError(final Project project, final String message) {

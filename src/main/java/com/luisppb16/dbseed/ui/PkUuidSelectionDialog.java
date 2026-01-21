@@ -22,6 +22,8 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -38,14 +40,21 @@ import java.util.stream.Collectors;
 import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
 import javax.swing.Action;
+import javax.swing.ActionMap;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
+import javax.swing.InputMap;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
+import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JSpinner;
+import javax.swing.JSpinner.DefaultEditor;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -66,6 +75,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final JTextField softDeleteColumnsField = new JTextField();
   private final JCheckBox softDeleteUseSchemaDefaultBox = new JCheckBox("Use Schema Default Value");
   private final JTextField softDeleteValueField = new JTextField();
+  
+  // Numeric Scale UI Component
+  private final JSpinner scaleSpinner;
 
   // Maps to hold checkbox references for cross-tab synchronization
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
@@ -76,6 +88,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
     this.initialConfig = Objects.requireNonNull(initialConfig, "Initial config cannot be null.");
     this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
+    
+    // Initialize scale spinner with value from config or default
+    int initialScale = initialConfig.numericScale() >= 0 ? initialConfig.numericScale() : 2;
+    this.scaleSpinner = new JSpinner(new SpinnerNumberModel(initialScale, 0, 10, 1));
+    configureSpinner(this.scaleSpinner);
+    
     setTitle("Data Configuration - Step 3/3");
     initDefaults();
     setOKButtonText("Generate");
@@ -85,6 +103,24 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   // Overloaded constructor for backward compatibility if needed, though we should update callers
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
       this(tables, GenerationConfig.builder().build()); // Empty config if not provided
+  }
+  
+  private void configureSpinner(JSpinner spinner) {
+    final JComponent editor = spinner.getEditor();
+    if (editor instanceof final DefaultEditor defaultEditor) {
+      final JFormattedTextField textField = defaultEditor.getTextField();
+      final InputMap inputMap = textField.getInputMap(JComponent.WHEN_FOCUSED);
+
+      final String incrementAction = "increment";
+      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), incrementAction);
+      final String decrementAction = "decrement";
+      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), decrementAction);
+
+      final ActionMap spinnerActionMap = spinner.getActionMap();
+      final ActionMap textFieldActionMap = textField.getActionMap();
+      textFieldActionMap.put(incrementAction, spinnerActionMap.get(incrementAction));
+      textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
+    }
   }
 
   private void initDefaults() {
@@ -136,6 +172,16 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   protected Action @NotNull [] createActions() {
     return new Action[] {new BackAction(), getOKAction(), getCancelAction()};
   }
+  
+  @Override
+  protected void doOKAction() {
+    try {
+      scaleSpinner.commitEdit();
+    } catch (ParseException e) {
+      // Invalid number typed, spinner will retain last valid value.
+    }
+    super.doOKAction();
+  }
 
   @Override
   protected @NotNull JComponent createCenterPanel() {
@@ -143,7 +189,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
     tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
     tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
-    tabbedPane.addTab("Soft Delete", createSoftDeletePanel());
+    tabbedPane.addTab("General Settings", createGeneralSettingsPanel());
 
     // Initial synchronization of states
     synchronizeInitialStates();
@@ -154,7 +200,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return content;
   }
   
-  private JPanel createSoftDeletePanel() {
+  private JPanel createGeneralSettingsPanel() {
       JPanel panel = new JPanel(new GridBagLayout());
       panel.setBorder(JBUI.Borders.empty(10));
       GridBagConstraints c = new GridBagConstraints();
@@ -163,7 +209,13 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       c.insets = JBUI.insets(5);
       c.weightx = 1.0;
       
+      // Soft Delete Section
       c.gridx = 0; c.gridy = 0;
+      JLabel softDeleteLabel = new JLabel("Soft Delete Configuration");
+      softDeleteLabel.setFont(softDeleteLabel.getFont().deriveFont(Font.BOLD));
+      panel.add(softDeleteLabel, c);
+      
+      c.gridy++;
       panel.add(new JLabel("Soft Delete Columns (comma separated):"), c);
       
       c.gridy++;
@@ -177,6 +229,30 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       
       c.gridy++;
       panel.add(softDeleteValueField, c);
+      
+      // Separator
+      c.gridy++;
+      panel.add(Box.createVerticalStrut(10), c);
+      
+      // Numeric Scale Section
+      c.gridy++;
+      JLabel numericLabel = new JLabel("Numeric Configuration");
+      numericLabel.setFont(numericLabel.getFont().deriveFont(Font.BOLD));
+      panel.add(numericLabel, c);
+      
+      c.gridy++;
+      panel.add(new JLabel("Default Numeric Scale (decimal places):"), c);
+      
+      c.gridy++;
+      // Wrap spinner in a panel to prevent it from stretching too much
+      JPanel spinnerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+      spinnerPanel.add(scaleSpinner);
+      panel.add(spinnerPanel, c);
+      
+      c.gridy++;
+      JLabel hintLabel = new JLabel("<html><small>Applied to DECIMAL/NUMERIC columns without explicit scale defined in schema.</small></html>");
+      hintLabel.setForeground(UIManager.getColor("Label.infoForeground"));
+      panel.add(hintLabel, c);
       
       // Filler
       c.gridy++;
@@ -724,6 +800,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   
   public String getSoftDeleteValue() {
       return softDeleteValueField.getText().trim();
+  }
+  
+  public int getNumericScale() {
+      return (Integer) scaleSpinner.getValue();
   }
 
   private final class BackAction extends AbstractAction {

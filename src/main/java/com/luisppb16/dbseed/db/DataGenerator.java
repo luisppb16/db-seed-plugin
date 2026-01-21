@@ -93,6 +93,7 @@ public class DataGenerator {
             .softDeleteColumns(params.softDeleteColumns())
             .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
             .softDeleteValue(params.softDeleteValue())
+            .numericScale(params.numericScale()) // Pass scale
             .build());
   }
 
@@ -160,7 +161,8 @@ public class DataGenerator {
             params.deferred(),
             params.softDeleteColumns(),
             params.softDeleteUseSchemaDefault(),
-            params.softDeleteValue());
+            params.softDeleteValue(),
+            params.numericScale()); // Pass scale to context
 
     executeGenerationSteps(context);
 
@@ -192,9 +194,10 @@ public class DataGenerator {
             .softDeleteColumns(context.softDeleteColumns())
             .softDeleteUseSchemaDefault(context.softDeleteUseSchemaDefault())
             .softDeleteValue(context.softDeleteValue())
+            .numericScale(context.numericScale()) // Pass scale
             .build());
 
-    validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data());
+    validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data(), context.numericScale());
     resolveForeignKeys(context);
   }
 
@@ -271,6 +274,7 @@ public class DataGenerator {
                                   .softDeleteCols(softDeleteCols)
                                   .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                                   .softDeleteValue(params.softDeleteValue())
+                                  .numericScale(params.numericScale()) // Pass scale
                                   .build(),
                               col
                           );
@@ -303,6 +307,7 @@ public class DataGenerator {
                                   .softDeleteCols(softDeleteCols)
                                   .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                                   .softDeleteValue(params.softDeleteValue())
+                                  .numericScale(params.numericScale()) // Pass scale
                                   .build(),
                               baseValues
                           );
@@ -338,6 +343,7 @@ public class DataGenerator {
                             .softDeleteCols(softDeleteCols)
                             .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                             .softDeleteValue(params.softDeleteValue())
+                            .numericScale(params.numericScale()) // Pass scale
                             .build());
 
                 generatedRow.ifPresent(
@@ -390,9 +396,10 @@ public class DataGenerator {
             params.index(),
             params.usedUuids(),
             pc,
-            params.dictionaryWords());
+            params.dictionaryWords(),
+            params.numericScale());
 
-    return applyNumericConstraints(column, pc, gen);
+    return applyNumericConstraints(column, pc, gen, params.numericScale());
   }
 
   private static Object parseSoftDeleteValue(String value, Column column) {
@@ -413,12 +420,12 @@ public class DataGenerator {
   }
 
   private static Object applyNumericConstraints(
-      Column column, ParsedConstraint pc, Object generatedValue) {
+      Column column, ParsedConstraint pc, Object generatedValue, int numericScale) {
     if (isNumericJdbc(column.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
       Object currentGen = generatedValue;
       int attempts = 0;
       while (isNumericOutsideBounds(currentGen, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-        currentGen = generateNumericWithinBounds(column, pc);
+        currentGen = generateNumericWithinBounds(column, pc, numericScale);
         attempts++;
       }
       return currentGen;
@@ -456,6 +463,7 @@ public class DataGenerator {
                     .softDeleteCols(params.softDeleteCols())
                     .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                     .softDeleteValue(params.softDeleteValue())
+                    .numericScale(params.numericScale()) // Pass scale
                     .build(),
                  column
              ));
@@ -510,7 +518,8 @@ public class DataGenerator {
   private static void validateNumericConstraints(
       List<Table> orderedTables,
       Map<String, Map<String, ParsedConstraint>> tableConstraints,
-      Map<Table, List<Row>> data) {
+      Map<Table, List<Row>> data,
+      int numericScale) {
 
     for (Table table : orderedTables) {
       Map<String, ParsedConstraint> constraints =
@@ -518,20 +527,20 @@ public class DataGenerator {
       List<Row> rows = data.get(table);
       if (rows == null) continue;
       for (Row row : rows) {
-        validateRowNumericConstraints(table, row, constraints);
+        validateRowNumericConstraints(table, row, constraints, numericScale);
       }
     }
   }
 
   private static void validateRowNumericConstraints(
-      Table table, Row row, Map<String, ParsedConstraint> constraints) {
+      Table table, Row row, Map<String, ParsedConstraint> constraints, int numericScale) {
     for (Column col : table.columns()) {
       ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
       if (isNumericJdbc(col.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
         int attempts = 0;
         while (isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-          val = generateNumericWithinBounds(col, pc);
+          val = generateNumericWithinBounds(col, pc, numericScale);
           attempts++;
         }
         row.values().put(col.name(), val);
@@ -775,7 +784,8 @@ public class DataGenerator {
       int index,
       Set<UUID> usedUuids,
       ParsedConstraint pc,
-      List<String> dictionaryWords) { // Added dictionaryWords parameter
+      List<String> dictionaryWords,
+      int numericScale) { // Added dictionaryWords parameter
     if (column.uuid()) {
       return generateUuidValue(column, usedUuids, pc);
     }
@@ -790,14 +800,14 @@ public class DataGenerator {
 
     ParsedConstraint effectivePc = determineEffectiveNumericConstraint(column, pc);
     if (effectivePc.min() != null || effectivePc.max() != null) {
-      Object bounded = generateNumericWithinBounds(column, effectivePc);
+      Object bounded = generateNumericWithinBounds(column, effectivePc, numericScale);
       if (bounded != null) return bounded;
     }
 
     Integer maxLen = pc != null ? pc.maxLength() : null;
     if (maxLen == null || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
 
-    return generateDefaultValue(faker, column, index, maxLen, dictionaryWords);
+    return generateDefaultValue(faker, column, index, maxLen, dictionaryWords, numericScale);
   }
 
   private static Object generateUuidValue(Column column, Set<UUID> usedUuids, ParsedConstraint pc) {
@@ -847,7 +857,7 @@ public class DataGenerator {
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
   private static Object generateDefaultValue(
-      Faker faker, Column column, int index, Integer maxLen, List<String> dictionaryWords) {
+      Faker faker, Column column, int index, Integer maxLen, List<String> dictionaryWords, int numericScale) {
     return switch (column.jdbcType()) {
       case Types.CHAR,
           Types.VARCHAR,
@@ -863,8 +873,8 @@ public class DataGenerator {
           Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
       case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
           Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
-      case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
-      case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
+      case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column, numericScale);
+      case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column, numericScale);
       default -> index;
     };
   }
@@ -953,14 +963,14 @@ public class DataGenerator {
     return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
   }
 
-  private static double getDoubleMin(Column column, ParsedConstraint pc) {
+  private static double getDoubleMin(Column column, ParsedConstraint pc, int numericScale) {
     boolean hasMin = pc != null && pc.min() != null;
     double colMinValue = column.minValue() != 0 ? column.minValue() : 1.0;
     if (hasMin) return pc.min();
 
     // Adjust min if default 1.0 is out of bounds for small precision/scale
     if (column.minValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
-      double max = getDoubleMax(column, pc);
+      double max = getDoubleMax(column, pc, numericScale);
       if (colMinValue > max) {
         return 0.0;
       }
@@ -968,7 +978,7 @@ public class DataGenerator {
     return colMinValue;
   }
 
-  private static double getDoubleMax(Column column, ParsedConstraint pc) {
+  private static double getDoubleMax(Column column, ParsedConstraint pc, int numericScale) {
     boolean hasMax = pc != null && pc.max() != null;
     double colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_DECIMAL_MAX;
     if (hasMax) return pc.max();
@@ -977,7 +987,7 @@ public class DataGenerator {
     if (column.maxValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
       if (column.length() > 0) {
         int precision = column.length();
-        int scale = column.scale();
+        int scale = column.scale() > 0 ? column.scale() : numericScale;
         return Math.pow(10, precision - scale) - Math.pow(10, -scale);
       }
     }
@@ -985,36 +995,35 @@ public class DataGenerator {
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static BigDecimal boundedBigDecimal(Column column) {
-    double min = getDoubleMin(column, null); // Pass null for pc
-    double max = getDoubleMax(column, null); // Pass null for pc
+  private static BigDecimal boundedBigDecimal(Column column, int numericScale) {
+    double min = getDoubleMin(column, null, numericScale); // Pass null for pc
+    double max = getDoubleMax(column, null, numericScale); // Pass null for pc
     if (min > max) {
       double t = min;
       min = max;
       max = t;
     }
     double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-    return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP);
+    int scale = column.scale() > 0 ? column.scale() : numericScale;
+    return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Double boundedDouble(Column column) {
-    double min = getDoubleMin(column, null); // Pass null for pc
-    double max = getDoubleMax(column, null); // Pass null for pc
+  private static Object boundedDouble(Column column, int numericScale) {
+    double min = getDoubleMin(column, null, numericScale); // Pass null for pc
+    double max = getDoubleMax(column, null, numericScale); // Pass null for pc
     if (min > max) {
       double t = min;
       min = max;
       max = t;
     }
     double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-    if (column.scale() > 0) {
-      return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP).doubleValue();
-    }
-    return val;
+    int scale = column.scale() > 0 ? column.scale() : numericScale;
+    return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
   }
 
   @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc) {
+  private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc, int numericScale) {
     switch (column.jdbcType()) {
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> {
         int min = getIntMin(column, pc);
@@ -1037,29 +1046,28 @@ public class DataGenerator {
         return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
       }
       case Types.DECIMAL, Types.NUMERIC -> {
-        double min = getDoubleMin(column, pc);
-        double max = getDoubleMax(column, pc);
+        double min = getDoubleMin(column, pc, numericScale);
+        double max = getDoubleMax(column, pc, numericScale);
         if (min > max) {
           double t = min;
           min = max;
           max = t;
         }
         double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-        return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP);
+        int scale = column.scale() > 0 ? column.scale() : numericScale;
+        return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
       }
       case Types.FLOAT, Types.DOUBLE, Types.REAL -> {
-        double min = getDoubleMin(column, pc);
-        double max = getDoubleMax(column, pc);
+        double min = getDoubleMin(column, pc, numericScale);
+        double max = getDoubleMax(column, pc, numericScale);
         if (min > max) {
           double t = min;
           min = max;
           max = t;
         }
         double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-        if (column.scale() > 0) {
-          return BigDecimal.valueOf(val).setScale(column.scale(), RoundingMode.HALF_UP).doubleValue();
-        }
-        return val;
+        int scale = column.scale() > 0 ? column.scale() : numericScale;
+        return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
       }
       default -> {
         return null;
@@ -1389,7 +1397,8 @@ public class DataGenerator {
       boolean useSpanishDictionary,
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
-      String softDeleteValue) {}
+      String softDeleteValue,
+      int numericScale) {}
 
   @Builder
   private record GenerationInternalParameters(
@@ -1403,7 +1412,8 @@ public class DataGenerator {
       boolean useSpanishDictionary,
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
-      String softDeleteValue) {}
+      String softDeleteValue,
+      int numericScale) {}
 
   private record GenerationContext(
       List<Table> orderedTables,
@@ -1422,7 +1432,8 @@ public class DataGenerator {
       Map<String, Deque<Row>> uniqueFkParentQueues,
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
-      String softDeleteValue) {
+      String softDeleteValue,
+      int numericScale) {
 
     GenerationContext(
         List<Table> orderedTables,
@@ -1438,7 +1449,8 @@ public class DataGenerator {
         boolean deferred,
         String softDeleteColumns,
         boolean softDeleteUseSchemaDefault,
-        String softDeleteValue) {
+        String softDeleteValue,
+        int numericScale) {
       this(
           orderedTables,
           rowsPerTable,
@@ -1456,7 +1468,8 @@ public class DataGenerator {
           new HashMap<>(),
           softDeleteColumns,
           softDeleteUseSchemaDefault,
-          softDeleteValue);
+          softDeleteValue,
+          numericScale);
     }
   }
 
@@ -1473,7 +1486,8 @@ public class DataGenerator {
       List<String> dictionaryWords,
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
-      String softDeleteValue) {}
+      String softDeleteValue,
+      int numericScale) {}
 
   @Builder
   private record GenerateSingleRowParameters(
@@ -1487,7 +1501,8 @@ public class DataGenerator {
       List<String> dictionaryWords,
       Set<String> softDeleteCols,
       boolean softDeleteUseSchemaDefault,
-      String softDeleteValue) {}
+      String softDeleteValue,
+      int numericScale) {}
 
   @Builder
   private record GenerateAndValidateRowParameters(
@@ -1503,7 +1518,8 @@ public class DataGenerator {
       Map<String, Set<String>> seenUniqueKeyCombinations,
       Set<String> softDeleteCols,
       boolean softDeleteUseSchemaDefault,
-      String softDeleteValue) {}
+      String softDeleteValue,
+      int numericScale) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,

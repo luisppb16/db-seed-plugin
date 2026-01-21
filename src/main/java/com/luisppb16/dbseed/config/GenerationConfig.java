@@ -17,5 +17,6 @@ public record GenerationConfig(
     boolean deferred,
     String softDeleteColumns,
     boolean softDeleteUseSchemaDefault,
-    String softDeleteValue
+    String softDeleteValue,
+    int numericScale // New field for user-defined scale
 ) {}

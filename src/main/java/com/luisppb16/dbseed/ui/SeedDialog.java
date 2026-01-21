@@ -62,42 +62,10 @@ public final class SeedDialog extends DialogWrapper {
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
   
-  // Soft Delete UI Components - Removed from here, moved to PkUuidSelectionDialog
-  // But we still need to capture the values if they were passed in config to pass them forward?
-  // Actually, SeedDialog is Step 2. PkUuidSelectionDialog is Step 3.
-  // The user requested to move Soft Delete config to Step 3.
-  // So we remove it from here.
-  
-  // However, we need to preserve the values if they exist in the loaded config so we can pass them to the next step?
-  // Or simply let the next step load them from global config / defaults?
-  // The GenerateSeedAction orchestrates this. It gets config from SeedDialog.
-  // Then it introspects schema.
-  // Then it shows PkUuidSelectionDialog.
-  // So SeedDialog needs to return a GenerationConfig.
-  // If we remove the UI fields from here, we can't let the user edit them here.
-  // But we should still probably carry over the values if we want to persist them in the same GenerationConfig object?
-  // Or we can add fields to PkUuidSelectionDialog and have THAT dialog return the final config or updated values.
-  
-  // Let's remove the UI components from here first.
-  // We will store the soft delete values temporarily if needed, or just ignore them here and let Step 3 handle it.
-  // Since GenerationConfig is immutable, we build it at the end of this dialog.
-  // We can just set null/defaults here for soft delete, and let Step 3 fill them in?
-  // Wait, GenerateSeedAction uses `seedDialog.getConfiguration()` to get the config.
-  // Then it passes that config to `SchemaIntrospector`.
-  // Then it creates `PkUuidSelectionDialog`.
-  // If we move the config to Step 3, `PkUuidSelectionDialog` needs to expose these settings.
-  // And `GenerateSeedAction` needs to merge the results.
-  
-  // So for this file: Remove Soft Delete UI.
-  // We will keep the fields in GenerationConfig, but here we can just pass null or defaults.
-  // Actually, better to pass what we loaded from persistence, so we don't lose it if the user cancels step 3?
-  // No, if user cancels step 3, nothing is saved.
-  // But we want to pre-fill Step 3 with saved values.
-  // So we should probably read the saved config in Step 3 as well, or pass it from here.
-  
   private String loadedSoftDeleteColumns;
   private boolean loadedSoftDeleteUseSchemaDefault;
   private String loadedSoftDeleteValue;
+  private int loadedNumericScale;
 
   public SeedDialog(@Nullable final String urlTemplate) {
     super(true);
@@ -110,7 +78,14 @@ public final class SeedDialog extends DialogWrapper {
 
     loadConfiguration(urlTemplate);
 
-    final JComponent editor = rowsSpinner.getEditor();
+    configureSpinner(rowsSpinner);
+
+    setOKButtonText("Next");
+    init();
+  }
+
+  private void configureSpinner(JSpinner spinner) {
+    final JComponent editor = spinner.getEditor();
     if (editor instanceof final DefaultEditor defaultEditor) {
       final JFormattedTextField textField = defaultEditor.getTextField();
       final InputMap inputMap = textField.getInputMap(JComponent.WHEN_FOCUSED);
@@ -120,14 +95,11 @@ public final class SeedDialog extends DialogWrapper {
       final String decrementAction = "decrement";
       inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), decrementAction);
 
-      final ActionMap spinnerActionMap = rowsSpinner.getActionMap();
+      final ActionMap spinnerActionMap = spinner.getActionMap();
       final ActionMap textFieldActionMap = textField.getActionMap();
       textFieldActionMap.put(incrementAction, spinnerActionMap.get(incrementAction));
       textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
     }
-
-    setOKButtonText("Next");
-    init();
   }
 
   private static void addRow(
@@ -225,10 +197,10 @@ public final class SeedDialog extends DialogWrapper {
         rowsSpinner.setValue(config.rowsPerTable());
         deferredBox.setSelected(config.deferred());
         
-        // Capture loaded values to pass them through, even if not edited here
         loadedSoftDeleteColumns = config.softDeleteColumns();
         loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
         loadedSoftDeleteValue = config.softDeleteValue();
+        loadedNumericScale = config.numericScale() >= 0 ? config.numericScale() : 2;
         
       } else {
         userField.setText(DEFAULT_POSTGRES_USER);
@@ -237,11 +209,11 @@ public final class SeedDialog extends DialogWrapper {
         rowsSpinner.setValue(config.rowsPerTable() > 0 ? config.rowsPerTable() : 10);
         deferredBox.setSelected(config.deferred());
         
-        // Defaults
         DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
         loadedSoftDeleteColumns = globalSettings.softDeleteColumns;
         loadedSoftDeleteUseSchemaDefault = globalSettings.softDeleteUseSchemaDefault;
         loadedSoftDeleteValue = globalSettings.softDeleteValue;
+        loadedNumericScale = 2;
       }
     }
   }
@@ -362,10 +334,10 @@ public final class SeedDialog extends DialogWrapper {
         .schema(schemaField.getText().trim())
         .rowsPerTable((Integer) rowsSpinner.getValue())
         .deferred(deferredBox.isSelected())
-        // Pass through loaded values
         .softDeleteColumns(loadedSoftDeleteColumns)
         .softDeleteUseSchemaDefault(loadedSoftDeleteUseSchemaDefault)
         .softDeleteValue(loadedSoftDeleteValue)
+        .numericScale(loadedNumericScale) // Pass through loaded scale
         .build();
   }
 

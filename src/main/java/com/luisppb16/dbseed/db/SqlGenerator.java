@@ -9,6 +9,7 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
@@ -184,9 +185,19 @@ public class SqlGenerator {
         case Date d -> sb.append("'").append(d).append("'");
         case Timestamp t -> sb.append("'").append(t).append("'");
         case Boolean b -> sb.append(dialect.formatBoolean(b));
+        case BigDecimal bd -> sb.append(bd.toPlainString());
+        case Double d -> sb.append(formatDouble(d));
+        case Float f -> sb.append(formatDouble(f.doubleValue()));
         default -> sb.append(Objects.toString(value, "NULL"));
       }
     }
+  }
+
+  private static String formatDouble(double d) {
+    if (Double.isNaN(d) || Double.isInfinite(d)) {
+      return "NULL";
+    }
+    return BigDecimal.valueOf(d).stripTrailingZeros().toPlainString();
   }
 
   private static String escapeSql(String s) {

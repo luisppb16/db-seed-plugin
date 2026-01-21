@@ -93,6 +93,16 @@ class DataGeneratorTest {
       assertThat(row.values().get("bool_col")).isInstanceOf(Boolean.class);
       assertThat(row.values().get("bigint_col")).isInstanceOf(Long.class);
       assertThat(row.values().get("decimal_col")).isInstanceOf(BigDecimal.class);
+      // Double is now generated as Double, but with scale applied if necessary.
+      // However, boundedDouble returns Double if scale is 0, or BigDecimal if scale > 0?
+      // Let's check DataGenerator.boundedDouble implementation.
+      // It returns Double if scale > 0 (converted back to double), or just double value.
+      // Wait, boundedDouble returns Double.
+      // boundedBigDecimal returns BigDecimal.
+      // Let's check generateDefaultValue switch case.
+      // Types.DOUBLE -> boundedDouble(column)
+      // boundedDouble returns Double.
+      // So it should be Double.class.
       assertThat(row.values().get("double_col")).isInstanceOf(Double.class);
   }
 
@@ -239,6 +249,26 @@ class DataGeneratorTest {
       assertThat(result.rows().get(table))
           .hasSize(10)
           .allSatisfy(row -> assertThat((Integer)row.values().get("lucky_num")).isGreaterThan(9900));
+    }
+
+    @Test
+    @DisplayName("should_respect_numeric_scale_in_generated_values")
+    void shouldRespectNumericScaleInGeneratedValues() {
+      Column col = Column.builder()
+          .name("price")
+          .jdbcType(Types.NUMERIC)
+          .scale(2)
+          .nullable(false)
+          .build();
+      Table table = createTable("SCALE_TEST", List.of(col));
+
+      var result = DataGenerator.generate(defaultParams().tables(List.of(table)).rowsPerTable(10).build());
+
+      List<Row> rows = result.rows().get(table);
+      assertThat(rows).allSatisfy(row -> {
+        BigDecimal val = (BigDecimal) row.values().get("price");
+        assertThat(val.scale()).isEqualTo(2);
+      });
     }
   }
 

@@ -7,7 +7,6 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
-import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
@@ -36,7 +35,7 @@ public class DbSeedSettingsComponent {
   private final JBCheckBox mySoftDeleteUseSchemaDefault = new JBCheckBox("Use Schema Default Value");
   private final JBTextField mySoftDeleteValue = new JBTextField();
 
-  public DbSeedSettingsComponent(Project project) {
+  public DbSeedSettingsComponent() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
     myDefaultOutputDirectory.setText(settings.defaultOutputDirectory);
@@ -60,7 +59,7 @@ public class DbSeedSettingsComponent {
     myDefaultOutputDirectory.addBrowseFolderListener(
         "Select Directory",
         "Please select the default directory for generated SQL files.",
-        project,
+        null,
         folderDescriptor);
 
     myMainPanel =

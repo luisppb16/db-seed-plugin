@@ -5,9 +5,16 @@
 
 package com.luisppb16.dbseed.ui;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.ui.DocumentAdapter;
+import com.intellij.ui.TitledSeparator;
+import com.intellij.ui.components.JBCheckBox;
+import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
+import com.intellij.ui.components.JBTextField;
+import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -17,7 +24,6 @@ import com.luisppb16.dbseed.model.Table;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -72,9 +78,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final RepetitionRulesPanel repetitionRulesPanel;
 
   // Soft Delete UI Components
-  private final JTextField softDeleteColumnsField = new JTextField();
-  private final JCheckBox softDeleteUseSchemaDefaultBox = new JCheckBox("Use Schema Default Value");
-  private final JTextField softDeleteValueField = new JTextField();
+  private final JBTextField softDeleteColumnsField = new JBTextField();
+  private final JBCheckBox softDeleteUseSchemaDefaultBox = new JBCheckBox("Use Schema Default Value");
+  private final JBTextField softDeleteValueField = new JBTextField();
   
   // Numeric Scale UI Component
   private final JSpinner scaleSpinner;
@@ -100,9 +106,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     init();
   }
 
-  // Overloaded constructor for backward compatibility if needed, though we should update callers
+  // Overloaded constructor for backward compatibility if needed
   public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
-      this(tables, GenerationConfig.builder().build()); // Empty config if not provided
+      this(tables, GenerationConfig.builder().build());
   }
   
   private void configureSpinner(JSpinner spinner) {
@@ -151,9 +157,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     }
     softDeleteColumnsField.setText(cols);
     
-    // For boolean, we can't distinguish between "not set" and "false" easily in the record if we didn't use Boolean wrapper.
-    // But we passed loaded values from SeedDialog.
-    // Let's assume initialConfig has the correct values passed from SeedDialog (which loaded them from persistence or defaults).
     softDeleteUseSchemaDefaultBox.setSelected(initialConfig.softDeleteUseSchemaDefault());
     
     String val = initialConfig.softDeleteValue();
@@ -189,7 +192,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
     tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
     tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
-    tabbedPane.addTab("General Settings", createGeneralSettingsPanel());
+    tabbedPane.addTab("More Settings", createMoreSettingsPanel());
 
     // Initial synchronization of states
     synchronizeInitialStates();
@@ -200,66 +203,66 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return content;
   }
   
-  private JPanel createGeneralSettingsPanel() {
-      JPanel panel = new JPanel(new GridBagLayout());
-      panel.setBorder(JBUI.Borders.empty(10));
-      GridBagConstraints c = new GridBagConstraints();
-      c.fill = GridBagConstraints.HORIZONTAL;
-      c.anchor = GridBagConstraints.NORTHWEST;
-      c.insets = JBUI.insets(5);
-      c.weightx = 1.0;
-      
-      // Soft Delete Section
-      c.gridx = 0; c.gridy = 0;
-      JLabel softDeleteLabel = new JLabel("Soft Delete Configuration");
-      softDeleteLabel.setFont(softDeleteLabel.getFont().deriveFont(Font.BOLD));
-      panel.add(softDeleteLabel, c);
-      
-      c.gridy++;
-      panel.add(new JLabel("Soft Delete Columns (comma separated):"), c);
-      
-      c.gridy++;
-      panel.add(softDeleteColumnsField, c);
-      
-      c.gridy++;
-      panel.add(softDeleteUseSchemaDefaultBox, c);
-      
-      c.gridy++;
-      panel.add(new JLabel("Soft Delete Value (if not using schema default):"), c);
-      
-      c.gridy++;
-      panel.add(softDeleteValueField, c);
-      
-      // Separator
-      c.gridy++;
-      panel.add(Box.createVerticalStrut(10), c);
-      
-      // Numeric Scale Section
-      c.gridy++;
-      JLabel numericLabel = new JLabel("Numeric Configuration");
-      numericLabel.setFont(numericLabel.getFont().deriveFont(Font.BOLD));
-      panel.add(numericLabel, c);
-      
-      c.gridy++;
-      panel.add(new JLabel("Default Numeric Scale (decimal places):"), c);
-      
-      c.gridy++;
-      // Wrap spinner in a panel to prevent it from stretching too much
-      JPanel spinnerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-      spinnerPanel.add(scaleSpinner);
-      panel.add(spinnerPanel, c);
-      
-      c.gridy++;
-      JLabel hintLabel = new JLabel("<html><small>Applied to DECIMAL/NUMERIC columns without explicit scale defined in schema.</small></html>");
-      hintLabel.setForeground(UIManager.getColor("Label.infoForeground"));
-      panel.add(hintLabel, c);
-      
-      // Filler
-      c.gridy++;
-      c.weighty = 1.0;
-      panel.add(new JPanel(), c);
-      
-      return panel;
+  private JPanel createMoreSettingsPanel() {
+    final DbSeedSettingsState global = DbSeedSettingsState.getInstance();
+
+    // Status label for visual feedback
+    final JBLabel statusLabel = new JBLabel("Using global settings");
+    statusLabel.setFont(JBUI.Fonts.smallFont());
+    statusLabel.setForeground(UIManager.getColor("Label.infoForeground"));
+
+    final Runnable updateStatus =
+        () -> {
+          final boolean modified =
+              !softDeleteColumnsField.getText().equals(global.softDeleteColumns)
+                  || softDeleteUseSchemaDefaultBox.isSelected() != global.softDeleteUseSchemaDefault
+                  || !softDeleteValueField.getText().equals(global.softDeleteValue);
+          statusLabel.setText(modified ? "Modified from global settings" : "Using global settings");
+          statusLabel.setIcon(modified ? AllIcons.General.Modified : null);
+        };
+
+    // Add listeners for real-time feedback
+    final DocumentListener listener =
+        new DocumentAdapter() {
+          @Override
+          protected void textChanged(@NotNull final DocumentEvent e) {
+            updateStatus.run();
+          }
+        };
+    softDeleteColumnsField.getDocument().addDocumentListener(listener);
+    softDeleteValueField.getDocument().addDocumentListener(listener);
+    softDeleteUseSchemaDefaultBox.addActionListener(e -> updateStatus.run());
+
+    // Initial status check
+    updateStatus.run();
+
+    final JButton resetButton = new JButton("Restore Global Defaults");
+    resetButton.addActionListener(
+        e -> {
+          softDeleteColumnsField.setText(global.softDeleteColumns);
+          softDeleteUseSchemaDefaultBox.setSelected(global.softDeleteUseSchemaDefault);
+          softDeleteValueField.setText(global.softDeleteValue);
+          softDeleteValueField.setEnabled(!global.softDeleteUseSchemaDefault);
+          updateStatus.run();
+        });
+
+    // Use FormBuilder for a clean, consistent layout
+    return FormBuilder.createFormBuilder()
+        .addComponent(new TitledSeparator("Soft Delete Configuration"))
+        .addVerticalGap(5)
+        .addLabeledComponent("Columns (comma separated):", softDeleteColumnsField)
+        .addComponent(softDeleteUseSchemaDefaultBox)
+        .addLabeledComponent("Value (if not default):", softDeleteValueField)
+        .addVerticalGap(5)
+        .addComponent(statusLabel)
+        .addComponent(resetButton)
+        .addVerticalGap(15)
+        .addComponent(new TitledSeparator("Numeric Configuration"))
+        .addVerticalGap(5)
+        .addLabeledComponent("Default Numeric Scale:", scaleSpinner)
+        .addTooltip("Applied to DECIMAL/NUMERIC columns without explicit scale defined in schema.")
+        .addComponentFillVertically(new JPanel(), 0)
+        .getPanel();
   }
 
   private void synchronizeInitialStates() {
@@ -676,7 +679,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private void addSearchFunctionality(
       final JPanel topPanel, final JPanel listPanel, final BiConsumer<JPanel, String> filterLogic) {
-    final JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+    final JPanel searchPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
     final JTextField searchField = new JTextField(20);
     searchField
         .getDocument()

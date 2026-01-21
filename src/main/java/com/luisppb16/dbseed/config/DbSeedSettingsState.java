@@ -29,7 +29,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   public String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
   
   // Soft Delete Configuration
-  public String softDeleteColumns = "deleted_at,deleted";
+  public String softDeleteColumns = "deleted_at,is_deleted";
   public boolean softDeleteUseSchemaDefault = true;
   public String softDeleteValue = "NULL";
 

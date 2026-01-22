@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.ui.TextBrowseFolderListener;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
@@ -57,10 +58,7 @@ public class DbSeedSettingsComponent {
         FileChooserDescriptorFactory.createSingleFolderDescriptor();
     folderDescriptor.setTitle("Select Default Output Directory");
     myDefaultOutputDirectory.addBrowseFolderListener(
-        "Select Directory",
-        "Please select the default directory for generated SQL files.",
-        null,
-        folderDescriptor);
+        new TextBrowseFolderListener(folderDescriptor));
 
     myMainPanel =
         FormBuilder.createFormBuilder()

@@ -80,6 +80,7 @@ public final class SeedDialog extends DialogWrapper {
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.columnSpinnerStep));
+    rowsSpinner.setToolTipText("Number of rows to generate per table");
 
     loadConfiguration(driverInfo.urlTemplate());
 
@@ -308,6 +309,7 @@ public final class SeedDialog extends DialogWrapper {
     showPasswordButton.setContentAreaFilled(false);
     showPasswordButton.setBorderPainted(false);
     showPasswordButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    showPasswordButton.setToolTipText("Show/Hide password");
     showPasswordButton.addActionListener(
         e -> {
           if (showPasswordButton.isSelected()) {

@@ -39,6 +39,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -53,8 +54,8 @@ import net.datafaker.Faker;
 public class DataGenerator {
 
   private static final Pattern SINGLE_WORD_PATTERN =
-      Pattern.compile("^\\p{L}[\\p{L}\\p{N}]*$"); // Simplified regex, removed named group
-  private static final int MAX_GENERATE_ATTEMPTS = 100; // Increased from 10
+      Pattern.compile("^\\p{L}[\\p{L}\\p{N}]*$");
+  private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final int DEFAULT_INT_MAX = 10_000;
   private static final int DEFAULT_LONG_MAX = 1_000_000;
   private static final int DEFAULT_DECIMAL_MAX = 1_000;
@@ -62,18 +63,17 @@ public class DataGenerator {
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
   private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
 
-  private static volatile List<String> englishDictionaryCache;
-  private static volatile List<String> spanishDictionaryCache;
+  private static final AtomicReference<List<String>> englishDictionaryCache = new AtomicReference<>();
+  private static final AtomicReference<List<String>> spanishDictionaryCache = new AtomicReference<>();
   private static final Object DICTIONARY_LOCK = new Object();
 
-  public static GenerationResult generate(GenerationParameters params) {
+  public static GenerationResult generate(final GenerationParameters params) {
 
-    Map<String, Table> overridden = applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
+    final Map<String, Table> overridden = applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
 
-    List<Table> list = new ArrayList<>(overridden.values());
+    final List<Table> list = new ArrayList<>(overridden.values());
 
-    // Convert excludedColumns from Map<String, List<String>> to Map<String, Set<String>>
-    Map<String, Set<String>> excludedColumnsSet =
+    final Map<String, Set<String>> excludedColumnsSet =
         params.excludedColumns().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
@@ -93,26 +93,26 @@ public class DataGenerator {
             .softDeleteColumns(params.softDeleteColumns())
             .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
             .softDeleteValue(params.softDeleteValue())
-            .numericScale(params.numericScale()) // Pass scale
+            .numericScale(params.numericScale())
             .build());
   }
 
   private static Map<String, Table> applyPkUuidOverrides(
-      List<Table> tables, Map<String, Map<String, String>> pkUuidOverrides) {
-    Map<String, Table> overridden = new LinkedHashMap<>();
+      final List<Table> tables, final Map<String, Map<String, String>> pkUuidOverrides) {
+    final Map<String, Table> overridden = new LinkedHashMap<>();
     tables.forEach(
         t -> {
-          Map<String, String> pkOverridesForTable =
+          final Map<String, String> pkOverridesForTable =
               pkUuidOverrides != null ? pkUuidOverrides.get(t.name()) : null;
           if (pkOverridesForTable == null || pkOverridesForTable.isEmpty()) {
             overridden.put(t.name(), t);
             return;
           }
-          List<Column> newCols = new ArrayList<>();
+          final List<Column> newCols = new ArrayList<>();
           t.columns()
               .forEach(
                   c -> {
-                    boolean forceUuid = pkOverridesForTable.containsKey(c.name());
+                    final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
                     if (forceUuid && !c.uuid()) {
                       newCols.add(c.toBuilder().uuid(true).build());
                     } else {
@@ -127,26 +127,26 @@ public class DataGenerator {
     return overridden;
   }
 
-  private static GenerationResult generateInternal(GenerationInternalParameters params) {
+  private static GenerationResult generateInternal(final GenerationInternalParameters params) {
 
-    Instant start = Instant.now();
+    final Instant start = Instant.now();
 
-    List<Table> orderedTables = orderByWordAndFk(params.tables());
-    Map<String, Table> tableMap =
+    final List<Table> orderedTables = orderByWordAndFk(params.tables());
+    final Map<String, Table> tableMap =
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
-    List<String> dictionaryWords =
+    final List<String> dictionaryWords =
         loadDictionaryWords(
             params.useLatinDictionary(),
             params.useEnglishDictionary(),
             params.useSpanishDictionary());
-    Faker faker = new Faker();
-    Map<Table, List<Row>> data = new LinkedHashMap<>();
-    Set<UUID> usedUuids = new HashSet<>();
+    final Faker faker = new Faker();
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    final Set<UUID> usedUuids = new HashSet<>();
 
-    Map<String, Map<String, ParsedConstraint>> tableConstraints = new HashMap<>();
+    final Map<String, Map<String, ParsedConstraint>> tableConstraints = new HashMap<>();
 
-    GenerationContext context =
+    final GenerationContext context =
         new GenerationContext(
             orderedTables,
             params.rowsPerTable(),
@@ -162,13 +162,13 @@ public class DataGenerator {
             params.softDeleteColumns(),
             params.softDeleteUseSchemaDefault(),
             params.softDeleteValue(),
-            params.numericScale()); // Pass scale to context
+            params.numericScale());
 
     executeGenerationSteps(context);
 
-    Instant end = Instant.now();
-    Duration duration = Duration.between(start, end);
-    double seconds = duration.toMillis() / 1000.0;
+    final Instant end = Instant.now();
+    final Duration duration = Duration.between(start, end);
+    final double seconds = duration.toMillis() / 1000.0;
 
     log.info(
         "Generation completed in {} seconds. Tables: {}, deferred updates: {}",
@@ -179,7 +179,7 @@ public class DataGenerator {
     return new GenerationResult(context.data(), context.updates());
   }
 
-  private static void executeGenerationSteps(GenerationContext context) {
+  private static void executeGenerationSteps(final GenerationContext context) {
     generateTableRows(
         GenerateTableRowsParameters.builder()
             .orderedTables(context.orderedTables())
@@ -194,16 +194,16 @@ public class DataGenerator {
             .softDeleteColumns(context.softDeleteColumns())
             .softDeleteUseSchemaDefault(context.softDeleteUseSchemaDefault())
             .softDeleteValue(context.softDeleteValue())
-            .numericScale(context.numericScale()) // Pass scale
+            .numericScale(context.numericScale())
             .build());
 
     validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data(), context.numericScale());
     resolveForeignKeys(context);
   }
 
-  private static void generateTableRows(GenerateTableRowsParameters params) {
+  private static void generateTableRows(final GenerateTableRowsParameters params) {
 
-    Set<String> softDeleteCols = new HashSet<>();
+    final Set<String> softDeleteCols = new HashSet<>();
     if (params.softDeleteColumns() != null) {
         Arrays.stream(params.softDeleteColumns().split(","))
             .map(String::trim)
@@ -222,7 +222,7 @@ public class DataGenerator {
                 return;
               }
 
-              Map<String, ParsedConstraint> constraints =
+              final Map<String, ParsedConstraint> constraints =
                   table.columns().stream()
                       .collect(
                           Collectors.toMap(
@@ -231,155 +231,143 @@ public class DataGenerator {
                                   parseConstraintsForColumn(
                                       table.checks(), col.name(), col.length())));
               params.tableConstraints().put(table.name(), constraints);
-              List<Row> rows = new ArrayList<>();
-              Predicate<Column> isFkColumn =
+              final List<Row> rows = new ArrayList<>();
+              final Predicate<Column> isFkColumn =
                   column -> table.fkColumnNames().contains(column.name());
-              Set<String> seenPrimaryKeys = new HashSet<>();
-              // Map to store seen combinations for each unique key (list of column names)
-              Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
-              Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
+              final Set<String> seenPrimaryKeys = new HashSet<>();
+              final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
+              final Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
 
-              AtomicInteger generatedCount = new AtomicInteger(0);
+              final AtomicInteger generatedCount = new AtomicInteger(0);
               
-              // 1. Process Repetition Rules first
               List<RepetitionRule> rules = Collections.emptyList();
               if (params.repetitionRules() != null) {
                   rules = params.repetitionRules().getOrDefault(table.name(), Collections.emptyList());
               }
 
-              for (RepetitionRule rule : rules) {
-                  // Generate base values for this rule
-                  Map<String, Object> baseValues = new HashMap<>();
-                  
-                  // For columns that should be constant (either specific value or random constant)
-                  // we generate them once here.
-                  
-                  // First, handle fixed values provided by user
-                  rule.fixedValues().forEach((colName, val) -> baseValues.put(colName, val));
-                  
-                  // Then handle random constant columns - generate one random value to reuse
-                  rule.randomConstantColumns().forEach(colName -> {
-                      Column col = table.column(colName);
-                      if (col != null) {
-                          Object val = generateColumnValue(
-                              GenerateSingleRowParameters.builder()
-                                  .faker(params.faker())
-                                  .table(table)
-                                  .index(generatedCount.get()) // Use current count as seed index
-                                  .usedUuids(params.usedUuids())
-                                  .constraints(constraints)
-                                  .isFkColumn(isFkColumn)
-                                  .excluded(excluded)
-                                  .dictionaryWords(params.dictionaryWords())
-                                  .softDeleteCols(softDeleteCols)
-                                  .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
-                                  .softDeleteValue(params.softDeleteValue())
-                                  .numericScale(params.numericScale()) // Pass scale
-                                  .build(),
-                              col
-                          );
-                          baseValues.put(colName, val);
-                      }
-                  });
+              final TableGenerationContext tableContext = TableGenerationContext.builder()
+                  .table(table)
+                  .generatedCount(generatedCount)
+                  .rows(rows)
+                  .constraints(constraints)
+                  .isFkColumn(isFkColumn)
+                  .excluded(excluded)
+                  .seenPrimaryKeys(seenPrimaryKeys)
+                  .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
+                  .softDeleteCols(softDeleteCols)
+                  .build();
 
-                  // Now generate 'count' rows using these base values
-                  for (int i = 0; i < rule.count(); i++) {
-                      // For each row in the repetition set, we take base values and generate new values for others
-                      // BUT we must respect PK/Unique constraints.
-                      // If a column is part of PK and is fixed in baseValues, we might have a problem if count > 1.
-                      // The user is responsible for not violating constraints, but we should try to handle it if possible?
-                      // For now, we assume non-fixed columns will provide uniqueness if needed (e.g. ID).
-                      
-                      int attempts = 0;
-                      while (attempts < MAX_GENERATE_ATTEMPTS) {
-                          Optional<Row> generatedRow = generateAndValidateRowWithBase(
-                              GenerateAndValidateRowParameters.builder()
-                                  .table(table)
-                                  .generatedCount(generatedCount.get())
-                                  .faker(params.faker())
-                                  .usedUuids(params.usedUuids())
-                                  .constraints(constraints)
-                                  .isFkColumn(isFkColumn)
-                                  .excluded(excluded)
-                                  .dictionaryWords(params.dictionaryWords())
-                                  .seenPrimaryKeys(seenPrimaryKeys)
-                                  .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
-                                  .softDeleteCols(softDeleteCols)
-                                  .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
-                                  .softDeleteValue(params.softDeleteValue())
-                                  .numericScale(params.numericScale()) // Pass scale
-                                  .build(),
-                              baseValues
-                          );
-                          
-                          if (generatedRow.isPresent()) {
-                              rows.add(generatedRow.get());
-                              generatedCount.incrementAndGet();
-                              break;
-                          }
-                          attempts++;
-                      }
-                  }
-              }
-
-              // 2. Fill remaining rows up to rowsPerTable
-              int attempts = 0;
-              while (generatedCount.get() < params.rowsPerTable()
-                  && attempts < params.rowsPerTable() * MAX_GENERATE_ATTEMPTS) {
-
-                Optional<Row> generatedRow =
-                    generateAndValidateRow(
-                        GenerateAndValidateRowParameters.builder()
-                            .table(table)
-                            .generatedCount(generatedCount.get())
-                            .faker(params.faker())
-                            .usedUuids(params.usedUuids())
-                            .constraints(constraints)
-                            .isFkColumn(isFkColumn)
-                            .excluded(excluded)
-                            .dictionaryWords(params.dictionaryWords())
-                            .seenPrimaryKeys(seenPrimaryKeys)
-                            .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
-                            .softDeleteCols(softDeleteCols)
-                            .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
-                            .softDeleteValue(params.softDeleteValue())
-                            .numericScale(params.numericScale()) // Pass scale
-                            .build());
-
-                generatedRow.ifPresent(
-                    row -> {
-                      rows.add(row);
-                      generatedCount.incrementAndGet();
-                    });
-                attempts++;
-              }
+              processRepetitionRules(rules, params, tableContext);
+              fillRemainingRows(params, tableContext);
+              
               params.data().put(table, rows);
               log.debug("Generated {} rows for table {}.", rows.size(), table.name());
             });
   }
 
-  private static Map<String, Object> generateSingleRow(GenerateSingleRowParameters params) {
+  private static void processRepetitionRules(
+      final List<RepetitionRule> rules,
+      final GenerateTableRowsParameters params,
+      final TableGenerationContext context) {
+      
+      for (final RepetitionRule rule : rules) {
+        final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
+          
+          rule.randomConstantColumns().forEach(colName -> {
+              final Column col = context.table().column(colName);
+              if (col != null) {
+                  final Object val = generateColumnValue(
+                      GenerateSingleRowParameters.builder()
+                          .faker(params.faker())
+                          .table(context.table())
+                          .index(context.generatedCount().get())
+                          .usedUuids(params.usedUuids())
+                          .constraints(context.constraints())
+                          .isFkColumn(context.isFkColumn())
+                          .excluded(context.excluded())
+                          .dictionaryWords(params.dictionaryWords())
+                          .softDeleteCols(context.softDeleteCols())
+                          .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                          .softDeleteValue(params.softDeleteValue())
+                          .numericScale(params.numericScale())
+                          .build(),
+                      col
+                  );
+                  baseValues.put(colName, val);
+              }
+          });
 
-    Map<String, Object> values = new LinkedHashMap<>();
-    params
-        .table()
-        .columns()
-        .forEach(column -> values.put(column.name(), generateColumnValue(params, column)));
-    return values;
+          for (int i = 0; i < rule.count(); i++) {
+              int attempts = 0;
+              while (attempts < MAX_GENERATE_ATTEMPTS) {
+                  final Optional<Row> generatedRow = generateAndValidateRowWithBase(
+                      createRowParams(params, context),
+                      baseValues
+                  );
+                  
+                  if (generatedRow.isPresent()) {
+                      context.rows().add(generatedRow.get());
+                      context.generatedCount().incrementAndGet();
+                      break;
+                  }
+                  attempts++;
+              }
+          }
+      }
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Object generateColumnValue(GenerateSingleRowParameters params, Column column) {
+  private static void fillRemainingRows(
+      final GenerateTableRowsParameters params,
+      final TableGenerationContext context) {
+      
+      int attempts = 0;
+      while (context.generatedCount().get() < params.rowsPerTable()
+          && attempts < params.rowsPerTable() * MAX_GENERATE_ATTEMPTS) {
+
+        final Optional<Row> generatedRow =
+            generateAndValidateRow(
+                createRowParams(params, context));
+
+        generatedRow.ifPresent(
+            row -> {
+              context.rows().add(row);
+              context.generatedCount().incrementAndGet();
+            });
+        attempts++;
+      }
+  }
+
+  private static GenerateAndValidateRowParameters createRowParams(
+      final GenerateTableRowsParameters params,
+      final TableGenerationContext context) {
+      return GenerateAndValidateRowParameters.builder()
+          .table(context.table())
+          .generatedCount(context.generatedCount().get())
+          .faker(params.faker())
+          .usedUuids(params.usedUuids())
+          .constraints(context.constraints())
+          .isFkColumn(context.isFkColumn())
+          .excluded(context.excluded())
+          .dictionaryWords(params.dictionaryWords())
+          .seenPrimaryKeys(context.seenPrimaryKeys())
+          .seenUniqueKeyCombinations(context.seenUniqueKeyCombinations())
+          .softDeleteCols(context.softDeleteCols())
+          .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+          .softDeleteValue(params.softDeleteValue())
+          .numericScale(params.numericScale())
+          .build();
+  }
+
+  @SuppressWarnings("java:S2245")
+  private static Object generateColumnValue(final GenerateSingleRowParameters params, final Column column) {
     if (params.isFkColumn().test(column) || params.excluded().contains(column.name())) {
       return null;
     }
 
-    // Soft Delete Check
     if (params.softDeleteCols() != null && params.softDeleteCols().contains(column.name())) {
         if (params.softDeleteUseSchemaDefault()) {
-            return SqlKeyword.DEFAULT; // Use DEFAULT keyword
+            return SqlKeyword.DEFAULT;
         } else {
-            // Try to parse the user provided value based on column type
             return parseSoftDeleteValue(params.softDeleteValue(), column);
         }
     }
@@ -388,8 +376,8 @@ public class DataGenerator {
       return null;
     }
 
-    ParsedConstraint pc = params.constraints().get(column.name());
-    Object gen =
+    final ParsedConstraint pc = params.constraints().get(column.name());
+    final Object gen =
         generateValue(
             params.faker(),
             column,
@@ -402,7 +390,7 @@ public class DataGenerator {
     return applyNumericConstraints(column, pc, gen, params.numericScale());
   }
 
-  private static Object parseSoftDeleteValue(String value, Column column) {
+  private static Object parseSoftDeleteValue(final String value, final Column column) {
       if (value == null || "NULL".equalsIgnoreCase(value)) return null;
       try {
           return switch (column.jdbcType()) {
@@ -413,14 +401,14 @@ public class DataGenerator {
               case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
               default -> value;
           };
-      } catch (Exception e) {
+      } catch (final Exception e) {
           log.warn("Failed to parse soft delete value '{}' for column {}. Using NULL.", value, column.name());
           return null;
       }
   }
 
   private static Object applyNumericConstraints(
-      Column column, ParsedConstraint pc, Object generatedValue, int numericScale) {
+      final Column column, final ParsedConstraint pc, final Object generatedValue, final int numericScale) {
     if (isNumericJdbc(column.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
       Object currentGen = generatedValue;
       int attempts = 0;
@@ -433,21 +421,19 @@ public class DataGenerator {
     return generatedValue;
   }
 
-  private static Optional<Row> generateAndValidateRow(GenerateAndValidateRowParameters params) {
+  private static Optional<Row> generateAndValidateRow(final GenerateAndValidateRowParameters params) {
       return generateAndValidateRowWithBase(params, Collections.emptyMap());
   }
 
   private static Optional<Row> generateAndValidateRowWithBase(
-      GenerateAndValidateRowParameters params, Map<String, Object> baseValues) {
+      final GenerateAndValidateRowParameters params, final Map<String, Object> baseValues) {
 
-    Map<String, Object> values = new LinkedHashMap<>();
+    final Map<String, Object> values = new LinkedHashMap<>();
     
-    // First populate with base values (fixed/constant for this rule)
     if (baseValues != null) {
         values.putAll(baseValues);
     }
 
-    // Then generate remaining columns
     params.table().columns().forEach(column -> {
         if (!values.containsKey(column.name())) {
              values.put(column.name(), generateColumnValue(
@@ -463,7 +449,7 @@ public class DataGenerator {
                     .softDeleteCols(params.softDeleteCols())
                     .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                     .softDeleteValue(params.softDeleteValue())
-                    .numericScale(params.numericScale()) // Pass scale
+                    .numericScale(params.numericScale())
                     .build(),
                  column
              ));
@@ -482,11 +468,11 @@ public class DataGenerator {
   }
 
   private static boolean isPrimaryKeyUnique(
-      Table table, Map<String, Object> values, Set<String> seenPrimaryKeys) {
+      final Table table, final Map<String, Object> values, final Set<String> seenPrimaryKeys) {
     if (table.primaryKey().isEmpty()) {
       return true;
     }
-    String pkKey =
+    final String pkKey =
         table.primaryKey().stream()
             .map(pkCol -> Objects.toString(values.get(pkCol), "NULL"))
             .collect(Collectors.joining("|"));
@@ -494,17 +480,17 @@ public class DataGenerator {
   }
 
   private static boolean areUniqueKeysUnique(
-      Table table, Map<String, Object> values, Map<String, Set<String>> seenUniqueKeyCombinations) {
-    for (List<String> uniqueKeyColumns : table.uniqueKeys()) {
+      final Table table, final Map<String, Object> values, final Map<String, Set<String>> seenUniqueKeyCombinations) {
+    for (final List<String> uniqueKeyColumns : table.uniqueKeys()) {
       if (table.fkColumnNames().containsAll(uniqueKeyColumns)) {
         continue;
       }
       if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
-        String uniqueKeyCombination =
+        final String uniqueKeyCombination =
             uniqueKeyColumns.stream()
                 .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
                 .collect(Collectors.joining("|"));
-        Set<String> seenCombinations =
+        final Set<String> seenCombinations =
             seenUniqueKeyCombinations.computeIfAbsent(
                 String.join("__", uniqueKeyColumns), k -> new HashSet<>());
         if (!seenCombinations.add(uniqueKeyCombination)) {
@@ -516,26 +502,26 @@ public class DataGenerator {
   }
 
   private static void validateNumericConstraints(
-      List<Table> orderedTables,
-      Map<String, Map<String, ParsedConstraint>> tableConstraints,
-      Map<Table, List<Row>> data,
-      int numericScale) {
+      final List<Table> orderedTables,
+      final Map<String, Map<String, ParsedConstraint>> tableConstraints,
+      final Map<Table, List<Row>> data,
+      final int numericScale) {
 
-    for (Table table : orderedTables) {
-      Map<String, ParsedConstraint> constraints =
+    for (final Table table : orderedTables) {
+      final Map<String, ParsedConstraint> constraints =
           tableConstraints.getOrDefault(table.name(), Map.of());
-      List<Row> rows = data.get(table);
+      final List<Row> rows = data.get(table);
       if (rows == null) continue;
-      for (Row row : rows) {
+      for (final Row row : rows) {
         validateRowNumericConstraints(table, row, constraints, numericScale);
       }
     }
   }
 
   private static void validateRowNumericConstraints(
-      Table table, Row row, Map<String, ParsedConstraint> constraints, int numericScale) {
-    for (Column col : table.columns()) {
-      ParsedConstraint pc = constraints.get(col.name());
+      final Table table, final Row row, final Map<String, ParsedConstraint> constraints, final int numericScale) {
+    for (final Column col : table.columns()) {
+      final ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
       if (isNumericJdbc(col.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
         int attempts = 0;
@@ -548,9 +534,9 @@ public class DataGenerator {
     }
   }
 
-  private static void resolveForeignKeys(GenerationContext context) {
+  private static void resolveForeignKeys(final GenerationContext context) {
 
-    ForeignKeyResolutionContext fkContext =
+    final ForeignKeyResolutionContext fkContext =
         new ForeignKeyResolutionContext(
             context.tableMap(),
             context.data(),
@@ -562,10 +548,10 @@ public class DataGenerator {
     context.orderedTables().forEach(table -> resolveForeignKeysForTable(table, fkContext));
   }
 
-  private static void resolveForeignKeysForTable(Table table, ForeignKeyResolutionContext context) {
-    List<Row> rows = Objects.requireNonNull(context.data().get(table));
+  private static void resolveForeignKeysForTable(final Table table, final ForeignKeyResolutionContext context) {
+    final List<Row> rows = Objects.requireNonNull(context.data().get(table));
 
-    Map<ForeignKey, Boolean> fkNullableCache =
+    final Map<ForeignKey, Boolean> fkNullableCache =
         table.foreignKeys().stream()
             .collect(
                 Collectors.toMap(
@@ -575,16 +561,14 @@ public class DataGenerator {
                             .map(table::column)
                             .allMatch(Column::nullable)));
 
-    List<List<String>> uniqueKeysOnFks =
+    final List<List<String>> uniqueKeysOnFks =
         table.uniqueKeys().stream()
-            .filter(uk -> table.fkColumnNames().containsAll(uk)) // Simplified condition
+            .filter(uk -> table.fkColumnNames().containsAll(uk))
             .toList();
 
     if (!uniqueKeysOnFks.isEmpty()) {
-      // Special handling for tables with unique keys composed entirely of foreign keys
       handleUniqueFkResolution(table, rows, context, uniqueKeysOnFks);
     } else {
-      // Default FK resolution
       rows.forEach(
           row ->
               table
@@ -599,15 +583,15 @@ public class DataGenerator {
   }
 
   private static void handleUniqueFkResolution(
-      Table table,
-      List<Row> rows,
-      ForeignKeyResolutionContext context,
-      List<List<String>> uniqueKeysOnFks) {
-    Set<String> usedCombinations = new HashSet<>();
-    int maxAttempts = 100 * rows.size();
+      final Table table,
+      final List<Row> rows,
+      final ForeignKeyResolutionContext context,
+      final List<List<String>> uniqueKeysOnFks) {
+    final Set<String> usedCombinations = new HashSet<>();
+    final int maxAttempts = 100 * rows.size();
 
-    for (Row row : rows) {
-      Optional<Map<String, Object>> resolvedFkValues =
+    for (final Row row : rows) {
+      final Optional<Map<String, Object>> resolvedFkValues =
           findUniqueFkCombination(table, context, uniqueKeysOnFks, usedCombinations, maxAttempts);
 
       if (resolvedFkValues.isPresent()) {
@@ -619,18 +603,17 @@ public class DataGenerator {
   }
 
   private static Optional<Map<String, Object>> findUniqueFkCombination(
-      Table table,
-      ForeignKeyResolutionContext context,
-      List<List<String>> uniqueKeysOnFks,
-      Set<String> usedCombinations,
-      int maxAttempts) {
+      final Table table,
+      final ForeignKeyResolutionContext context,
+      final List<List<String>> uniqueKeysOnFks,
+      final Set<String> usedCombinations,
+      final int maxAttempts) {
 
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
-      Map<String, Object> potentialFkValues = generatePotentialFkValues(table, context);
+      final Map<String, Object> potentialFkValues = generatePotentialFkValues(table, context);
 
       if (!potentialFkValues.isEmpty()
           && !isUniqueFkCollision(uniqueKeysOnFks, potentialFkValues, usedCombinations)) {
-        // No collision, this is a valid assignment
         addUniqueCombinationsToSet(uniqueKeysOnFks, potentialFkValues, usedCombinations);
         return Optional.of(potentialFkValues);
       }
@@ -639,14 +622,14 @@ public class DataGenerator {
   }
 
   private static Map<String, Object> generatePotentialFkValues(
-      Table table, ForeignKeyResolutionContext context) {
-    Map<String, Object> potentialFkValues = new HashMap<>();
-    for (ForeignKey fk : table.foreignKeys()) {
-      Table parent = context.tableMap().get(fk.pkTable());
-      List<Row> parentRows = (parent != null) ? context.data().get(parent) : null;
+      final Table table, final ForeignKeyResolutionContext context) {
+    final Map<String, Object> potentialFkValues = new HashMap<>();
+    for (final ForeignKey fk : table.foreignKeys()) {
+      final Table parent = context.tableMap().get(fk.pkTable());
+      final List<Row> parentRows = (parent != null) ? context.data().get(parent) : null;
 
       if (parent != null && parentRows != null && !parentRows.isEmpty()) {
-        Row parentRow =
+        final Row parentRow =
             getParentRowForForeignKey(
                 fk, parentRows, context.uniqueFkParentQueues(), table.name(), parent.name(), false);
         if (parentRow != null) {
@@ -660,11 +643,11 @@ public class DataGenerator {
   }
 
   private static boolean isUniqueFkCollision(
-      List<List<String>> uniqueKeysOnFks,
-      Map<String, Object> potentialFkValues,
-      Set<String> usedCombinations) {
-    for (List<String> ukColumns : uniqueKeysOnFks) {
-      String combination =
+      final List<List<String>> uniqueKeysOnFks,
+      final Map<String, Object> potentialFkValues,
+      final Set<String> usedCombinations) {
+    for (final List<String> ukColumns : uniqueKeysOnFks) {
+      final String combination =
           ukColumns.stream()
               .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
               .collect(Collectors.joining("|"));
@@ -676,11 +659,11 @@ public class DataGenerator {
   }
 
   private static void addUniqueCombinationsToSet(
-      List<List<String>> uniqueKeysOnFks,
-      Map<String, Object> potentialFkValues,
-      Set<String> usedCombinations) {
-    for (List<String> ukColumns : uniqueKeysOnFks) {
-      String combination =
+      final List<List<String>> uniqueKeysOnFks,
+      final Map<String, Object> potentialFkValues,
+      final Set<String> usedCombinations) {
+    for (final List<String> ukColumns : uniqueKeysOnFks) {
+      final String combination =
           ukColumns.stream()
               .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
               .collect(Collectors.joining("|"));
@@ -689,23 +672,23 @@ public class DataGenerator {
   }
 
   private static void resolveSingleForeignKey(
-      ForeignKey fk,
-      Table table,
-      Row row,
-      boolean fkNullable,
-      ForeignKeyResolutionContext context) {
+      final ForeignKey fk,
+      final Table table,
+      final Row row,
+      final boolean fkNullable,
+      final ForeignKeyResolutionContext context) {
 
-    Table parent = context.tableMap().get(fk.pkTable());
+    final Table parent = context.tableMap().get(fk.pkTable());
     if (parent == null) {
       log.warn("Skipping FK {}.{} -> {}: table not found", table.name(), fk.name(), fk.pkTable());
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
 
-    List<Row> parentRows = context.data().get(parent);
-    boolean parentInserted = context.inserted().contains(parent.name());
+    final List<Row> parentRows = context.data().get(parent);
+    final boolean parentInserted = context.inserted().contains(parent.name());
 
-    Row parentRow =
+    final Row parentRow =
         getParentRowForForeignKey(
             fk,
             parentRows,
@@ -730,35 +713,35 @@ public class DataGenerator {
                 .concat(" -> ")
                 .concat(parent.name()));
       }
-      Map<String, Object> fkVals = new LinkedHashMap<>();
+      final Map<String, Object> fkVals = new LinkedHashMap<>();
       fk.columnMapping()
           .forEach(
               (fkCol, pkCol) -> {
                 fkVals.put(fkCol, parentRow.values().get(pkCol));
                 row.values().put(fkCol, null);
               });
-      Map<String, Object> pkVals = new LinkedHashMap<>();
+      final Map<String, Object> pkVals = new LinkedHashMap<>();
       table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
       context.updates().add(new PendingUpdate(table.name(), fkVals, pkVals));
     }
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
+  @SuppressWarnings("java:S2245")
   private static Row getParentRowForForeignKey(
-      ForeignKey fk,
-      List<Row> parentRows,
-      Map<String, Deque<Row>> uniqueFkParentQueues,
-      String tableName,
-      String parentTableName,
-      boolean fkNullable) {
+      final ForeignKey fk,
+      final List<Row> parentRows,
+      final Map<String, Deque<Row>> uniqueFkParentQueues,
+      final String tableName,
+      final String parentTableName,
+      final boolean fkNullable) {
 
     if (fk.uniqueOnFk()) {
-      String key = tableName.concat("|").concat(fk.name());
-      Deque<Row> queue =
+      final String key = tableName.concat("|").concat(fk.name());
+      final Deque<Row> queue =
           uniqueFkParentQueues.computeIfAbsent(
               key,
               k -> {
-                List<Row> shuffled = new ArrayList<>(parentRows);
+                final List<Row> shuffled = new ArrayList<>(parentRows);
                 Collections.shuffle(shuffled, ThreadLocalRandom.current());
                 return new ArrayDeque<>(shuffled);
               });
@@ -779,13 +762,13 @@ public class DataGenerator {
   }
 
   private static Object generateValue(
-      Faker faker,
-      Column column,
-      int index,
-      Set<UUID> usedUuids,
-      ParsedConstraint pc,
-      List<String> dictionaryWords,
-      int numericScale) { // Added dictionaryWords parameter
+      final Faker faker,
+      final Column column,
+      final int index,
+      final Set<UUID> usedUuids,
+      final ParsedConstraint pc,
+      final List<String> dictionaryWords,
+      final int numericScale) {
     if (column.uuid()) {
       return generateUuidValue(column, usedUuids, pc);
     }
@@ -798,9 +781,9 @@ public class DataGenerator {
       return pickRandom(new ArrayList<>(pc.allowedValues()), column.jdbcType());
     }
 
-    ParsedConstraint effectivePc = determineEffectiveNumericConstraint(column, pc);
+    final ParsedConstraint effectivePc = determineEffectiveNumericConstraint(column, pc);
     if (effectivePc.min() != null || effectivePc.max() != null) {
-      Object bounded = generateNumericWithinBounds(column, effectivePc, numericScale);
+      final Object bounded = generateNumericWithinBounds(column, effectivePc, numericScale);
       if (bounded != null) return bounded;
     }
 
@@ -810,30 +793,27 @@ public class DataGenerator {
     return generateDefaultValue(faker, column, index, maxLen, dictionaryWords, numericScale);
   }
 
-  private static Object generateUuidValue(Column column, Set<UUID> usedUuids, ParsedConstraint pc) {
-    // Try to parse from column's allowed values
+  private static Object generateUuidValue(final Column column, final Set<UUID> usedUuids, final ParsedConstraint pc) {
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
-      UUID uuid = tryParseUuidFromAllowedValues(column.allowedValues(), usedUuids);
+      final UUID uuid = tryParseUuidFromAllowedValues(column.allowedValues(), usedUuids);
       if (uuid != null) return uuid;
     }
 
-    // Try to parse from parsed constraint's allowed values
     if (pc != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()) {
-      UUID uuid = tryParseUuidFromAllowedValues(pc.allowedValues(), usedUuids);
+      final UUID uuid = tryParseUuidFromAllowedValues(pc.allowedValues(), usedUuids);
       if (uuid != null) return uuid;
     }
 
-    // Otherwise generate a new unique UUID
     return generateUuid(usedUuids);
   }
 
   private static UUID tryParseUuidFromAllowedValues(
-      Set<String> allowedValues, Set<UUID> usedUuids) {
-    for (String s : allowedValues) {
+      final Set<String> allowedValues, final Set<UUID> usedUuids) {
+    for (final String s : allowedValues) {
       try {
-        UUID u = UUID.fromString(s.trim());
+        final UUID u = UUID.fromString(s.trim());
         if (usedUuids.add(u)) return u;
-      } catch (IllegalArgumentException e) {
+      } catch (final IllegalArgumentException e) {
         log.debug("Invalid UUID string in allowed values: {}", s, e);
       }
     }
@@ -841,13 +821,13 @@ public class DataGenerator {
   }
 
   private static ParsedConstraint determineEffectiveNumericConstraint(
-      Column column, ParsedConstraint pc) {
-    Double pcMin = pc != null ? pc.min() : null;
-    Double pcMax = pc != null ? pc.max() : null;
-    Double cmin = column.minValue() != 0 ? (double) column.minValue() : null;
-    Double cmax = column.maxValue() != 0 ? (double) column.maxValue() : null;
-    Double effectiveMin = (pcMin != null) ? pcMin : cmin;
-    Double effectiveMax = (pcMax != null) ? pcMax : cmax;
+      final Column column, final ParsedConstraint pc) {
+    final Double pcMin = pc != null ? pc.min() : null;
+    final Double pcMax = pc != null ? pc.max() : null;
+    final Double cmin = column.minValue() != 0 ? (double) column.minValue() : null;
+    final Double cmax = column.maxValue() != 0 ? (double) column.maxValue() : null;
+    final Double effectiveMin = (pcMin != null) ? pcMin : cmin;
+    final Double effectiveMax = (pcMax != null) ? pcMax : cmax;
     return new ParsedConstraint(
         effectiveMin,
         effectiveMax,
@@ -855,9 +835,9 @@ public class DataGenerator {
         pc != null ? pc.maxLength() : null);
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
+  @SuppressWarnings("java:S2245")
   private static Object generateDefaultValue(
-      Faker faker, Column column, int index, Integer maxLen, List<String> dictionaryWords, int numericScale) {
+      final Faker faker, final Column column, final int index, final Integer maxLen, final List<String> dictionaryWords, final int numericScale) {
     return switch (column.jdbcType()) {
       case Types.CHAR,
           Types.VARCHAR,
@@ -879,8 +859,8 @@ public class DataGenerator {
     };
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Object pickRandom(List<String> vals, int jdbcType) {
+  @SuppressWarnings("java:S2245")
+  private static Object pickRandom(final List<String> vals, final int jdbcType) {
     String v = vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
     if (v == null) return null;
     v = v.trim();
@@ -894,16 +874,16 @@ public class DataGenerator {
         case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(v);
         default -> v;
       };
-    } catch (NumberFormatException e) {
+    } catch (final NumberFormatException e) {
       log.debug("Failed to parse '{}' to numeric type for JDBC type {}", v, jdbcType, e);
       return v;
     }
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static UUID generateUuid(Set<UUID> usedUuids) {
+  @SuppressWarnings("java:S2245")
+  private static UUID generateUuid(final Set<UUID> usedUuids) {
     for (int i = 0; i < UUID_GENERATION_LIMIT; i++) {
-      UUID u = UUID.randomUUID();
+      final UUID u = UUID.randomUUID();
       if (usedUuids.add(u)) return u;
     }
     throw new IllegalStateException(
@@ -912,65 +892,62 @@ public class DataGenerator {
             .concat(" attempts"));
   }
 
-  private static int getIntMin(Column column, ParsedConstraint pc) {
-    boolean hasMin = pc != null && pc.min() != null;
-    int colMinValue = column.minValue() != 0 ? column.minValue() : 1;
+  private static int getIntMin(final Column column, final ParsedConstraint pc) {
+    final boolean hasMin = pc != null && pc.min() != null;
+    final int colMinValue = column.minValue() != 0 ? column.minValue() : 1;
     return hasMin ? pc.min().intValue() : colMinValue;
   }
 
-  private static int getIntMax(Column column, ParsedConstraint pc) {
-    boolean hasMax = pc != null && pc.max() != null;
-    int colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_INT_MAX;
+  private static int getIntMax(final Column column, final ParsedConstraint pc) {
+    final boolean hasMax = pc != null && pc.max() != null;
+    final int colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_INT_MAX;
     return hasMax ? pc.max().intValue() : colMaxValue;
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Integer boundedInt(Column column) {
-    int min =
-        getIntMin(column, null); // Pass null for pc as it's handled in generateNumericWithinBounds
-    int max =
-        getIntMax(column, null); // Pass null for pc as it's handled in generateNumericWithinBounds
+  @SuppressWarnings("java:S2245")
+  private static Integer boundedInt(final Column column) {
+    int min = getIntMin(column, null);
+    int max = getIntMax(column, null);
     if (min > max) {
-      int t = min;
+      final int t = min;
       min = max;
       max = t;
     }
-    long v = ThreadLocalRandom.current().nextLong(min, (long) max + 1);
+    final long v = ThreadLocalRandom.current().nextLong(min, (long) max + 1);
     return Math.toIntExact(Math.clamp(v, Integer.MIN_VALUE, Integer.MAX_VALUE));
   }
 
-  private static long getLongMin(Column column, ParsedConstraint pc) {
-    boolean hasMin = pc != null && pc.min() != null;
-    long colMinValue = column.minValue() != 0 ? column.minValue() : 1L;
+  private static long getLongMin(final Column column, final ParsedConstraint pc) {
+    final boolean hasMin = pc != null && pc.min() != null;
+    final long colMinValue = column.minValue() != 0 ? column.minValue() : 1L;
     return hasMin ? pc.min().longValue() : colMinValue;
   }
 
-  private static long getLongMax(Column column, ParsedConstraint pc) {
-    boolean hasMax = pc != null && pc.max() != null;
-    long colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_LONG_MAX;
+  private static long getLongMax(final Column column, final ParsedConstraint pc) {
+    final boolean hasMax = pc != null && pc.max() != null;
+    final long colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_LONG_MAX;
     return hasMax ? pc.max().longValue() : colMaxValue;
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Long boundedLong(Column column) {
-    long min = getLongMin(column, null); // Pass null for pc
-    long max = getLongMax(column, null); // Pass null for pc
+  @SuppressWarnings("java:S2245")
+  private static Long boundedLong(final Column column) {
+    long min = getLongMin(column, null);
+    long max = getLongMax(column, null);
     if (min > max) {
-      long t = min;
+      final long t = min;
       min = max;
       max = t;
     }
     return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
   }
 
-  private static double getDoubleMin(Column column, ParsedConstraint pc, int numericScale) {
-    boolean hasMin = pc != null && pc.min() != null;
-    double colMinValue = column.minValue() != 0 ? column.minValue() : 1.0;
+  private static double getDoubleMin(final Column column, final ParsedConstraint pc, final int numericScale) {
+    final boolean hasMin = pc != null && pc.min() != null;
+    final double colMinValue = column.minValue() != 0 ? column.minValue() : 1.0;
     if (hasMin) return pc.min();
 
-    // Adjust min if default 1.0 is out of bounds for small precision/scale
     if (column.minValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
-      double max = getDoubleMax(column, pc, numericScale);
+      final double max = getDoubleMax(column, pc, numericScale);
       if (colMinValue > max) {
         return 0.0;
       }
@@ -978,58 +955,56 @@ public class DataGenerator {
     return colMinValue;
   }
 
-  private static double getDoubleMax(Column column, ParsedConstraint pc, int numericScale) {
-    boolean hasMax = pc != null && pc.max() != null;
-    double colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_DECIMAL_MAX;
+  private static double getDoubleMax(final Column column, final ParsedConstraint pc, final int numericScale) {
+    final boolean hasMax = pc != null && pc.max() != null;
+    final double colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_DECIMAL_MAX;
     if (hasMax) return pc.max();
 
-    // Respect precision/scale for DECIMAL/NUMERIC if no explicit max is set
-    if (column.maxValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
-      if (column.length() > 0) {
-        int precision = column.length();
-        int scale = column.scale() > 0 ? column.scale() : numericScale;
-        return Math.pow(10, precision - scale) - Math.pow(10, -scale);
-      }
+    if (column.maxValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC) && column.length() > 0) {
+        final int precision = column.length();
+        final int scale = getEffectiveScale(column, numericScale);
+        return Math.pow(10.0, (double) precision - scale) - Math.pow(10.0, -scale);
     }
     return colMaxValue;
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static BigDecimal boundedBigDecimal(Column column, int numericScale) {
-    double min = getDoubleMin(column, null, numericScale); // Pass null for pc
-    double max = getDoubleMax(column, null, numericScale); // Pass null for pc
-    if (min > max) {
-      double t = min;
-      min = max;
-      max = t;
-    }
-    double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-    int scale = column.scale() > 0 ? column.scale() : numericScale;
+  private static double[] getNumericBounds(final Column column, final ParsedConstraint pc, final int numericScale) {
+      double min = getDoubleMin(column, pc, numericScale);
+      double max = getDoubleMax(column, pc, numericScale);
+      if (min > max) {
+          return new double[]{max, min};
+      }
+      return new double[]{min, max};
+  }
+
+  private static double generateRandomDouble(final double min, final double max) {
+      return min + (max - min) * ThreadLocalRandom.current().nextDouble();
+  }
+
+  @SuppressWarnings("java:S2245")
+  private static BigDecimal boundedBigDecimal(final Column column, final int numericScale) {
+    final double[] bounds = getNumericBounds(column, null, numericScale);
+    final double val = generateRandomDouble(bounds[0], bounds[1]);
+    final int scale = getEffectiveScale(column, numericScale);
     return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Object boundedDouble(Column column, int numericScale) {
-    double min = getDoubleMin(column, null, numericScale); // Pass null for pc
-    double max = getDoubleMax(column, null, numericScale); // Pass null for pc
-    if (min > max) {
-      double t = min;
-      min = max;
-      max = t;
-    }
-    double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-    int scale = column.scale() > 0 ? column.scale() : numericScale;
-    return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
+  @SuppressWarnings("java:S2245")
+  private static Double boundedDouble(final Column column, final int numericScale) {
+    final double[] bounds = getNumericBounds(column, null, numericScale);
+    final double val = generateRandomDouble(bounds[0], bounds[1]);
+    final int scale = getEffectiveScale(column, numericScale);
+    return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP).doubleValue();
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
-  private static Object generateNumericWithinBounds(Column column, ParsedConstraint pc, int numericScale) {
+  @SuppressWarnings("java:S2245")
+  private static Object generateNumericWithinBounds(final Column column, final ParsedConstraint pc, final int numericScale) {
     switch (column.jdbcType()) {
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> {
         int min = getIntMin(column, pc);
         int max = getIntMax(column, pc);
         if (min > max) {
-          int t = min;
+          final int t = min;
           min = max;
           max = t;
         }
@@ -1039,34 +1014,16 @@ public class DataGenerator {
         long min = getLongMin(column, pc);
         long max = getLongMax(column, pc);
         if (min > max) {
-          long t = min;
+          final long t = min;
           min = max;
           max = t;
         }
         return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
       }
-      case Types.DECIMAL, Types.NUMERIC -> {
-        double min = getDoubleMin(column, pc, numericScale);
-        double max = getDoubleMax(column, pc, numericScale);
-        if (min > max) {
-          double t = min;
-          min = max;
-          max = t;
-        }
-        double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-        int scale = column.scale() > 0 ? column.scale() : numericScale;
-        return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
-      }
-      case Types.FLOAT, Types.DOUBLE, Types.REAL -> {
-        double min = getDoubleMin(column, pc, numericScale);
-        double max = getDoubleMax(column, pc, numericScale);
-        if (min > max) {
-          double t = min;
-          min = max;
-          max = t;
-        }
-        double val = min + (max - min) * ThreadLocalRandom.current().nextDouble();
-        int scale = column.scale() > 0 ? column.scale() : numericScale;
+      case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL -> {
+        final double[] bounds = getNumericBounds(column, pc, numericScale);
+        final double val = generateRandomDouble(bounds[0], bounds[1]);
+        final int scale = getEffectiveScale(column, numericScale);
         return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
       }
       default -> {
@@ -1075,52 +1032,50 @@ public class DataGenerator {
     }
   }
 
-  @SuppressWarnings("java:S2245") // ThreadLocalRandom is appropriate for data generation
+  @SuppressWarnings("java:S2245")
   private static String generateString(
-      Faker faker, Integer maxLen, int jdbcType, List<String> dictionaryWords) {
-    int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
+      final Faker faker, final Integer maxLen, final int jdbcType, final List<String> dictionaryWords) {
+    final int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
     if (len == 2) return faker.country().countryCode2();
     if (len == 3) return faker.country().countryCode3();
     if (len == 24) return normalizeToLength("ES".concat(faker.number().digits(22)), len, jdbcType);
 
     if (!dictionaryWords.isEmpty()) {
-      // Use dictionary words
-      int numWords = ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), 5));
-      StringBuilder phraseBuilder = new StringBuilder();
+      final int numWords = ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), 5));
+      final StringBuilder phraseBuilder = new StringBuilder();
       for (int i = 0; i < numWords; i++) {
         phraseBuilder.append(pickRandom(dictionaryWords, Types.VARCHAR)).append(" ");
       }
       return normalizeToLength(phraseBuilder.toString().trim(), len, jdbcType);
     } else {
-      // Fallback to Faker if no dictionary words are loaded
-      int numWords = ThreadLocalRandom.current().nextInt(3, Math.clamp(len / 5, 4, 10));
-      String phrase = String.join(" ", faker.lorem().words(numWords));
+      final int numWords = ThreadLocalRandom.current().nextInt(3, Math.clamp(len / 5, 4, 10));
+      final String phrase = String.join(" ", faker.lorem().words(numWords));
       return normalizeToLength(phrase, len, jdbcType);
     }
   }
 
   private static List<String> loadDictionaryWords(
-      boolean useLatinDictionary, boolean useEnglishDictionary, boolean useSpanishDictionary) {
-    List<String> words = new ArrayList<>();
+      final boolean useLatinDictionary, final boolean useEnglishDictionary, final boolean useSpanishDictionary) {
+    final List<String> words = new ArrayList<>();
     if (useEnglishDictionary) {
-      if (englishDictionaryCache == null) {
+      if (englishDictionaryCache.get() == null) {
         synchronized (DICTIONARY_LOCK) {
-          if (englishDictionaryCache == null) {
-            englishDictionaryCache = readWordsFromFile(ENGLISH_DICTIONARY_PATH);
+          if (englishDictionaryCache.get() == null) {
+            englishDictionaryCache.set(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
           }
         }
       }
-      words.addAll(englishDictionaryCache);
+      words.addAll(englishDictionaryCache.get());
     }
     if (useSpanishDictionary) {
-      if (spanishDictionaryCache == null) {
+      if (spanishDictionaryCache.get() == null) {
         synchronized (DICTIONARY_LOCK) {
-          if (spanishDictionaryCache == null) {
-            spanishDictionaryCache = readWordsFromFile(SPANISH_DICTIONARY_PATH);
+          if (spanishDictionaryCache.get() == null) {
+            spanishDictionaryCache.set(readWordsFromFile(SPANISH_DICTIONARY_PATH));
           }
         }
       }
-      words.addAll(spanishDictionaryCache);
+      words.addAll(spanishDictionaryCache.get());
     }
     if (useLatinDictionary || words.isEmpty()) {
       return Collections.emptyList();
@@ -1128,8 +1083,8 @@ public class DataGenerator {
     return words;
   }
 
-  private static List<String> readWordsFromFile(String filePath) {
-    try (InputStream is = DataGenerator.class.getResourceAsStream(filePath)) {
+  private static List<String> readWordsFromFile(final String filePath) {
+    try (final InputStream is = DataGenerator.class.getResourceAsStream(filePath)) {
       if (is == null) {
         log.warn("Dictionary file not found: {}", filePath);
         return Collections.emptyList();
@@ -1137,14 +1092,14 @@ public class DataGenerator {
       return Arrays.stream(new String(is.readAllBytes(), StandardCharsets.UTF_8).split("\\s+"))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
-          .toList(); // Replaced Collectors.toList() with toList()
-    } catch (IOException e) {
+          .toList();
+    } catch (final IOException e) {
       log.error("Error reading dictionary file: {}", filePath, e);
       return Collections.emptyList();
     }
   }
 
-  private static boolean isNumericJdbc(int jdbcType) {
+  private static boolean isNumericJdbc(final int jdbcType) {
     return switch (jdbcType) {
       case Types.INTEGER,
           Types.SMALLINT,
@@ -1160,74 +1115,69 @@ public class DataGenerator {
     };
   }
 
-  private static boolean isNumericOutsideBounds(Object value, ParsedConstraint pc) {
+  private static boolean isNumericOutsideBounds(final Object value, final ParsedConstraint pc) {
     if (value == null || pc == null) return false;
     try {
-      double v;
+      final double v;
       if (value instanceof Number n) v = n.doubleValue();
       else v = Double.parseDouble(value.toString());
       return (pc.min() != null && v < pc.min()) || (pc.max() != null && v > pc.max());
-    } catch (NumberFormatException e) {
+    } catch (final NumberFormatException e) {
       log.debug("Value '{}' is not a valid number for numeric constraint check.", value, e);
       return true;
     }
   }
 
   private static ParsedConstraint parseConstraintsForColumn(
-      List<String> checks, String columnName, int columnLength) {
+      final List<String> checks, final String columnName, final int columnLength) {
     if (checks == null || checks.isEmpty())
       return new ParsedConstraint(null, null, Collections.emptySet(), null);
 
     Double lower = null;
     Double upper = null;
-    Set<String> allowed = new HashSet<>();
+    final Set<String> allowed = new HashSet<>();
     Integer maxLen = null;
 
-    String colPattern =
+    final String colPattern =
         "(?i)(?:[A-Za-z0-9_]+\\.)*\"?".concat(Pattern.quote(columnName)).concat("\"?");
 
-    Pattern betweenPattern =
+    final Pattern betweenPattern =
         Pattern.compile(
             colPattern.concat(
                 "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
-    Pattern rangePattern =
+    final Pattern rangePattern =
         Pattern.compile(
             colPattern.concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
-    Pattern inPattern =
+    final Pattern inPattern =
         Pattern.compile(colPattern.concat("\\s+IN\\s*\\(([^)]+)\\)"), Pattern.CASE_INSENSITIVE);
-    Pattern eqPattern =
+    final Pattern eqPattern =
         Pattern.compile(
             colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
             Pattern.CASE_INSENSITIVE);
-    Pattern lenPattern =
+    final Pattern lenPattern =
         Pattern.compile(
             "(?i)(?:char_length|length)\\s*\\(\\s*"
                 .concat(colPattern)
                 .concat("\\s*\\)\\s*(<=|<|=)\\s*(\\d+)"));
 
-    for (String check : checks) {
+    for (final String check : checks) {
       if (check == null || check.isBlank()) continue;
-      String exprNoParens = check.replaceAll("[()]+", " ");
+      final String exprNoParens = check.replaceAll("[()]+", " ");
 
-      // Parse BETWEEN constraints
-      BetweenParseResult betweenResult =
+      final BetweenParseResult betweenResult =
           parseBetweenConstraint(exprNoParens, betweenPattern, check, lower, upper);
       lower = betweenResult.lower();
       upper = betweenResult.upper();
 
-      // Parse range constraints
-      RangeParseResult rangeResult =
+      final RangeParseResult rangeResult =
           parseRangeConstraint(exprNoParens, rangePattern, check, lower, upper);
       lower = rangeResult.lower();
       upper = rangeResult.upper();
 
-      // Parse IN list constraints
       parseInListConstraint(check, inPattern, allowed);
-      // Parse equality constraints
       parseEqualityConstraint(exprNoParens, eqPattern, allowed);
-      // Parse length constraints
       maxLen = parseLengthConstraint(check, lenPattern, maxLen);
     }
 
@@ -1239,23 +1189,23 @@ public class DataGenerator {
   }
 
   private static BetweenParseResult parseBetweenConstraint(
-      String exprNoParens,
-      Pattern betweenPattern,
-      String check,
-      Double currentLower,
-      Double currentUpper) {
-    Matcher mb = betweenPattern.matcher(exprNoParens);
+      final String exprNoParens,
+      final Pattern betweenPattern,
+      final String check,
+      final Double currentLower,
+      final Double currentUpper) {
+    final Matcher mb = betweenPattern.matcher(exprNoParens);
     Double newLower = currentLower;
     Double newUpper = currentUpper;
     while (mb.find()) {
       try {
-        double a = Double.parseDouble(mb.group(1));
-        double b = Double.parseDouble(mb.group(2));
-        double lo = Math.min(a, b);
-        double hi = Math.max(a, b);
+        final double a = Double.parseDouble(mb.group(1));
+        final double b = Double.parseDouble(mb.group(2));
+        final double lo = Math.min(a, b);
+        final double hi = Math.max(a, b);
         newLower = (newLower == null) ? lo : Math.max(newLower, lo);
         newUpper = (newUpper == null) ? hi : Math.min(newUpper, hi);
-      } catch (NumberFormatException e) {
+      } catch (final NumberFormatException e) {
         log.debug("Failed to parse BETWEEN bounds in check: {}", check, e);
       }
     }
@@ -1263,29 +1213,29 @@ public class DataGenerator {
   }
 
   private static RangeParseResult parseRangeConstraint(
-      String exprNoParens,
-      Pattern rangePattern,
-      String check,
-      Double currentLower,
-      Double currentUpper) {
-    Matcher mr = rangePattern.matcher(exprNoParens);
+      final String exprNoParens,
+      final Pattern rangePattern,
+      final String check,
+      final Double currentLower,
+      final Double currentUpper) {
+    final Matcher mr = rangePattern.matcher(exprNoParens);
     Double newLower = currentLower;
     Double newUpper = currentUpper;
     while (mr.find()) {
-      String op = mr.group(1);
-      String num = mr.group(2);
+      final String op = mr.group(1);
+      final String num = mr.group(2);
       try {
-        double val = Double.parseDouble(num);
+        final double val = Double.parseDouble(num);
         newLower = updateLowerBound(op, val, newLower);
         newUpper = updateUpperBound(op, val, newUpper);
-      } catch (NumberFormatException e) {
+      } catch (final NumberFormatException e) {
         log.debug("Failed to parse numeric range in check: {}", check, e);
       }
     }
     return new RangeParseResult(newLower, newUpper);
   }
 
-  private static Double updateLowerBound(String op, double val, Double currentLower) {
+  private static Double updateLowerBound(final String op, final double val, final Double currentLower) {
     return switch (op) {
       case ">" ->
           (currentLower == null) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
@@ -1294,7 +1244,7 @@ public class DataGenerator {
     };
   }
 
-  private static Double updateUpperBound(String op, double val, Double currentUpper) {
+  private static Double updateUpperBound(final String op, final double val, final Double currentUpper) {
     return switch (op) {
       case "<" ->
           (currentUpper == null) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
@@ -1303,10 +1253,10 @@ public class DataGenerator {
     };
   }
 
-  private static void parseInListConstraint(String check, Pattern inPattern, Set<String> allowed) {
-    Matcher mi = inPattern.matcher(check);
+  private static void parseInListConstraint(final String check, final Pattern inPattern, final Set<String> allowed) {
+    final Matcher mi = inPattern.matcher(check);
     while (mi.find()) {
-      String inside = mi.group(1);
+      final String inside = mi.group(1);
       Arrays.stream(inside.split(","))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
@@ -1323,8 +1273,8 @@ public class DataGenerator {
   }
 
   private static void parseEqualityConstraint(
-      String exprNoParens, Pattern eqPattern, Set<String> allowed) {
-    Matcher me = eqPattern.matcher(exprNoParens);
+      final String exprNoParens, final Pattern eqPattern, final Set<String> allowed) {
+    final Matcher me = eqPattern.matcher(exprNoParens);
     while (me.find()) {
       String s = me.group(1).trim();
       if (s.startsWith("'") && s.endsWith("'")) s = s.substring(1, s.length() - 1);
@@ -1334,25 +1284,25 @@ public class DataGenerator {
   }
 
   private static Integer parseLengthConstraint(
-      String check, Pattern lenPattern, Integer currentMaxLen) {
-    Matcher ml = lenPattern.matcher(check);
+      final String check, final Pattern lenPattern, final Integer currentMaxLen) {
+    final Matcher ml = lenPattern.matcher(check);
     Integer newMaxLen = currentMaxLen;
     while (ml.find()) {
-      String op = ml.group(1);
-      String num = ml.group(2);
+      final String op = ml.group(1);
+      final String num = ml.group(2);
       try {
-        int v = Integer.parseInt(num);
+        final int v = Integer.parseInt(num);
         if ("<".equals(op) || "<=".equals(op) || "=".equals(op)) {
           newMaxLen = (newMaxLen == null) ? v : Math.min(newMaxLen, v);
         }
-      } catch (NumberFormatException e) {
+      } catch (final NumberFormatException e) {
         log.debug("Failed to parse length constraint in check: {}", check, e);
       }
     }
     return newMaxLen;
   }
 
-  private static String normalizeToLength(String value, int length, int jdbcType) {
+  private static String normalizeToLength(final String value, final int length, final int jdbcType) {
     if (length <= 0) return value;
     if (value.length() > length) {
       return value.substring(0, length);
@@ -1363,25 +1313,29 @@ public class DataGenerator {
     return value;
   }
 
-  private static boolean isSingleWord(String tableName) {
+  private static boolean isSingleWord(final String tableName) {
     return SINGLE_WORD_PATTERN.matcher(tableName).matches();
   }
 
-  private static List<Table> orderByWordAndFk(List<Table> tables) {
-    List<Table> singleWord = tables.stream().filter(t -> isSingleWord(t.name())).toList();
-    List<Table> multiWord = tables.stream().filter(t -> !isSingleWord(t.name())).toList();
+  private static List<Table> orderByWordAndFk(final List<Table> tables) {
+    final List<Table> singleWord = tables.stream().filter(t -> isSingleWord(t.name())).toList();
+    final List<Table> multiWord = tables.stream().filter(t -> !isSingleWord(t.name())).toList();
 
-    List<Table> ordered = new ArrayList<>(orderByFk(singleWord));
+    final List<Table> ordered = new ArrayList<>(orderByFk(singleWord));
     ordered.addAll(orderByFk(multiWord));
     return List.copyOf(ordered);
   }
 
-  private static List<Table> orderByFk(List<Table> tables) {
-    List<Table> ordered = new ArrayList<>(tables);
+  private static List<Table> orderByFk(final List<Table> tables) {
+    final List<Table> ordered = new ArrayList<>(tables);
     ordered.sort(
         Comparator.comparingInt((Table table) -> table.foreignKeys().size())
             .thenComparing(Table::name, String.CASE_INSENSITIVE_ORDER));
     return List.copyOf(ordered);
+  }
+
+  private static int getEffectiveScale(final Column column, final int numericScale) {
+    return column.scale() > 0 ? column.scale() : numericScale;
   }
 
   @Builder
@@ -1436,21 +1390,21 @@ public class DataGenerator {
       int numericScale) {
 
     GenerationContext(
-        List<Table> orderedTables,
-        int rowsPerTable,
-        Map<String, Set<String>> excludedColumns,
-        Map<String, List<RepetitionRule>> repetitionRules,
-        Faker faker,
-        Set<UUID> usedUuids,
-        Map<String, Map<String, ParsedConstraint>> tableConstraints,
-        Map<Table, List<Row>> data,
-        List<String> dictionaryWords,
-        Map<String, Table> tableMap,
-        boolean deferred,
-        String softDeleteColumns,
-        boolean softDeleteUseSchemaDefault,
-        String softDeleteValue,
-        int numericScale) {
+        final List<Table> orderedTables,
+        final int rowsPerTable,
+        final Map<String, Set<String>> excludedColumns,
+        final Map<String, List<RepetitionRule>> repetitionRules,
+        final Faker faker,
+        final Set<UUID> usedUuids,
+        final Map<String, Map<String, ParsedConstraint>> tableConstraints,
+        final Map<Table, List<Row>> data,
+        final List<String> dictionaryWords,
+        final Map<String, Table> tableMap,
+        final boolean deferred,
+        final String softDeleteColumns,
+        final boolean softDeleteUseSchemaDefault,
+        final String softDeleteValue,
+        final int numericScale) {
       this(
           orderedTables,
           rowsPerTable,
@@ -1488,6 +1442,19 @@ public class DataGenerator {
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
       int numericScale) {}
+
+  @Builder
+  private record TableGenerationContext(
+      Table table,
+      AtomicInteger generatedCount,
+      List<Row> rows,
+      Map<String, ParsedConstraint> constraints,
+      Predicate<Column> isFkColumn,
+      Set<String> excluded,
+      Set<String> seenPrimaryKeys,
+      Map<String, Set<String>> seenUniqueKeyCombinations,
+      Set<String> softDeleteCols
+  ) {}
 
   @Builder
   private record GenerateSingleRowParameters(

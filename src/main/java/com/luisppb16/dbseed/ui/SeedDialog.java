@@ -14,36 +14,28 @@ import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.Cursor;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.awt.event.KeyEvent;
 import java.text.ParseException;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
-import javax.swing.ActionMap;
-import javax.swing.InputMap;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
-import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
-import javax.swing.JSpinner.DefaultEditor;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
-import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
@@ -55,17 +47,18 @@ public final class SeedDialog extends DialogWrapper {
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private static final String DEFAULT_POSTGRES_USER = "postgres";
   private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
-  
+  private static final String DEFAULT_SCHEMA = "public";
+
   private final DriverInfo driverInfo;
-  
+
   private final JTextField urlField;
   private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JPasswordField passwordField = new JPasswordField();
-  private final JTextField schemaField = new JTextField("public");
+  private final JTextField schemaField = new JTextField(DEFAULT_SCHEMA);
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
-  
+
   private String loadedSoftDeleteColumns;
   private boolean loadedSoftDeleteUseSchemaDefault;
   private String loadedSoftDeleteValue;
@@ -76,35 +69,20 @@ public final class SeedDialog extends DialogWrapper {
     this.driverInfo = driverInfo;
     setTitle("Connection Settings - Step 2/3");
 
-    urlField = new JTextField(driverInfo.urlTemplate() != null ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
+    urlField =
+        new JTextField(
+            driverInfo.urlTemplate() != null ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    rowsSpinner = new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.columnSpinnerStep));
+    rowsSpinner =
+        new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.getColumnSpinnerStep()));
 
     loadConfiguration(driverInfo.urlTemplate());
 
-    configureSpinner(rowsSpinner);
+    ComponentUtils.configureSpinnerArrowKeyControls(rowsSpinner);
 
     setOKButtonText("Next");
     init();
-  }
-
-  private void configureSpinner(JSpinner spinner) {
-    final JComponent editor = spinner.getEditor();
-    if (editor instanceof final DefaultEditor defaultEditor) {
-      final JFormattedTextField textField = defaultEditor.getTextField();
-      final InputMap inputMap = textField.getInputMap(JComponent.WHEN_FOCUSED);
-
-      final String incrementAction = "increment";
-      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), incrementAction);
-      final String decrementAction = "decrement";
-      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), decrementAction);
-
-      final ActionMap spinnerActionMap = spinner.getActionMap();
-      final ActionMap textFieldActionMap = textField.getActionMap();
-      textFieldActionMap.put(incrementAction, spinnerActionMap.get(incrementAction));
-      textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
-    }
   }
 
   private static void addRow(
@@ -147,84 +125,106 @@ public final class SeedDialog extends DialogWrapper {
 
   private void loadConfiguration(@Nullable final String urlTemplate) {
     final Project project = getCurrentProject();
-    if (project != null) {
-      final GenerationConfig config = ConnectionConfigPersistence.load(project);
+    if (project == null) {
+      return;
+    }
 
-      String urlToUse = urlTemplate;
-      boolean usingSavedConfig = false;
+    final GenerationConfig savedConfig = ConnectionConfigPersistence.load(project);
+    final UrlResolution urlResolution = resolveUrl(urlTemplate, savedConfig);
 
-      if (urlToUse == null) {
-        urlToUse = Objects.requireNonNullElse(config.url(), DEFAULT_POSTGRES_URL);
-        usingSavedConfig = true; 
-      } else {
-        if (config.url() != null && isSameDriverType(urlTemplate, config.url())) {
-          urlToUse = config.url();
-          usingSavedConfig = true;
-        }
-      }
+    prefillUrlFields(urlResolution.urlToUse(), urlResolution.usingSavedConfig());
+    populateFields(savedConfig, urlResolution.usingSavedConfig());
+  }
 
-      // Logic to pre-fill fields based on URL structure
-      if (urlToUse.startsWith("jdbc:sqlserver")) {
-        String dbName = "";
-        String urlWithoutDb = urlToUse;
+  private void prefillUrlFields(final String urlToUse, final boolean usingSavedConfig) {
+    if (urlToUse.startsWith("jdbc:sqlserver")) {
+      prefillSqlServer(urlToUse);
+    } else if (urlToUse.startsWith("jdbc:sqlite")) {
+      urlField.setText(urlToUse);
+      databaseField.setText("");
+    } else {
+      prefillGenericUrl(urlToUse, usingSavedConfig);
+    }
+  }
 
-        final Pattern p = Pattern.compile("databaseName=([^;]+)");
-        final Matcher m = p.matcher(urlToUse);
-        if (m.find()) {
-          dbName = m.group(1);
-          urlWithoutDb = urlToUse.replace(m.group(0), "");
-          urlWithoutDb = urlWithoutDb.replace(";;", ";");
-          if (urlWithoutDb.endsWith(";")) {
-            urlWithoutDb = urlWithoutDb.substring(0, urlWithoutDb.length() - 1);
-          }
-        }
-        urlField.setText(urlWithoutDb);
-        databaseField.setText(dbName);
-      } else if (urlToUse.startsWith("jdbc:sqlite")) {
-          urlField.setText(urlToUse);
-          databaseField.setText("");
-      } else {
-        final int lastSlashIndex = urlToUse.lastIndexOf('/');
-        
-        if (lastSlashIndex > 0 && lastSlashIndex < urlToUse.length() - 1) {
-           urlField.setText(urlToUse.substring(0, lastSlashIndex + 1));
-           databaseField.setText(urlToUse.substring(lastSlashIndex + 1));
-        } else {
-           urlField.setText(urlToUse);
-           if (!usingSavedConfig) {
-               if (urlToUse.endsWith("/")) {
-                   databaseField.setText("");
-               }
-           }
-        }
-      }
+  private void prefillSqlServer(final String urlToUse) {
+    String dbName = "";
+    String urlWithoutDb = urlToUse;
 
-      if (usingSavedConfig) {
-        userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
-        passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
-        schemaField.setText(Objects.requireNonNullElse(config.schema(), "public"));
-        rowsSpinner.setValue(config.rowsPerTable());
-        deferredBox.setSelected(config.deferred());
-        
-        loadedSoftDeleteColumns = config.softDeleteColumns();
-        loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
-        loadedSoftDeleteValue = config.softDeleteValue();
-        loadedNumericScale = config.numericScale() >= 0 ? config.numericScale() : 2;
-        
-      } else {
-        userField.setText(DEFAULT_POSTGRES_USER);
-        passwordField.setText("");
-        schemaField.setText("public");
-        rowsSpinner.setValue(config.rowsPerTable() > 0 ? config.rowsPerTable() : 10);
-        deferredBox.setSelected(config.deferred());
-        
-        DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
-        loadedSoftDeleteColumns = globalSettings.softDeleteColumns;
-        loadedSoftDeleteUseSchemaDefault = globalSettings.softDeleteUseSchemaDefault;
-        loadedSoftDeleteValue = globalSettings.softDeleteValue;
-        loadedNumericScale = 2;
+    final Pattern p = Pattern.compile("databaseName=([^;]+)");
+    final Matcher m = p.matcher(urlToUse);
+    if (m.find()) {
+      dbName = m.group(1);
+      urlWithoutDb = urlToUse.replace(m.group(0), "").replace(";;", ";");
+      if (urlWithoutDb.endsWith(";")) {
+        urlWithoutDb = urlWithoutDb.substring(0, urlWithoutDb.length() - 1);
       }
     }
+    urlField.setText(urlWithoutDb);
+    databaseField.setText(dbName);
+  }
+
+  private void prefillGenericUrl(final String urlToUse, final boolean usingSavedConfig) {
+    final int lastSlashIndex = urlToUse.lastIndexOf('/');
+    if (lastSlashIndex > 0 && lastSlashIndex < urlToUse.length() - 1) {
+      urlField.setText(urlToUse.substring(0, lastSlashIndex + 1));
+      databaseField.setText(urlToUse.substring(lastSlashIndex + 1));
+    } else {
+      urlField.setText(urlToUse);
+      if (!usingSavedConfig && urlToUse.endsWith("/")) {
+        databaseField.setText("");
+      }
+    }
+  }
+
+  private void populateFields(final GenerationConfig savedConfig, final boolean useSavedConfig) {
+    if (useSavedConfig) {
+      populateFieldsFromConfig(savedConfig);
+    } else {
+      populateFieldsWithDefaults(savedConfig);
+    }
+  }
+
+  private void populateFieldsFromConfig(final GenerationConfig config) {
+    userField.setText(Objects.requireNonNullElse(config.user(), DEFAULT_POSTGRES_USER));
+    passwordField.setText(Objects.requireNonNullElse(config.password(), ""));
+    schemaField.setText(Objects.requireNonNullElse(config.schema(), DEFAULT_SCHEMA));
+    rowsSpinner.setValue(config.rowsPerTable());
+    deferredBox.setSelected(config.deferred());
+
+    loadedSoftDeleteColumns = config.softDeleteColumns();
+    loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
+    loadedSoftDeleteValue = config.softDeleteValue();
+    loadedNumericScale = config.numericScale() >= 0 ? config.numericScale() : 2;
+  }
+
+  private void populateFieldsWithDefaults(final GenerationConfig config) {
+    userField.setText(DEFAULT_POSTGRES_USER);
+    passwordField.setText("");
+    schemaField.setText(DEFAULT_SCHEMA);
+    rowsSpinner.setValue(config.rowsPerTable() > 0 ? config.rowsPerTable() : 10);
+    deferredBox.setSelected(config.deferred());
+
+    final DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
+    loadedSoftDeleteColumns = globalSettings.getSoftDeleteColumns();
+    loadedSoftDeleteUseSchemaDefault = globalSettings.isSoftDeleteUseSchemaDefault();
+    loadedSoftDeleteValue = globalSettings.getSoftDeleteValue();
+    loadedNumericScale = 2;
+  }
+
+  private UrlResolution resolveUrl(
+      @Nullable final String urlTemplate, final GenerationConfig savedConfig) {
+    String urlToUse = urlTemplate;
+    boolean usingSavedConfig = false;
+
+    if (urlToUse == null) {
+      urlToUse = Objects.requireNonNullElse(savedConfig.url(), DEFAULT_POSTGRES_URL);
+      usingSavedConfig = true;
+    } else if (savedConfig.url() != null && isSameDriverType(urlTemplate, savedConfig.url())) {
+      urlToUse = savedConfig.url();
+      usingSavedConfig = true;
+    }
+    return new UrlResolution(urlToUse, usingSavedConfig);
   }
 
   private boolean isSameDriverType(String template, String savedUrl) {
@@ -267,27 +267,27 @@ public final class SeedDialog extends DialogWrapper {
 
     int row = 0;
     addRow(panel, c, row++, "JDBC URL:", urlField);
-    
+
     if (driverInfo.requiresUser()) {
-        addRow(panel, c, row++, "User:", userField);
+      addRow(panel, c, row++, "User:", userField);
     }
-    
+
     if (driverInfo.requiresPassword()) {
-        addRow(panel, c, row++, "Password:", createPasswordFieldWithToggle());
+      addRow(panel, c, row++, "Password:", createPasswordFieldWithToggle());
     }
-    
+
     if (driverInfo.requiresDatabaseName()) {
-        addRow(panel, c, row++, "Database:", databaseField);
+      addRow(panel, c, row++, "Database:", databaseField);
     }
-    
+
     if (driverInfo.requiresSchema()) {
-        addRow(panel, c, row++, "Schema:", schemaField);
+      addRow(panel, c, row++, "Schema:", schemaField);
     }
-    
+
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
 
     c.gridx = 0;
-    c.gridy = row++;
+    c.gridy = row;
     c.gridwidth = 2;
     c.anchor = GridBagConstraints.WEST;
     panel.add(deferredBox, c);
@@ -303,21 +303,8 @@ public final class SeedDialog extends DialogWrapper {
     passwordField.setBorder(new CompoundBorder(originalBorder, JBUI.Borders.emptyRight(30)));
     passwordLayeredPane.add(passwordField, JLayeredPane.DEFAULT_LAYER);
 
-    final JToggleButton showPasswordButton = new JToggleButton(AllIcons.Actions.Show);
-    showPasswordButton.setFocusPainted(false);
-    showPasswordButton.setContentAreaFilled(false);
-    showPasswordButton.setBorderPainted(false);
-    showPasswordButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-    showPasswordButton.addActionListener(
-        e -> {
-          if (showPasswordButton.isSelected()) {
-            passwordField.setEchoChar((char) 0);
-          } else {
-            passwordField.setEchoChar('•');
-          }
-        });
-    passwordLayeredPane.add(
-        showPasswordButton, JLayeredPane.PALETTE_LAYER);
+    final JToggleButton showPasswordButton = createShowPasswordButton();
+    passwordLayeredPane.add(showPasswordButton, JLayeredPane.PALETTE_LAYER);
 
     passwordLayeredPane.addComponentListener(
         new ComponentAdapter() {
@@ -334,21 +321,38 @@ public final class SeedDialog extends DialogWrapper {
     return passwordLayeredPane;
   }
 
+  private JToggleButton createShowPasswordButton() {
+    final JToggleButton showPasswordButton = new JToggleButton(AllIcons.Actions.Show);
+    showPasswordButton.setFocusPainted(false);
+    showPasswordButton.setContentAreaFilled(false);
+    showPasswordButton.setBorderPainted(false);
+    showPasswordButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    showPasswordButton.addActionListener(
+        e -> {
+          if (showPasswordButton.isSelected()) {
+            passwordField.setEchoChar((char) 0);
+          } else {
+            passwordField.setEchoChar('•');
+          }
+        });
+    return showPasswordButton;
+  }
+
   public GenerationConfig getConfiguration() {
     String url = urlField.getText().trim();
     final String database = databaseField.getText().trim();
 
     // Only append database if the driver requires it
     if (driverInfo.requiresDatabaseName()) {
-        if (url.startsWith("jdbc:sqlserver")) {
-          url = url.replaceAll("databaseName=[^;]+;?", "");
-          if (!url.endsWith(";")) {
-            url += ";";
-          }
-          url += "databaseName=" + database;
-        } else {
-          url = url.endsWith("/") ? url + database : url + "/" + database;
+      if (url.startsWith("jdbc:sqlserver")) {
+        url = url.replaceAll("databaseName=[^;]+;?", "");
+        if (!url.endsWith(";")) {
+          url += ";";
         }
+        url += "databaseName=" + database;
+      } else {
+        url = url.endsWith("/") ? url + database : url + "/" + database;
+      }
     }
 
     return GenerationConfig.builder()
@@ -365,13 +369,7 @@ public final class SeedDialog extends DialogWrapper {
         .build();
   }
 
-  public Map<String, Map<String, String>> getSelectionByTable() {
-    return Collections.emptyMap();
-  }
-
-  public Map<String, List<String>> getExcludedColumnsByTable() {
-    return Collections.emptyMap();
-  }
+  private record UrlResolution(String urlToUse, boolean usingSavedConfig) {}
 
   private final class BackAction extends AbstractAction {
     private BackAction() {

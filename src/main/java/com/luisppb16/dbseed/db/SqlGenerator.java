@@ -20,7 +20,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import lombok.Builder;
 import lombok.experimental.UtilityClass;
 
 @UtilityClass
@@ -29,6 +28,7 @@ public class SqlGenerator {
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
   private static final int BATCH_SIZE = 1000;
   private static final String COMMIT_STMT = "COMMIT;\n";
+  private static final String NULL_STR = "NULL";
 
   private static final Set<String> RESERVED_KEYWORDS =
       Set.of(
@@ -47,7 +47,7 @@ public class SqlGenerator {
       DriverInfo driverInfo) {
     final StringBuilder sb = new StringBuilder();
     final SqlDialect dialect = SqlDialect.resolve(driverInfo);
-    final SqlOptions opts = SqlOptions.builder().quoteIdentifiers(true).build();
+    final SqlOptions opts = new SqlOptions(true);
 
     if (deferred) {
       sb.append(dialect.beginTransaction());
@@ -94,7 +94,6 @@ public class SqlGenerator {
       final int startIndex,
       final List<String> columnOrder,
       final SqlDialect dialect) {
-    
     sb.append("INSERT INTO ")
         .append(tableName)
         .append(" (")
@@ -175,7 +174,7 @@ public class SqlGenerator {
 
   private static void formatValue(final Object value, final StringBuilder sb, final SqlDialect dialect) {
     if (value == null) {
-      sb.append("NULL");
+      sb.append(NULL_STR);
     } else {
       switch (value) {
         case SqlKeyword k -> sb.append(k.name());
@@ -188,14 +187,14 @@ public class SqlGenerator {
         case BigDecimal bd -> sb.append(bd.toPlainString());
         case Double d -> sb.append(formatDouble(d));
         case Float f -> sb.append(formatDouble(f.doubleValue()));
-        default -> sb.append(Objects.toString(value, "NULL"));
+        default -> sb.append(Objects.toString(value, NULL_STR));
       }
     }
   }
 
   private static String formatDouble(final double d) {
     if (Double.isNaN(d) || Double.isInfinite(d)) {
-      return "NULL";
+      return NULL_STR;
     }
     return BigDecimal.valueOf(d).stripTrailingZeros().toPlainString();
   }
@@ -204,23 +203,14 @@ public class SqlGenerator {
     return s.replace("'", "''");
   }
 
-  @Builder(toBuilder = true)
   private record SqlOptions(boolean quoteIdentifiers) {}
 
   private enum SqlDialect {
-    STANDARD {
-      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
-      @Override String formatBoolean(boolean b) { return b ? "TRUE" : "FALSE"; }
-      @Override String beginTransaction() { return "BEGIN;\n"; }
-      @Override String commitTransaction() { return COMMIT_STMT; }
-      @Override String disableConstraints() { return "SET CONSTRAINTS ALL DEFERRED;\n"; }
-      @Override String enableConstraints() { return ""; }
-    },
+    STANDARD,
     MYSQL {
       @Override String quote(String id) { return "`" + id.replace("`", "``") + "`"; }
       @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
       @Override String beginTransaction() { return "START TRANSACTION;\n"; }
-      @Override String commitTransaction() { return COMMIT_STMT; }
       @Override String disableConstraints() { return "SET FOREIGN_KEY_CHECKS = 0;\n"; }
       @Override String enableConstraints() { return "SET FOREIGN_KEY_CHECKS = 1;\n"; }
     },
@@ -232,51 +222,47 @@ public class SqlGenerator {
       @Override String disableConstraints() { return "EXEC sp_msforeachtable 'ALTER TABLE ? NOCHECK CONSTRAINT ALL';\n"; }
       @Override String enableConstraints() { return "EXEC sp_msforeachtable 'ALTER TABLE ? WITH CHECK CHECK CONSTRAINT ALL';\n"; }
     },
-    POSTGRESQL {
-      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
-      @Override String formatBoolean(boolean b) { return b ? "TRUE" : "FALSE"; }
-      @Override String beginTransaction() { return "BEGIN;\n"; }
-      @Override String commitTransaction() { return COMMIT_STMT; }
-      @Override String disableConstraints() { return "SET CONSTRAINTS ALL DEFERRED;\n"; }
-      @Override String enableConstraints() { return ""; }
-    },
+    POSTGRESQL,
     ORACLE {
       @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"").toUpperCase(Locale.ROOT) + "\""; }
       @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
       @Override String beginTransaction() { return "SET TRANSACTION READ WRITE;\n"; }
-      @Override String commitTransaction() { return COMMIT_STMT; }
       @Override String disableConstraints() { 
-          return "BEGIN\n" +
-                 "  FOR c IN (SELECT table_name, constraint_name FROM user_constraints WHERE constraint_type = 'R')\n" +
-                 "  LOOP\n" +
-                 "    EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;\n" +
-                 "  END LOOP;\n" +
-                 "END;\n/\n";
+          return """
+              BEGIN
+                FOR c IN (SELECT table_name, constraint_name FROM user_constraints WHERE constraint_type = 'R')
+                LOOP
+                  EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' DISABLE CONSTRAINT ' || c.constraint_name;
+                END LOOP;
+              END;
+              /
+              """;
       }
       @Override String enableConstraints() { 
-          return "BEGIN\n" +
-                 "  FOR c IN (SELECT table_name, constraint_name FROM user_constraints WHERE constraint_type = 'R')\n" +
-                 "  LOOP\n" +
-                 "    EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' ENABLE CONSTRAINT ' || c.constraint_name;\n" +
-                 "  END LOOP;\n" +
-                 "END;\n/\n";
+          return """
+              BEGIN
+                FOR c IN (SELECT table_name, constraint_name FROM user_constraints WHERE constraint_type = 'R')
+                LOOP
+                  EXECUTE IMMEDIATE 'ALTER TABLE ' || c.table_name || ' ENABLE CONSTRAINT ' || c.constraint_name;
+                END LOOP;
+              END;
+              /
+              """;
       }
     },
     SQLITE {
-      @Override String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
       @Override String formatBoolean(boolean b) { return b ? "1" : "0"; }
       @Override String beginTransaction() { return "BEGIN TRANSACTION;\n"; }
-      @Override String commitTransaction() { return COMMIT_STMT; }
       @Override String disableConstraints() { return "PRAGMA foreign_keys = OFF;\n"; }
       @Override String enableConstraints() { return "PRAGMA foreign_keys = ON;\n"; }
     };
 
-    abstract String quote(String id);
-    abstract String formatBoolean(boolean b);
-    abstract String beginTransaction();
-    abstract String commitTransaction();
-    abstract String disableConstraints();
-    abstract String enableConstraints();
+    String quote(String id) { return "\"" + id.replace("\"", "\"\"") + "\""; }
+    String formatBoolean(boolean b) { return b ? "TRUE" : "FALSE"; }
+    String beginTransaction() { return "BEGIN;\n"; }
+    String commitTransaction() { return COMMIT_STMT; }
+    String disableConstraints() { return "SET CONSTRAINTS ALL DEFERRED;\n"; }
+    String enableConstraints() { return ""; }
 
     static SqlDialect resolve(final DriverInfo driver) {
       if (driver == null) return STANDARD;

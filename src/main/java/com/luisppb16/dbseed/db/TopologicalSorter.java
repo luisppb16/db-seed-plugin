@@ -114,6 +114,27 @@ public class TopologicalSorter {
     return new SortResult(ordered, cycles); // Removed redundant List.copyOf
   }
 
+  public static boolean requiresDeferredDueToNonNullableCycles(
+      final SortResult sort, final Map<String, Table> tableMap) {
+
+    return sort.cycles().stream()
+        .anyMatch(
+            cycle ->
+                cycle.stream()
+                    .map(tableMap::get)
+                    .filter(Objects::nonNull)
+                    .anyMatch(
+                        table ->
+                            table.foreignKeys().stream()
+                                .filter(fk -> cycle.contains(fk.pkTable()))
+                                .anyMatch(
+                                    fk ->
+                                        fk.columnMapping().keySet().stream()
+                                            .map(table::column)
+                                            .filter(Objects::nonNull)
+                                            .anyMatch(c -> !c.nullable()))));
+  }
+
   public record SortResult(List<String> ordered, List<Set<String>> cycles) {}
 
   private static final class Tarjan {

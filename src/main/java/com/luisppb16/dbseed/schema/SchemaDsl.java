@@ -39,6 +39,7 @@ public class SchemaDsl {
         name, type, true, true, null, true); // Primary keys are always not null and unique
   }
 
+  @SuppressWarnings("unused")
   public static Column fk(
       final String name, final SqlType type, final String refTable, final String refColumn) {
     return new Column(
@@ -51,11 +52,13 @@ public class SchemaDsl {
 
   private static String tableSql(final Table table) {
     if (table.columns().isEmpty()) {
-      return "CREATE TABLE %s ();\n\n".formatted(table.name());
+      return "CREATE TABLE %s ();%n%n".formatted(table.name());
     }
     final String cols =
-        table.columns().stream().map(SchemaDsl::columnSql).collect(Collectors.joining(",\n  "));
-    return "CREATE TABLE %s (\n  %s\n);\n\n".formatted(table.name(), cols);
+        table.columns().stream()
+            .map(SchemaDsl::columnSql)
+            .collect(Collectors.joining("," + System.lineSeparator() + "  "));
+    return "CREATE TABLE %s (%n  %s%n);%n%n".formatted(table.name(), cols);
   }
 
   private static String columnSql(final Column column) {

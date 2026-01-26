@@ -52,6 +52,18 @@
                 description="Seeds the database with generated data.">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
+        <action id="GenerateSeedAction"
+                class="com.luisppb16.dbseed.action.GenerateSeedAction"
+                text="Generate Seed SQL"
+                description="Generates seed SQL script without executing it.">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="SchemaDesignerAction"
+                class="com.luisppb16.dbseed.ui.SchemaDesigner"
+                text="Schema Designer"
+                description="Opens the Schema Designer tool.">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
     </actions>
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="DBSeed4SQL"

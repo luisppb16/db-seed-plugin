@@ -30,6 +30,14 @@ repositories {
     }
 }
 
+intellijPlatform {
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
+}
+
 dependencies {
     intellijPlatform {
         intellijIdeaCommunity '2024.2'
@@ -62,6 +70,7 @@ java {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.compilerArgs << "-Xlint:deprecation"
 }
 
 test {

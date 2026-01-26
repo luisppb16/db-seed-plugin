@@ -21,6 +21,7 @@ import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -28,7 +29,6 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
-import java.awt.event.KeyEvent;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,20 +46,15 @@ import java.util.stream.Collectors;
 import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
 import javax.swing.Action;
-import javax.swing.ActionMap;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
-import javax.swing.InputMap;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
-import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
-import javax.swing.JSpinner.DefaultEditor;
 import javax.swing.JTextField;
-import javax.swing.KeyStroke;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
@@ -69,6 +64,9 @@ import org.jetbrains.annotations.NotNull;
 public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
+  private static final String TREAT_AS_UUID_PREFIX = "Treat as UUID: ";
+  private static final String IS_TABLE_PROPERTY = "isTable";
+
   private final List<Table> tables;
   private final GenerationConfig initialConfig;
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
@@ -79,9 +77,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   // Soft Delete UI Components
   private final JBTextField softDeleteColumnsField = new JBTextField();
-  private final JBCheckBox softDeleteUseSchemaDefaultBox = new JBCheckBox("Use Schema Default Value");
+  private final JBCheckBox softDeleteUseSchemaDefaultBox = new JBCheckBox("Use schema default value");
   private final JBTextField softDeleteValueField = new JBTextField();
-  
+
   // Numeric Scale UI Component
   private final JSpinner scaleSpinner;
 
@@ -94,39 +92,16 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
     this.initialConfig = Objects.requireNonNull(initialConfig, "Initial config cannot be null.");
     this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
-    
+
     // Initialize scale spinner with value from config or default
-    int initialScale = initialConfig.numericScale() >= 0 ? initialConfig.numericScale() : 2;
+    final int initialScale = initialConfig.numericScale() >= 0 ? initialConfig.numericScale() : 2;
     this.scaleSpinner = new JSpinner(new SpinnerNumberModel(initialScale, 0, 10, 1));
-    configureSpinner(this.scaleSpinner);
-    
+    ComponentUtils.configureSpinnerArrowKeyControls(this.scaleSpinner);
+
     setTitle("Data Configuration - Step 3/3");
     initDefaults();
     setOKButtonText("Generate");
     init();
-  }
-
-  // Overloaded constructor for backward compatibility if needed
-  public PkUuidSelectionDialog(@NotNull final List<Table> tables) {
-      this(tables, GenerationConfig.builder().build());
-  }
-  
-  private void configureSpinner(JSpinner spinner) {
-    final JComponent editor = spinner.getEditor();
-    if (editor instanceof final DefaultEditor defaultEditor) {
-      final JFormattedTextField textField = defaultEditor.getTextField();
-      final InputMap inputMap = textField.getInputMap(JComponent.WHEN_FOCUSED);
-
-      final String incrementAction = "increment";
-      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_UP, 0), incrementAction);
-      final String decrementAction = "decrement";
-      inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_DOWN, 0), decrementAction);
-
-      final ActionMap spinnerActionMap = spinner.getActionMap();
-      final ActionMap textFieldActionMap = textField.getActionMap();
-      textFieldActionMap.put(incrementAction, spinnerActionMap.get(incrementAction));
-      textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
-    }
   }
 
   private void initDefaults() {
@@ -149,24 +124,24 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           defaults.forEach(pkCol -> uuidValues.put(pkCol, UUID.randomUUID().toString()));
           uuidValuesByTable.put(table.name(), uuidValues);
         });
-        
+
     // Initialize Soft Delete fields from passed config or global defaults
     String cols = initialConfig.softDeleteColumns();
     if (cols == null) {
-        cols = DbSeedSettingsState.getInstance().softDeleteColumns;
+      cols = DbSeedSettingsState.getInstance().getSoftDeleteColumns();
     }
     softDeleteColumnsField.setText(cols);
-    
+
     softDeleteUseSchemaDefaultBox.setSelected(initialConfig.softDeleteUseSchemaDefault());
-    
+
     String val = initialConfig.softDeleteValue();
     if (val == null) {
-        val = DbSeedSettingsState.getInstance().softDeleteValue;
+      val = DbSeedSettingsState.getInstance().getSoftDeleteValue();
     }
     softDeleteValueField.setText(val);
-    
+
     softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected());
-    softDeleteUseSchemaDefaultBox.addActionListener(e -> 
+    softDeleteUseSchemaDefaultBox.addActionListener(e ->
         softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected())
     );
   }
@@ -175,12 +150,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   protected Action @NotNull [] createActions() {
     return new Action[] {new BackAction(), getOKAction(), getCancelAction()};
   }
-  
+
   @Override
   protected void doOKAction() {
     try {
       scaleSpinner.commitEdit();
-    } catch (ParseException e) {
+    } catch (final ParseException e) {
       // Invalid number typed, spinner will retain last valid value.
     }
     super.doOKAction();
@@ -202,7 +177,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     content.setPreferredSize(new Dimension(650, 500));
     return content;
   }
-  
+
   private JPanel createMoreSettingsPanel() {
     final DbSeedSettingsState global = DbSeedSettingsState.getInstance();
 
@@ -214,9 +189,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final Runnable updateStatus =
         () -> {
           final boolean modified =
-              !softDeleteColumnsField.getText().equals(global.softDeleteColumns)
-                  || softDeleteUseSchemaDefaultBox.isSelected() != global.softDeleteUseSchemaDefault
-                  || !softDeleteValueField.getText().equals(global.softDeleteValue);
+              !softDeleteColumnsField.getText().equals(global.getSoftDeleteColumns())
+                  || softDeleteUseSchemaDefaultBox.isSelected() != global.isSoftDeleteUseSchemaDefault()
+                  || !softDeleteValueField.getText().equals(global.getSoftDeleteValue());
           statusLabel.setText(modified ? "Modified from global settings" : "Using global settings");
           statusLabel.setIcon(modified ? AllIcons.General.Modified : null);
         };
@@ -239,10 +214,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final JButton resetButton = new JButton("Restore Global Defaults");
     resetButton.addActionListener(
         e -> {
-          softDeleteColumnsField.setText(global.softDeleteColumns);
-          softDeleteUseSchemaDefaultBox.setSelected(global.softDeleteUseSchemaDefault);
-          softDeleteValueField.setText(global.softDeleteValue);
-          softDeleteValueField.setEnabled(!global.softDeleteUseSchemaDefault);
+          softDeleteColumnsField.setText(global.getSoftDeleteColumns());
+          softDeleteUseSchemaDefaultBox.setSelected(global.isSoftDeleteUseSchemaDefault());
+          softDeleteValueField.setText(global.getSoftDeleteValue());
+          softDeleteValueField.setEnabled(!global.isSoftDeleteUseSchemaDefault());
           updateStatus.run();
         });
 
@@ -259,37 +234,29 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         .addVerticalGap(15)
         .addComponent(new TitledSeparator("Numeric Configuration"))
         .addVerticalGap(5)
-        .addLabeledComponent("Default Numeric Scale:", scaleSpinner)
+        .addLabeledComponent("Default numeric scale:", scaleSpinner)
         .addTooltip("Applied to DECIMAL/NUMERIC columns without explicit scale defined in schema.")
         .addComponentFillVertically(new JPanel(), 0)
         .getPanel();
   }
 
   private void synchronizeInitialStates() {
-    // If a PK is selected, disable the corresponding exclude checkbox
-    pkCheckBoxes.forEach(
-        (tableName, cols) ->
-            cols.forEach(
-                (colName, pkBox) -> {
-                  if (pkBox.isSelected()) {
-                    final JCheckBox excludeBox =
-                        excludeCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
-                    if (excludeBox != null) {
-                      excludeBox.setEnabled(false);
-                    }
-                  }
-                }));
+    syncCheckBoxState(pkCheckBoxes, excludeCheckBoxes);
+    syncCheckBoxState(excludeCheckBoxes, pkCheckBoxes);
+  }
 
-    // If a column is excluded, disable the corresponding PK checkbox
-    excludeCheckBoxes.forEach(
+  private void syncCheckBoxState(
+      Map<String, Map<String, JCheckBox>> sourceMap,
+      Map<String, Map<String, JCheckBox>> targetMap) {
+    sourceMap.forEach(
         (tableName, cols) ->
             cols.forEach(
-                (colName, excludeBox) -> {
-                  if (excludeBox.isSelected()) {
-                    final JCheckBox pkBox =
-                        pkCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
-                    if (pkBox != null) {
-                      pkBox.setEnabled(false);
+                (colName, sourceBox) -> {
+                  if (sourceBox.isSelected()) {
+                    final JCheckBox targetBox =
+                        targetMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+                    if (targetBox != null) {
+                      targetBox.setEnabled(false);
                     }
                   }
                 }));
@@ -315,284 +282,184 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private JComponent createPkSelectionPanel() {
     final JPanel listPanel = createConfiguredListPanel();
     final GridBagConstraints c = createDefaultGridBagConstraints();
-
     final List<JCheckBox> checkBoxes = new ArrayList<>();
+
     tables.forEach(
         table -> {
-          final JPanel tablePanel = new JPanel(new BorderLayout());
-          tablePanel.setBorder(
-              BorderFactory.createCompoundBorder(
-                  BorderFactory.createMatteBorder(
-                      1, 1, 1, 1, UIManager.getColor("Component.borderColor")),
-                  JBUI.Borders.empty(8)));
-          tablePanel.setBackground(UIManager.getColor("Panel.background"));
-
           final JLabel tblLabel = new JLabel(table.name());
           tblLabel.setFont(tblLabel.getFont().deriveFont(Font.BOLD));
           tblLabel.setBorder(JBUI.Borders.emptyBottom(4));
-          tablePanel.add(tblLabel, BorderLayout.NORTH);
 
-          final JPanel columnsPanel = new JPanel(new GridBagLayout());
-          final GridBagConstraints cc = new GridBagConstraints();
-          cc.gridx = 0;
-          cc.gridy = 0;
-          cc.anchor = GridBagConstraints.NORTHWEST;
-          cc.fill = GridBagConstraints.HORIZONTAL;
-          cc.weightx = 1.0;
+          final List<JCheckBox> tableBoxes = new ArrayList<>();
+          table.primaryKey().forEach(pkCol -> {
+            final JCheckBox box = new JCheckBox(TREAT_AS_UUID_PREFIX + pkCol);
+            box.setSelected(selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
+            pkCheckBoxes.computeIfAbsent(table.name(), k -> new LinkedHashMap<>()).put(pkCol, box);
+            box.addActionListener(e -> onPkBoxChanged(table.name(), pkCol, box.isSelected()));
+            tableBoxes.add(box);
+            checkBoxes.add(box);
+          });
 
-          table
-              .primaryKey()
-              .forEach(
-                  pkCol -> {
-                    final JCheckBox box = new JCheckBox("Treat as UUID: " + pkCol);
-                    box.setSelected(
-                        selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
-
-                    // Store reference
-                    pkCheckBoxes
-                        .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
-                        .put(pkCol, box);
-
-                    box.addActionListener(
-                        e -> {
-                          final boolean isSelected = box.isSelected();
-                          selectionByTable.computeIfAbsent(
-                              table.name(), k -> new LinkedHashSet<>());
-                          if (isSelected) {
-                            selectionByTable.get(table.name()).add(pkCol);
-                          } else {
-                            selectionByTable.get(table.name()).remove(pkCol);
-                          }
-
-                          // Sync with Exclude tab
-                          final JCheckBox excludeBox =
-                              excludeCheckBoxes
-                                  .getOrDefault(table.name(), Collections.emptyMap())
-                                  .get(pkCol);
-                          if (excludeBox != null) {
-                            excludeBox.setEnabled(!isSelected);
-                            if (isSelected) {
-                              excludeBox.setSelected(false);
-                              // Also update the model for exclusion
-                              excludedColumnsByTable
-                                  .getOrDefault(table.name(), Collections.emptySet())
-                                  .remove(pkCol);
-                            }
-                          }
-                        });
-                    columnsPanel.add(box, cc);
-                    cc.gridy++;
-                    checkBoxes.add(box);
-                  });
-
-          columnsPanel.setBorder(JBUI.Borders.emptyLeft(16));
-          tablePanel.add(columnsPanel, BorderLayout.CENTER);
-
-          listPanel.add(tablePanel, c);
+          listPanel.add(createTablePanel(tblLabel, tableBoxes), c);
           c.gridy++;
         });
 
     return createTogglableListPanel(
         listPanel,
         checkBoxes,
-        true,
         (box, isSelected) -> {
           final String tableName = getTableNameForComponent(box);
           final String columnName = getColumnNameForCheckBox(box);
-          if (tableName != null && columnName != null) {
-            selectionByTable.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
-            if (isSelected) {
-              selectionByTable.get(tableName).add(columnName);
-            } else {
-              selectionByTable.get(tableName).remove(columnName);
-            }
-
-            // Sync with Exclude tab
-            final JCheckBox excludeBox =
-                excludeCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
-            if (excludeBox != null) {
-              excludeBox.setEnabled(!isSelected);
-              if (isSelected) {
-                excludeBox.setSelected(false);
-                excludedColumnsByTable
-                    .getOrDefault(tableName, Collections.emptySet())
-                    .remove(columnName);
-              }
-            }
+          if (tableName != null) {
+            onPkBoxChanged(tableName, columnName, isSelected);
           }
         },
         this::filterPanelComponents);
+  }
+
+  private void onPkBoxChanged(String tableName, String pkCol, boolean isSelected) {
+    updateSelectionAndSync(tableName, pkCol, isSelected, selectionByTable, excludeCheckBoxes, excludedColumnsByTable);
   }
 
   private JComponent createColumnExclusionPanel() {
     final JPanel listPanel = createConfiguredListPanel();
     final GridBagConstraints c = createDefaultGridBagConstraints();
-
     final List<JCheckBox> checkBoxes = new ArrayList<>();
+
     tables.forEach(
         table -> {
-          final JPanel tablePanel = new JPanel(new BorderLayout());
-          tablePanel.setBorder(
-              BorderFactory.createCompoundBorder(
-                  BorderFactory.createMatteBorder(
-                      1, 1, 1, 1, UIManager.getColor("Component.borderColor")),
-                  JBUI.Borders.empty(8)));
-          tablePanel.setBackground(UIManager.getColor("Panel.background"));
-
           final JCheckBox tblBox = new JCheckBox(table.name());
-          tblBox.putClientProperty("isTable", true);
+          tblBox.putClientProperty(IS_TABLE_PROPERTY, true);
           tblBox.setFont(tblBox.getFont().deriveFont(Font.BOLD));
           tblBox.setSelected(excludedTables.contains(table.name()));
 
-          tablePanel.add(tblBox, BorderLayout.NORTH);
-
-          final JPanel columnsPanel = new JPanel(new GridBagLayout());
-          final GridBagConstraints cc = new GridBagConstraints();
-          cc.gridx = 0;
-          cc.gridy = 0;
-          cc.anchor = GridBagConstraints.NORTHWEST;
-          cc.fill = GridBagConstraints.HORIZONTAL;
-          cc.weightx = 1.0;
-
           final List<JCheckBox> currentTableColumnBoxes = new ArrayList<>();
+          table.columns().forEach(column -> {
+            final JCheckBox box = new JCheckBox(column.name());
+            box.setSelected(excludedColumnsByTable.getOrDefault(table.name(), Set.of()).contains(column.name()));
+            excludeCheckBoxes.computeIfAbsent(table.name(), k -> new LinkedHashMap<>()).put(column.name(), box);
+            box.addActionListener(e -> onExcludeBoxChanged(table.name(), column.name(), box.isSelected()));
+            currentTableColumnBoxes.add(box);
+            checkBoxes.add(box);
+          });
 
-          table
-              .columns()
-              .forEach(
-                  column -> {
-                    final JCheckBox box = new JCheckBox(column.name());
-                    box.setSelected(
-                        excludedColumnsByTable
-                            .getOrDefault(table.name(), Set.of())
-                            .contains(column.name()));
-
-                    // Store reference
-                    excludeCheckBoxes
-                        .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
-                        .put(column.name(), box);
-
-                    box.addActionListener(
-                        e -> {
-                          final boolean isSelected = box.isSelected();
-                          excludedColumnsByTable.computeIfAbsent(
-                              table.name(), k -> new LinkedHashSet<>());
-                          if (isSelected) {
-                            excludedColumnsByTable.get(table.name()).add(column.name());
-                          } else {
-                            excludedColumnsByTable.get(table.name()).remove(column.name());
-                          }
-
-                          // Sync with PK tab
-                          final JCheckBox pkBox =
-                              pkCheckBoxes
-                                  .getOrDefault(table.name(), Collections.emptyMap())
-                                  .get(column.name());
-                          if (pkBox != null) {
-                            pkBox.setEnabled(!isSelected);
-                            if (isSelected) {
-                              pkBox.setSelected(false);
-                              selectionByTable
-                                  .getOrDefault(table.name(), Collections.emptySet())
-                                  .remove(column.name());
-                            }
-                          }
-                        });
-                    columnsPanel.add(box, cc);
-                    cc.gridy++;
-                    checkBoxes.add(box);
-                    currentTableColumnBoxes.add(box);
-                  });
-
-          // Add listener to table box to toggle all columns
-          tblBox.addActionListener(
-              e -> {
-                final boolean isSelected = tblBox.isSelected();
-                if (isSelected) {
-                  excludedTables.add(table.name());
-                } else {
-                  excludedTables.remove(table.name());
-                }
-
-                excludedColumnsByTable.computeIfAbsent(table.name(), k -> new LinkedHashSet<>());
-                for (final JCheckBox colBox : currentTableColumnBoxes) {
-                  colBox.setSelected(isSelected);
-                  final String colName = colBox.getText();
-                  if (isSelected) {
-                    excludedColumnsByTable.get(table.name()).add(colName);
-                  } else {
-                    excludedColumnsByTable.get(table.name()).remove(colName);
-                  }
-
-                  // Sync with PK tab
-                  final JCheckBox pkBox =
-                      pkCheckBoxes.getOrDefault(table.name(), Collections.emptyMap()).get(colName);
-                  if (pkBox != null) {
-                    pkBox.setEnabled(!isSelected);
-                    if (isSelected) {
-                      pkBox.setSelected(false);
-                      selectionByTable
-                          .getOrDefault(table.name(), Collections.emptySet())
-                          .remove(colName);
-                    }
-                  }
-                }
-              });
-
-          // Indent columns slightly
-          columnsPanel.setBorder(JBUI.Borders.emptyLeft(16));
-          tablePanel.add(columnsPanel, BorderLayout.CENTER);
-
-          // Add the whole table panel to the main list
-          listPanel.add(tablePanel, c);
-          c.gridy++;
+          tblBox.addActionListener(e -> onTableExcludeBoxChanged(table.name(), tblBox.isSelected(), currentTableColumnBoxes));
           checkBoxes.add(tblBox);
+
+          listPanel.add(createTablePanel(tblBox, currentTableColumnBoxes), c);
+          c.gridy++;
         });
 
     return createTogglableListPanel(
         listPanel,
         checkBoxes,
-        true,
         (box, isSelected) -> {
-          if (Boolean.TRUE.equals(box.getClientProperty("isTable"))) {
-            final String tableName = box.getText();
-            if (isSelected) {
-              excludedTables.add(tableName);
-            } else {
-              excludedTables.remove(tableName);
-            }
+          if (Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
+            onTableExcludeBoxChanged(box.getText(), isSelected, findColumnBoxesForTable(box));
           } else {
             final String tableName = getTableNameForComponent(box);
             final String columnName = getColumnNameForCheckBox(box);
-            if (tableName != null && columnName != null) {
-              excludedColumnsByTable.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
-              if (isSelected) {
-                excludedColumnsByTable.get(tableName).add(columnName);
-              } else {
-                excludedColumnsByTable.get(tableName).remove(columnName);
-              }
-
-              // Sync with PK tab
-              final JCheckBox pkBox =
-                  pkCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
-              if (pkBox != null) {
-                pkBox.setEnabled(!isSelected);
-                if (isSelected) {
-                  pkBox.setSelected(false);
-                  selectionByTable
-                      .getOrDefault(tableName, Collections.emptySet())
-                      .remove(columnName);
-                }
-              }
+            if (tableName != null) {
+              onExcludeBoxChanged(tableName, columnName, isSelected);
             }
           }
         },
         this::filterPanelComponents);
   }
 
+  private List<JCheckBox> findColumnBoxesForTable(JCheckBox tableBox) {
+    // Helper to find sibling checkboxes in the UI hierarchy
+    List<JCheckBox> boxes = new ArrayList<>();
+    Component parent = tableBox.getParent(); // tablePanel
+    if (parent instanceof JPanel panel) {
+      for (Component child : panel.getComponents()) {
+        if (child instanceof JPanel columnsPanel) {
+           for (Component colChild : columnsPanel.getComponents()) {
+             if (colChild instanceof JCheckBox cb) {
+               boxes.add(cb);
+             }
+           }
+        }
+      }
+    }
+    return boxes;
+  }
+
+  private void onExcludeBoxChanged(String tableName, String columnName, boolean isSelected) {
+    updateSelectionAndSync(tableName, columnName, isSelected, excludedColumnsByTable, pkCheckBoxes, selectionByTable);
+  }
+
+  private void updateSelectionAndSync(
+      String tableName,
+      String colName,
+      boolean isSelected,
+      Map<String, Set<String>> currentSelectionMap,
+      Map<String, Map<String, JCheckBox>> otherCheckBoxesMap,
+      Map<String, Set<String>> otherSelectionMap) {
+
+    currentSelectionMap.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
+    if (isSelected) {
+      currentSelectionMap.get(tableName).add(colName);
+    } else {
+      currentSelectionMap.get(tableName).remove(colName);
+    }
+
+    // Sync with other tab
+    final JCheckBox otherBox =
+        otherCheckBoxesMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+    if (otherBox != null) {
+      otherBox.setEnabled(!isSelected);
+      if (isSelected) {
+        otherBox.setSelected(false);
+        otherSelectionMap.getOrDefault(tableName, Collections.emptySet()).remove(colName);
+      }
+    }
+  }
+
+  private void onTableExcludeBoxChanged(String tableName, boolean isSelected, List<JCheckBox> columnBoxes) {
+    if (isSelected) {
+      excludedTables.add(tableName);
+    } else {
+      excludedTables.remove(tableName);
+    }
+
+    for (final JCheckBox colBox : columnBoxes) {
+      colBox.setSelected(isSelected);
+      onExcludeBoxChanged(tableName, colBox.getText(), isSelected);
+    }
+  }
+
+  private JPanel createTablePanel(JComponent header, List<JCheckBox> columnBoxes) {
+    final JPanel tablePanel = new JPanel(new BorderLayout());
+    tablePanel.setBorder(
+        BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(
+                1, 1, 1, 1, UIManager.getColor("Component.borderColor")),
+            JBUI.Borders.empty(8)));
+    tablePanel.setBackground(UIManager.getColor("Panel.background"));
+    tablePanel.add(header, BorderLayout.NORTH);
+
+    final JPanel columnsPanel = new JPanel(new GridBagLayout());
+    final GridBagConstraints cc = new GridBagConstraints();
+    cc.gridx = 0;
+    cc.gridy = 0;
+    cc.anchor = GridBagConstraints.NORTHWEST;
+    cc.fill = GridBagConstraints.HORIZONTAL;
+    cc.weightx = 1.0;
+
+    for (JCheckBox box : columnBoxes) {
+      columnsPanel.add(box, cc);
+      cc.gridy++;
+    }
+
+    columnsPanel.setBorder(JBUI.Borders.emptyLeft(16));
+    tablePanel.add(columnsPanel, BorderLayout.CENTER);
+    return tablePanel;
+  }
+
   private JComponent createTogglableListPanel(
       final JPanel listPanel,
       final List<JCheckBox> checkBoxes,
-      final boolean withSearch,
       final BiConsumer<JCheckBox, Boolean> modelUpdater,
       final BiConsumer<JPanel, String> filterLogic) {
     final JButton toggleButton = new JButton();
@@ -635,9 +502,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final JPanel topPanel = new JPanel(new BorderLayout(8, 8));
     topPanel.add(toggleButton, BorderLayout.WEST);
 
-    if (withSearch) {
-      addSearchFunctionality(topPanel, listPanel, filterLogic);
-    }
+    addSearchFunctionality(topPanel, listPanel, filterLogic);
 
     final JPanel mainPanel = new JPanel(new BorderLayout());
     mainPanel.add(topPanel, BorderLayout.NORTH);
@@ -647,18 +512,15 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private String getTableNameForComponent(final Component component) {
-    // Traverse up to find the table panel or label
     Component current = component;
     while (current != null) {
-      if (current instanceof JPanel panel) {
-        // Check if this panel is a table container (has a border and contains the table checkbox)
-        for (Component child : panel.getComponents()) {
-          if (child instanceof JCheckBox box
-              && Boolean.TRUE.equals(box.getClientProperty("isTable"))) {
+      if (current instanceof final JPanel panel) {
+        for (final Component child : panel.getComponents()) {
+          if (child instanceof final JCheckBox box
+              && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
             return box.getText();
           }
-          if (child instanceof JLabel label) {
-            // Fallback for the PK selection panel which uses JLabels
+          if (child instanceof final JLabel label) {
             return label.getText();
           }
         }
@@ -670,9 +532,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private String getColumnNameForCheckBox(final JCheckBox checkBox) {
     final String text = checkBox.getText();
-    final String prefix = text.startsWith("Treat as UUID: ") ? "Treat as UUID: " : "Exclude: ";
-    if (text.startsWith(prefix)) {
-      return text.substring(prefix.length());
+    if (text.startsWith(TREAT_AS_UUID_PREFIX)) {
+      return text.substring(TREAT_AS_UUID_PREFIX.length());
     }
     return text;
   }
@@ -720,53 +581,55 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final String lowerSearchText = searchText.toLowerCase(Locale.ROOT);
 
     for (final Component component : listPanel.getComponents()) {
-      if (component instanceof JPanel tablePanel) {
+      if (component instanceof final JPanel tablePanel) {
         filterTablePanel(tablePanel, lowerSearchText);
       }
     }
   }
 
   private void filterTablePanel(final JPanel tablePanel, final String lowerSearchText) {
-    JComponent tableHeader = null;
-    final List<JCheckBox> columnBoxes = new ArrayList<>();
+    final String headerText = getHeaderText(tablePanel);
+    final List<JCheckBox> columnBoxes = getColumnBoxes(tablePanel);
 
-    for (Component c : tablePanel.getComponents()) {
-      if (c instanceof JCheckBox box && Boolean.TRUE.equals(box.getClientProperty("isTable"))) {
-        tableHeader = box;
-      } else if (c instanceof JLabel label) {
-        tableHeader = label;
-      } else if (c instanceof JPanel colsPanel) {
-        for (Component colComp : colsPanel.getComponents()) {
-          if (colComp instanceof JCheckBox colBox) {
+    final boolean isTableVisible = headerText.toLowerCase(Locale.ROOT).contains(lowerSearchText);
+    boolean anyColumnVisible = false;
+
+    for (final JCheckBox colBox : columnBoxes) {
+      final boolean isColVisible =
+          colBox.getText().toLowerCase(Locale.ROOT).contains(lowerSearchText);
+      colBox.setVisible(isColVisible);
+      if (isColVisible) anyColumnVisible = true;
+    }
+
+    tablePanel.setVisible(isTableVisible || anyColumnVisible);
+    if (isTableVisible) {
+      columnBoxes.forEach(c -> c.setVisible(true));
+    }
+  }
+
+  private String getHeaderText(JPanel tablePanel) {
+    for (final Component c : tablePanel.getComponents()) {
+      if (c instanceof final JCheckBox box && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
+        return box.getText();
+      } else if (c instanceof final JLabel label) {
+        return label.getText();
+      }
+    }
+    return "";
+  }
+
+  private List<JCheckBox> getColumnBoxes(JPanel tablePanel) {
+    final List<JCheckBox> columnBoxes = new ArrayList<>();
+    for (final Component c : tablePanel.getComponents()) {
+      if (c instanceof final JPanel colsPanel) {
+        for (final Component colComp : colsPanel.getComponents()) {
+          if (colComp instanceof final JCheckBox colBox) {
             columnBoxes.add(colBox);
           }
         }
       }
     }
-
-    if (tableHeader != null) {
-      String headerText = "";
-      if (tableHeader instanceof JCheckBox box) {
-        headerText = box.getText();
-      } else if (tableHeader instanceof JLabel label) {
-        headerText = label.getText();
-      }
-
-      final boolean isTableVisible = headerText.toLowerCase(Locale.ROOT).contains(lowerSearchText);
-      boolean anyColumnVisible = false;
-
-      for (JCheckBox colBox : columnBoxes) {
-        final boolean isColVisible =
-            colBox.getText().toLowerCase(Locale.ROOT).contains(lowerSearchText);
-        colBox.setVisible(isColVisible);
-        if (isColVisible) anyColumnVisible = true;
-      }
-
-      tablePanel.setVisible(isTableVisible || anyColumnVisible);
-      if (isTableVisible) {
-        columnBoxes.forEach(c -> c.setVisible(true));
-      }
-    }
+    return columnBoxes;
   }
 
   public Map<String, Set<String>> getSelectionByTable() {
@@ -775,6 +638,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return out;
   }
 
+  @SuppressWarnings("unused")
   public Map<String, Map<String, String>> getUuidValuesByTable() {
     return uuidValuesByTable;
   }
@@ -785,6 +649,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return out;
   }
 
+  @SuppressWarnings("unused")
   public Set<String> getExcludedTables() {
     return Set.copyOf(excludedTables);
   }
@@ -792,21 +657,21 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public Map<String, List<RepetitionRule>> getRepetitionRules() {
     return repetitionRulesPanel.getRules();
   }
-  
+
   public String getSoftDeleteColumns() {
-      return softDeleteColumnsField.getText().trim();
+    return softDeleteColumnsField.getText().trim();
   }
-  
+
   public boolean getSoftDeleteUseSchemaDefault() {
-      return softDeleteUseSchemaDefaultBox.isSelected();
+    return softDeleteUseSchemaDefaultBox.isSelected();
   }
-  
+
   public String getSoftDeleteValue() {
-      return softDeleteValueField.getText().trim();
+    return softDeleteValueField.getText().trim();
   }
-  
+
   public int getNumericScale() {
-      return (Integer) scaleSpinner.getValue();
+    return (Integer) scaleSpinner.getValue();
   }
 
   private final class BackAction extends AbstractAction {

@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.ui.TextBrowseFolderListener;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
@@ -26,28 +27,28 @@ public class DbSeedSettingsComponent {
       new TextFieldWithBrowseButton();
 
   private final JBCheckBox myUseLatinDictionary =
-      new JBCheckBox("Use Latin Dictionary (Faker default)");
-  private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English Dictionary");
-  private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish Dictionary");
+      new JBCheckBox("Use Latin dictionary (Faker default)");
+  private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English dictionary");
+  private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish dictionary");
 
   // Soft Delete Components
   private final JBTextField mySoftDeleteColumns = new JBTextField();
-  private final JBCheckBox mySoftDeleteUseSchemaDefault = new JBCheckBox("Use Schema Default Value");
+  private final JBCheckBox mySoftDeleteUseSchemaDefault = new JBCheckBox("Use schema default value");
   private final JBTextField mySoftDeleteValue = new JBTextField();
 
   public DbSeedSettingsComponent() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    myColumnSpinnerStep.setValue(settings.columnSpinnerStep);
-    myDefaultOutputDirectory.setText(settings.defaultOutputDirectory);
-    myUseLatinDictionary.setSelected(settings.useLatinDictionary);
-    myUseEnglishDictionary.setSelected(settings.useEnglishDictionary);
-    myUseSpanishDictionary.setSelected(settings.useSpanishDictionary);
+    myColumnSpinnerStep.setValue(settings.getColumnSpinnerStep());
+    myDefaultOutputDirectory.setText(settings.getDefaultOutputDirectory());
+    myUseLatinDictionary.setSelected(settings.isUseLatinDictionary());
+    myUseEnglishDictionary.setSelected(settings.isUseEnglishDictionary());
+    myUseSpanishDictionary.setSelected(settings.isUseSpanishDictionary());
 
     // Soft Delete Init
-    mySoftDeleteColumns.setText(settings.softDeleteColumns);
-    mySoftDeleteUseSchemaDefault.setSelected(settings.softDeleteUseSchemaDefault);
-    mySoftDeleteValue.setText(settings.softDeleteValue);
-    mySoftDeleteValue.setEnabled(!settings.softDeleteUseSchemaDefault);
+    mySoftDeleteColumns.setText(settings.getSoftDeleteColumns());
+    mySoftDeleteUseSchemaDefault.setSelected(settings.isSoftDeleteUseSchemaDefault());
+    mySoftDeleteValue.setText(settings.getSoftDeleteValue());
+    mySoftDeleteValue.setEnabled(!settings.isSoftDeleteUseSchemaDefault());
 
     mySoftDeleteUseSchemaDefault.addActionListener(e -> 
         mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected())
@@ -57,24 +58,21 @@ public class DbSeedSettingsComponent {
         FileChooserDescriptorFactory.createSingleFolderDescriptor();
     folderDescriptor.setTitle("Select Default Output Directory");
     myDefaultOutputDirectory.addBrowseFolderListener(
-        "Select Directory",
-        "Please select the default directory for generated SQL files.",
-        null,
-        folderDescriptor);
+            new TextBrowseFolderListener(folderDescriptor));
 
     myMainPanel =
         FormBuilder.createFormBuilder()
-            .addLabeledComponent(new JBLabel("Column Spinner Step:"), myColumnSpinnerStep, 1, false)
+            .addLabeledComponent(new JBLabel("Column spinner step:"), myColumnSpinnerStep, 1, false)
             .addLabeledComponent(
-                new JBLabel("Default Output Directory:"), myDefaultOutputDirectory, 1, false)
+                new JBLabel("Default output directory:"), myDefaultOutputDirectory, 1, false)
             .addComponent(myUseLatinDictionary, 1)
             .addComponent(myUseEnglishDictionary, 1)
             .addComponent(myUseSpanishDictionary, 1)
             
             .addComponent(new TitledSeparator("Soft Delete Configuration"))
-            .addLabeledComponent(new JBLabel("Soft Delete Columns (comma separated):"), mySoftDeleteColumns, 1, false)
+            .addLabeledComponent(new JBLabel("Soft delete columns (comma separated):"), mySoftDeleteColumns, 1, false)
             .addComponent(mySoftDeleteUseSchemaDefault, 1)
-            .addLabeledComponent(new JBLabel("Soft Delete Value (if not default):"), mySoftDeleteValue, 1, false)
+            .addLabeledComponent(new JBLabel("Soft delete value (if not default):"), mySoftDeleteValue, 1, false)
             
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();

@@ -36,43 +36,43 @@ public class DbSeedSettingsConfigurable implements Configurable {
   @Override
   public boolean isModified() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    return mySettingsComponent.getColumnSpinnerStep() != settings.columnSpinnerStep
+    return mySettingsComponent.getColumnSpinnerStep() != settings.getColumnSpinnerStep()
         || !Objects.equals(
-            mySettingsComponent.getDefaultOutputDirectory(), settings.defaultOutputDirectory)
-        || mySettingsComponent.getUseLatinDictionary() != settings.useLatinDictionary
-        || mySettingsComponent.getUseEnglishDictionary() != settings.useEnglishDictionary
-        || mySettingsComponent.getUseSpanishDictionary() != settings.useSpanishDictionary
-        || !Objects.equals(mySettingsComponent.getSoftDeleteColumns(), settings.softDeleteColumns)
-        || mySettingsComponent.getSoftDeleteUseSchemaDefault() != settings.softDeleteUseSchemaDefault
-        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.softDeleteValue);
+            mySettingsComponent.getDefaultOutputDirectory(), settings.getDefaultOutputDirectory())
+        || mySettingsComponent.getUseLatinDictionary() != settings.isUseLatinDictionary()
+        || mySettingsComponent.getUseEnglishDictionary() != settings.isUseEnglishDictionary()
+        || mySettingsComponent.getUseSpanishDictionary() != settings.isUseSpanishDictionary()
+        || !Objects.equals(mySettingsComponent.getSoftDeleteColumns(), settings.getSoftDeleteColumns())
+        || mySettingsComponent.getSoftDeleteUseSchemaDefault() != settings.isSoftDeleteUseSchemaDefault()
+        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue());
   }
 
   @Override
   public void apply() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    settings.columnSpinnerStep = mySettingsComponent.getColumnSpinnerStep();
-    settings.defaultOutputDirectory = mySettingsComponent.getDefaultOutputDirectory();
-    settings.useLatinDictionary = mySettingsComponent.getUseLatinDictionary();
-    settings.useEnglishDictionary = mySettingsComponent.getUseEnglishDictionary();
-    settings.useSpanishDictionary = mySettingsComponent.getUseSpanishDictionary();
+    settings.setColumnSpinnerStep(mySettingsComponent.getColumnSpinnerStep());
+    settings.setDefaultOutputDirectory(mySettingsComponent.getDefaultOutputDirectory());
+    settings.setUseLatinDictionary(mySettingsComponent.getUseLatinDictionary());
+    settings.setUseEnglishDictionary(mySettingsComponent.getUseEnglishDictionary());
+    settings.setUseSpanishDictionary(mySettingsComponent.getUseSpanishDictionary());
     
-    settings.softDeleteColumns = mySettingsComponent.getSoftDeleteColumns();
-    settings.softDeleteUseSchemaDefault = mySettingsComponent.getSoftDeleteUseSchemaDefault();
-    settings.softDeleteValue = mySettingsComponent.getSoftDeleteValue();
+    settings.setSoftDeleteColumns(mySettingsComponent.getSoftDeleteColumns());
+    settings.setSoftDeleteUseSchemaDefault(mySettingsComponent.getSoftDeleteUseSchemaDefault());
+    settings.setSoftDeleteValue(mySettingsComponent.getSoftDeleteValue());
   }
 
   @Override
   public void reset() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    mySettingsComponent.setColumnSpinnerStep(settings.columnSpinnerStep);
-    mySettingsComponent.setDefaultOutputDirectory(settings.defaultOutputDirectory);
-    mySettingsComponent.setUseLatinDictionary(settings.useLatinDictionary);
-    mySettingsComponent.setUseEnglishDictionary(settings.useEnglishDictionary);
-    mySettingsComponent.setUseSpanishDictionary(settings.useSpanishDictionary);
+    mySettingsComponent.setColumnSpinnerStep(settings.getColumnSpinnerStep());
+    mySettingsComponent.setDefaultOutputDirectory(settings.getDefaultOutputDirectory());
+    mySettingsComponent.setUseLatinDictionary(settings.isUseLatinDictionary());
+    mySettingsComponent.setUseEnglishDictionary(settings.isUseEnglishDictionary());
+    mySettingsComponent.setUseSpanishDictionary(settings.isUseSpanishDictionary());
     
-    mySettingsComponent.setSoftDeleteColumns(settings.softDeleteColumns);
-    mySettingsComponent.setSoftDeleteUseSchemaDefault(settings.softDeleteUseSchemaDefault);
-    mySettingsComponent.setSoftDeleteValue(settings.softDeleteValue);
+    mySettingsComponent.setSoftDeleteColumns(settings.getSoftDeleteColumns());
+    mySettingsComponent.setSoftDeleteUseSchemaDefault(settings.isSoftDeleteUseSchemaDefault());
+    mySettingsComponent.setSoftDeleteValue(settings.getSoftDeleteValue());
   }
 
   @Override

@@ -33,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 public class SchemaIntrospector {
 
   private static final String COLUMN_NAME = "COLUMN_NAME";
+  private static final String TABLE_NAME = "TABLE_NAME";
 
   private record TableRawData(String name, String schema, String remarks) {}
 
@@ -88,7 +89,7 @@ public class SchemaIntrospector {
       while (rs.next()) {
         list.add(
             new TableRawData(
-                rs.getString("TABLE_NAME"),
+                rs.getString(TABLE_NAME),
                 rs.getString("TABLE_SCHEM"),
                 safe(rs.getString("REMARKS"))));
       }
@@ -101,7 +102,7 @@ public class SchemaIntrospector {
     final Map<TableKey, List<ColumnRawData>> map = new LinkedHashMap<>();
     try (final ResultSet rs = meta.getColumns(null, schema, "%", "%")) {
       while (rs.next()) {
-        final String tableName = rs.getString("TABLE_NAME");
+        final String tableName = rs.getString(TABLE_NAME);
         final String tableSchema = rs.getString("TABLE_SCHEM");
         final TableKey key = new TableKey(tableSchema, tableName);
         final ColumnRawData col =
@@ -226,7 +227,7 @@ public class SchemaIntrospector {
   }
 
   private static Set<String> loadAllowedValues() {
-    return new LinkedHashSet<>();
+    return Collections.emptySet();
   }
 
   private static Map<TableKey, List<String>> loadAllCheckConstraints(
@@ -245,24 +246,30 @@ public class SchemaIntrospector {
     } else if (product.contains("h2")) {
       loadAllH2CheckConstraints(conn, schema, checks);
     } else {
-      // Generic: from remarks
-      for (final TableRawData table : tables) {
-        final TableKey key = new TableKey(table.schema(), table.name());
-        final List<String> tableChecks = checks.computeIfAbsent(key, k -> new ArrayList<>());
-        if (!table.remarks().isEmpty()) {
-          extractChecksFromText(table.remarks(), tableChecks);
-        }
-        final List<ColumnRawData> cols = columns.get(key);
-        if (cols != null) {
-          for (final ColumnRawData col : cols) {
-            if (!col.remarks().isEmpty()) {
-              extractChecksFromText(col.remarks(), tableChecks);
-            }
+      loadGenericCheckConstraints(tables, columns, checks);
+    }
+    return checks;
+  }
+
+  private static void loadGenericCheckConstraints(
+      final List<TableRawData> tables,
+      final Map<TableKey, List<ColumnRawData>> columns,
+      final Map<TableKey, List<String>> checks) {
+    for (final TableRawData table : tables) {
+      final TableKey key = new TableKey(table.schema(), table.name());
+      final List<String> tableChecks = checks.computeIfAbsent(key, k -> new ArrayList<>());
+      if (!table.remarks().isEmpty()) {
+        extractChecksFromText(table.remarks(), tableChecks);
+      }
+      final List<ColumnRawData> cols = columns.get(key);
+      if (cols != null) {
+        for (final ColumnRawData col : cols) {
+          if (!col.remarks().isEmpty()) {
+            extractChecksFromText(col.remarks(), tableChecks);
           }
         }
       }
     }
-    return checks;
   }
 
   private static void loadAllH2CheckConstraints(
@@ -286,7 +293,7 @@ public class SchemaIntrospector {
       try (final ResultSet rs = ps.executeQuery()) {
         while (rs.next()) {
           final String tableSchema = rs.getString("TABLE_SCHEMA");
-          final String tableName = rs.getString("TABLE_NAME");
+          final String tableName = rs.getString(TABLE_NAME);
           final String clause = rs.getString("CHECK_CLAUSE");
           if (clause != null && !clause.isBlank()) {
             final TableKey key = new TableKey(tableSchema, tableName);

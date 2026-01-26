@@ -24,9 +24,10 @@ public record Column(
 
   public Column {
     Objects.requireNonNull(name, "Column name cannot be null.");
+    allowedValues = allowedValues != null ? Set.copyOf(allowedValues) : Set.of();
   }
 
   public boolean hasAllowedValues() {
-    return allowedValues != null && !allowedValues.isEmpty();
+    return !allowedValues.isEmpty();
   }
 }

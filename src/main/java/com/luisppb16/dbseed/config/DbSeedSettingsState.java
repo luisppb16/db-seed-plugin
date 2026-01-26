@@ -11,9 +11,13 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import java.util.Objects;
+import lombok.Getter;
+import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+@Getter
+@Setter
 @State(
     name = "com.luisppb16.dbseed.config.DbSeedSettingsState",
     storages = @Storage("DbSeedPlugin.xml"))
@@ -21,17 +25,20 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   private static final String DEFAULT_OUTPUT_DIRECTORY = "src/main/resources/db/seeder";
   private static final int DEFAULT_COLUMN_SPINNER_STEP = 3;
-  
-  public boolean useLatinDictionary = true;
-  public boolean useEnglishDictionary = false;
-  public boolean useSpanishDictionary = false;
-  public int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
-  public String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
-  
+  private static final String DEFAULT_SOFT_DELETE_VALUE = "NULL";
+  private static final boolean DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT = true;
+  private static final String DEFAULT_SOFT_DELETE_COLUMNS = "deleted_at,is_deleted";
+
+  private boolean useLatinDictionary = true;
+  private boolean useEnglishDictionary = false;
+  private boolean useSpanishDictionary = false;
+  private int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
+  private String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
+
   // Soft Delete Configuration
-  public String softDeleteColumns = "deleted_at,is_deleted";
-  public boolean softDeleteUseSchemaDefault = true;
-  public String softDeleteValue = "NULL";
+  private String softDeleteColumns = DEFAULT_SOFT_DELETE_COLUMNS;
+  private boolean softDeleteUseSchemaDefault = DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT;
+  private String softDeleteValue = DEFAULT_SOFT_DELETE_VALUE;
 
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
@@ -50,7 +57,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     XmlSerializerUtil.copyBean(state, this);
 
     // Ensure resilience against null or invalid values from a deserialized state
-    defaultOutputDirectory =
+    this.defaultOutputDirectory =
         Objects.requireNonNullElse(this.defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
     if (this.columnSpinnerStep <= 0) {
       this.columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
@@ -59,10 +66,12 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.useLatinDictionary = state.useLatinDictionary;
     this.useEnglishDictionary = state.useEnglishDictionary;
     this.useSpanishDictionary = state.useSpanishDictionary;
-    
+
     // Soft Delete defaults
-    this.softDeleteColumns = Objects.requireNonNullElse(state.softDeleteColumns, "deleted_at,deleted");
-    this.softDeleteValue = Objects.requireNonNullElse(state.softDeleteValue, "NULL");
+    this.softDeleteColumns =
+        Objects.requireNonNullElse(state.softDeleteColumns, DEFAULT_SOFT_DELETE_COLUMNS);
+    this.softDeleteValue =
+        Objects.requireNonNullElse(state.softDeleteValue, DEFAULT_SOFT_DELETE_VALUE);
     this.softDeleteUseSchemaDefault = state.softDeleteUseSchemaDefault;
   }
 }

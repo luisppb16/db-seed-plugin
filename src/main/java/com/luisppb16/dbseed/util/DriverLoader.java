@@ -5,7 +5,11 @@
 
 package com.luisppb16.dbseed.util;
 
+import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.project.Project;
 import com.luisppb16.dbseed.config.DriverInfo;
+import com.luisppb16.dbseed.registry.DriverRegistry;
+import com.luisppb16.dbseed.ui.DriverSelectionDialog;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -19,6 +23,8 @@ import java.nio.file.StandardCopyOption;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.List;
+import java.util.Optional;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +34,7 @@ public class DriverLoader {
 
   private static final Path DRIVER_DIR =
       Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
+  private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
 
   static {
     try {
@@ -35,6 +42,40 @@ public class DriverLoader {
     } catch (final IOException e) {
       log.error("Could not create driver folder: {}", DRIVER_DIR, e);
       throw new DriverInitializationException("Could not create driver folder: " + DRIVER_DIR, e);
+    }
+  }
+
+  public static Optional<DriverInfo> selectAndLoadDriver(final Project project) {
+    try {
+      final List<DriverInfo> drivers = DriverRegistry.getDrivers();
+      if (drivers.isEmpty()) {
+        log.warn("No drivers found in drivers.json");
+        return Optional.empty();
+      }
+
+      final PropertiesComponent props = PropertiesComponent.getInstance(project);
+      final String lastDriverName = props.getValue(PREF_LAST_DRIVER);
+
+      final DriverSelectionDialog driverDialog =
+          new DriverSelectionDialog(project, drivers, lastDriverName);
+      if (!driverDialog.showAndGet()) {
+        log.debug("Driver selection canceled.");
+        return Optional.empty();
+      }
+
+      final Optional<DriverInfo> chosenDriverOpt = driverDialog.getSelectedDriver();
+      if (chosenDriverOpt.isEmpty()) {
+        log.debug("No driver selected.");
+        return Optional.empty();
+      }
+      final DriverInfo chosenDriver = chosenDriverOpt.get();
+      props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
+
+      ensureDriverPresent(chosenDriver);
+      return Optional.of(chosenDriver);
+    } catch (final Exception ex) {
+      log.error("Error selecting/loading driver", ex);
+      return Optional.empty();
     }
   }
 

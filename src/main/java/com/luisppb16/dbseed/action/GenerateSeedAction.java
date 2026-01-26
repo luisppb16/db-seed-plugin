@@ -8,7 +8,6 @@ package com.luisppb16.dbseed.action;
 import static com.luisppb16.dbseed.model.Constant.APP_NAME;
 import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
 
-import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
@@ -32,8 +31,6 @@ import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
-import com.luisppb16.dbseed.registry.DriverRegistry;
-import com.luisppb16.dbseed.ui.DriverSelectionDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
@@ -54,28 +51,6 @@ import org.jetbrains.annotations.NotNull;
 public final class GenerateSeedAction extends AnAction {
 
   private static final String FILE_NAME = "query_batch.sql";
-  private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
-
-  private static boolean requiresDeferredDueToNonNullableCycles(
-      final TopologicalSorter.SortResult sort, final Map<String, Table> tableMap) {
-
-    return sort.cycles().stream()
-        .anyMatch(
-            cycle ->
-                cycle.stream()
-                    .map(tableMap::get)
-                    .filter(Objects::nonNull)
-                    .anyMatch(
-                        table ->
-                            table.foreignKeys().stream()
-                                .filter(fk -> cycle.contains(fk.pkTable()))
-                                .anyMatch(
-                                    fk ->
-                                        fk.columnMapping().keySet().stream()
-                                            .map(table::column)
-                                            .filter(Objects::nonNull)
-                                            .anyMatch(c -> !c.nullable()))));
-  }
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
@@ -86,31 +61,11 @@ public final class GenerateSeedAction extends AnAction {
     }
 
     try {
-      final List<DriverInfo> drivers = DriverRegistry.getDrivers();
-      if (drivers.isEmpty()) {
-        notifyError(project, "No drivers found in drivers.json");
-        return;
-      }
-
-      final PropertiesComponent props = PropertiesComponent.getInstance(project);
-      final String lastDriverName = props.getValue(PREF_LAST_DRIVER);
-
-      final DriverSelectionDialog driverDialog =
-          new DriverSelectionDialog(project, drivers, lastDriverName);
-      if (!driverDialog.showAndGet()) {
-        log.debug("Driver selection canceled.");
-        return;
-      }
-
-      final Optional<DriverInfo> chosenDriverOpt = driverDialog.getSelectedDriver();
+      final Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
       if (chosenDriverOpt.isEmpty()) {
-        log.debug("No driver selected.");
         return;
       }
       final DriverInfo chosenDriver = chosenDriverOpt.get();
-      props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
-
-      DriverLoader.ensureDriverPresent(chosenDriver);
 
       final SeedDialog seedDialog = new SeedDialog(chosenDriver);
       if (!seedDialog.showAndGet()) {
@@ -150,9 +105,11 @@ public final class GenerateSeedAction extends AnAction {
           return;
       }
       
-      final Map<String, Set<String>> pkUuidOverrides = pkDialog.getSelectionByTable();
-      final Map<String, Set<String>> excludedColumns = pkDialog.getExcludedColumnsByTable();
-      final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
+      final DialogSelections selections = new DialogSelections(
+          pkDialog.getSelectionByTable(),
+          pkDialog.getExcludedColumnsByTable(),
+          pkDialog.getRepetitionRules()
+      );
       
       // Update config with Soft Delete settings from Step 3
       final GenerationConfig finalConfig = config.toBuilder()
@@ -173,9 +130,7 @@ public final class GenerateSeedAction extends AnAction {
                         generateSeedSql(
                             finalConfig,
                             tables,
-                            pkUuidOverrides,
-                            excludedColumns,
-                            repetitionRules,
+                            selections,
                             indicator,
                             settings,
                             chosenDriver);
@@ -194,21 +149,18 @@ public final class GenerateSeedAction extends AnAction {
   private String generateSeedSql(
       @NotNull final GenerationConfig config,
       @NotNull final List<Table> tables,
-      Map<String, Set<String>> pkUuidOverrides,
-      Map<String, Set<String>> excludedColumns,
-      Map<String, List<RepetitionRule>> repetitionRules,
+      @NotNull final DialogSelections selections,
       @NotNull final ProgressIndicator indicator,
       DbSeedSettingsState settings,
-      DriverInfo driverInfo)
-      throws Exception {
+      DriverInfo driverInfo) {
 
-      Map<String, Map<String, String>> pkUuidOverridesAdapted = pkUuidOverrides.entrySet().stream()
+      Map<String, Map<String, String>> pkUuidOverridesAdapted = selections.pkUuidOverrides().entrySet().stream()
           .collect(Collectors.toMap(
               Map.Entry::getKey,
               e -> e.getValue().stream().collect(Collectors.toMap(c -> c, c -> ""))
           ));
       
-      Map<String, List<String>> excludedColumnsList = excludedColumns.entrySet().stream()
+      Map<String, List<String>> excludedColumnsList = selections.excludedColumns().entrySet().stream()
           .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
       indicator.setText("Sorting tables...");
@@ -221,7 +173,7 @@ public final class GenerateSeedAction extends AnAction {
           sort.ordered().stream().map(tableMap::get).filter(Objects::nonNull).toList();
       log.debug("Sorted {} tables.", ordered.size());
 
-      final boolean mustForceDeferred = requiresDeferredDueToNonNullableCycles(sort, tableMap);
+      final boolean mustForceDeferred = TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableMap);
       final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
       log.debug("Effective deferred: {}", effectiveDeferred);
 
@@ -234,10 +186,10 @@ public final class GenerateSeedAction extends AnAction {
                   .deferred(effectiveDeferred)
                   .pkUuidOverrides(pkUuidOverridesAdapted)
                   .excludedColumns(excludedColumnsList)
-                  .repetitionRules(repetitionRules)
-                  .useLatinDictionary(settings.useLatinDictionary)
-                  .useEnglishDictionary(settings.useEnglishDictionary)
-                  .useSpanishDictionary(settings.useSpanishDictionary)
+                  .repetitionRules(selections.repetitionRules())
+                  .useLatinDictionary(settings.isUseLatinDictionary())
+                  .useEnglishDictionary(settings.isUseEnglishDictionary())
+                  .useSpanishDictionary(settings.isUseSpanishDictionary())
                   .softDeleteColumns(config.softDeleteColumns())
                   .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
                   .softDeleteValue(config.softDeleteValue())
@@ -276,4 +228,9 @@ public final class GenerateSeedAction extends AnAction {
         new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
         project);
   }
+
+  private record DialogSelections(
+      Map<String, Set<String>> pkUuidOverrides,
+      Map<String, Set<String>> excludedColumns,
+      Map<String, List<RepetitionRule>> repetitionRules) {}
 }

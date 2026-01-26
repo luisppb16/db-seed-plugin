@@ -25,6 +25,29 @@
 
     <change-notes>
         <![CDATA[
+            <h3>Version 1.2.5</h3>
+            <ul>
+                <li><b>Multi-Dialect Support:</b> Added support for SQLite and improved driver configuration for various SQL dialects.</li>
+                <li><b>Performance Optimizations:</b>
+                    <ul>
+                        <li>Optimized SQL generation and string concatenation.</li>
+                        <li>Improved Schema Introspection to avoid N+1 queries.</li>
+                        <li>Implemented caching for dictionary words and identifier quoting.</li>
+                        <li>Optimized UUID generation.</li>
+                    </ul>
+                </li>
+                <li><b>New Features & Configuration:</b>
+                    <ul>
+                        <li>Added user-configurable numeric scale for data generation.</li>
+                        <li>Implemented Soft Delete configuration.</li>
+                        <li>Improved decimal handling and repetition rules.</li>
+                        <li>Refactored Settings UI for better usability.</li>
+                    </ul>
+                </li>
+                <li><b>Stability:</b> Comprehensive test suite implementation and bug fixes.</li>
+            </ul>
+
+            <h3>Previous Versions</h3>
             <ul>
               <li><b>Plugin Renamed:</b> The plugin has been renamed from "Database Seed Generator" to "DBSeed4SQL" to better reflect its functionality and branding.</li>
               <li><b>Configurable Dictionaries for Data Generation:</b> Introduced flexible dictionary usage with checkboxes for Latin (Faker default), English, and Spanish. Users can now combine these dictionaries to generate more realistic and contextually relevant string data.</li>

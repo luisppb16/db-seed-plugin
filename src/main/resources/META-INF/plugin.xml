@@ -49,13 +49,7 @@
         <action id="SeedDatabaseAction"
                 class="com.luisppb16.dbseed.action.SeedDatabaseAction"
                 text="DBSeed4SQL"
-                description="Seeds the database with generated data.">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-        </action>
-        <action id="GenerateSeedAction"
-                class="com.luisppb16.dbseed.action.GenerateSeedAction"
-                text="Generate Seed SQL"
-                description="Generates seed SQL script without executing it.">
+                description="Generates seed SQL script.">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
         <action id="SchemaDesignerAction"

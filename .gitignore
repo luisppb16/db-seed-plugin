@@ -38,3 +38,6 @@ replay_pid*
 .DS_Store
 gradle/wrapper/gradle-wrapper.jar
 .intellijPlatform
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.agent/rules/snyk_rules.md

@@ -61,7 +61,7 @@ public class SchemaIntrospector {
     final Map<TableKey, List<String>> allChecks =
         loadAllCheckConstraints(conn, meta, schema, rawTables, rawColumns);
     final Map<TableKey, List<String>> allPks = loadAllPrimaryKeys(meta, schema);
-    final Map<TableKey, List<List<String>>> allUniqueKeys = loadAllUniqueKeys(meta, schema);
+    final Map<TableKey, List<List<String>>> allUniqueKeys = loadAllUniqueKeys(meta, schema, rawTables);
     final Map<TableKey, List<ForeignKey>> allFks = loadAllForeignKeys(meta, schema, allUniqueKeys);
 
     for (final TableRawData tableData : rawTables) {
@@ -238,21 +238,23 @@ public class SchemaIntrospector {
   }
 
   private static Map<TableKey, List<List<String>>> loadAllUniqueKeys(
-      final DatabaseMetaData meta, final String schema) throws SQLException {
+      final DatabaseMetaData meta, final String schema, final List<TableRawData> rawTables) throws SQLException {
     final Map<TableKey, Map<String, List<String>>> idxCols = new LinkedHashMap<>();
-    try (final ResultSet rs = meta.getIndexInfo(null, schema, null, true, false)) {
-      while (rs.next()) {
-        final String tableName = rs.getString(TABLE_NAME);
-        final String tableSchema = rs.getString("TABLE_SCHEM");
-        final String idxName = rs.getString("INDEX_NAME");
-        final String colName = rs.getString(COLUMN_NAME);
-        if (idxName == null || colName == null) continue;
+    for (final TableRawData tableData : rawTables) {
+      try (final ResultSet rs = meta.getIndexInfo(null, schema, tableData.name(), true, false)) {
+        while (rs.next()) {
+          final String tableName = rs.getString(TABLE_NAME);
+          final String tableSchema = rs.getString("TABLE_SCHEM");
+          final String idxName = rs.getString("INDEX_NAME");
+          final String colName = rs.getString(COLUMN_NAME);
+          if (idxName == null || colName == null) continue;
 
-        final TableKey key = new TableKey(tableSchema, tableName);
-        idxCols
-            .computeIfAbsent(key, k -> new LinkedHashMap<>())
-            .computeIfAbsent(idxName, k -> new ArrayList<>())
-            .add(colName);
+          final TableKey key = new TableKey(tableSchema, tableName);
+          idxCols
+              .computeIfAbsent(key, k -> new LinkedHashMap<>())
+              .computeIfAbsent(idxName, k -> new ArrayList<>())
+              .add(colName);
+        }
       }
     }
     final Map<TableKey, List<List<String>>> result = new LinkedHashMap<>();

@@ -87,7 +87,7 @@ class SchemaIntrospectorTest {
       when(fkResultSet.next()).thenReturn(false);
 
       // Unique Keys
-      when(metaData.getIndexInfo(any(), eq("public"), isNull(), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
+      when(metaData.getIndexInfo(any(), eq("public"), eq("users"), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
       when(uniqueKeyResultSet.next()).thenReturn(false);
 
       // Checks (H2)

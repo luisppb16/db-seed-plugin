@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,16 +76,18 @@ class SchemaIntrospectorTest {
       when(columnResultSet.getString("REMARKS")).thenReturn("");
 
       // PKs
-      when(metaData.getPrimaryKeys(any(), eq("public"), eq("users"))).thenReturn(pkResultSet);
+      when(metaData.getPrimaryKeys(any(), eq("public"), isNull())).thenReturn(pkResultSet);
       when(pkResultSet.next()).thenReturn(true).thenReturn(false);
+      when(pkResultSet.getString("TABLE_NAME")).thenReturn("users");
+      when(pkResultSet.getString("TABLE_SCHEM")).thenReturn("public");
       when(pkResultSet.getString("COLUMN_NAME")).thenReturn("id");
 
       // FKs
-      when(metaData.getImportedKeys(any(), eq("public"), eq("users"))).thenReturn(fkResultSet);
+      when(metaData.getImportedKeys(any(), eq("public"), isNull())).thenReturn(fkResultSet);
       when(fkResultSet.next()).thenReturn(false);
 
       // Unique Keys
-      when(metaData.getIndexInfo(any(), eq("public"), eq("users"), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
+      when(metaData.getIndexInfo(any(), eq("public"), isNull(), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
       when(uniqueKeyResultSet.next()).thenReturn(false);
 
       // Checks (H2)

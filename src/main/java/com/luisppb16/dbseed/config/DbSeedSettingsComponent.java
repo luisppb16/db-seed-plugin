@@ -5,8 +5,11 @@
 
 package com.luisppb16.dbseed.config;
 
+import com.intellij.openapi.fileChooser.FileChooser;
+import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
+import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -52,11 +55,18 @@ public class DbSeedSettingsComponent {
         mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected())
     );
 
-    myDefaultOutputDirectory.addBrowseFolderListener(
-        "Select Default Output Directory",
-        null,
-        null,
-        FileChooserDescriptorFactory.createSingleFolderDescriptor());
+    final FileChooserDescriptor folderDescriptor = FileChooserDescriptorFactory
+        .createSingleFolderDescriptor()
+        .withTitle("Select Default Output Directory");
+    myDefaultOutputDirectory.addActionListener(e -> {
+      final String currentPath = myDefaultOutputDirectory.getText();
+      final var currentFile = currentPath.isEmpty() ? null : LocalFileSystem.getInstance().findFileByPath(currentPath);
+      FileChooser.chooseFile(folderDescriptor, null, currentFile, file -> {
+        if (file != null) {
+          myDefaultOutputDirectory.setText(file.getPath());
+        }
+      });
+    });
 
     myMainPanel =
         FormBuilder.createFormBuilder()

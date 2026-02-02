@@ -1361,7 +1361,7 @@ public class DataGenerator {
       return value.substring(0, length);
     }
     if (jdbcType == Types.CHAR && value.length() < length) {
-      return String.format("%-".concat(String.valueOf(length)).concat("s"), value);
+      return value.concat(" ".repeat(length - value.length()));
     }
     return value;
   }

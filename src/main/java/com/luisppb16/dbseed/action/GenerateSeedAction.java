@@ -22,6 +22,7 @@ import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.testFramework.LightVirtualFile;
+import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -118,6 +119,9 @@ public final class GenerateSeedAction extends AnAction {
           .softDeleteValue(pkDialog.getSoftDeleteValue())
           .numericScale(pkDialog.getNumericScale()) // Get scale from Step 3
           .build();
+      
+      // Persist the updated configuration including Soft Delete settings
+      ConnectionConfigPersistence.save(project, finalConfig);
 
       // Step 3: Generate Data (Background)
       ProgressManager.getInstance()

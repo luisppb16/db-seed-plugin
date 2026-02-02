@@ -22,6 +22,7 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -201,6 +202,9 @@ public class SeedDatabaseAction extends AnAction {
             .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
             .softDeleteValue(pkDialog.getSoftDeleteValue())
             .build();
+
+        // Persist the updated configuration including Soft Delete settings
+        ConnectionConfigPersistence.save(project, finalConfig);
 
         ProgressManager.getInstance()
             .run(

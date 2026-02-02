@@ -55,6 +55,18 @@ public class DataGenerator {
 
   private static final Pattern SINGLE_WORD_PATTERN =
       Pattern.compile("^\\p{L}[\\p{L}\\p{N}]*$");
+  private static final Pattern COL_EQ_VAL_PATTERN =
+      Pattern.compile(
+          "(?i)^\\s*\\(*\\s*" +
+          "(?:(?:\"?[A-Za-z0-9_]+\"?)\\.)*" +
+          "(?:\\(*\\s*)?" +
+          "\"?([A-Za-z0-9_]+)\"?" +
+          "(?:\\s*\\)*)?" +
+          "(?:\\s*::[a-zA-Z0-9_ \\[\\]]+)*" +
+          "\\s*=\\s*" +
+          "((?:'.*?')|(?:\\\".*?\\\")|[0-9A-Za-z_+-]+(?:\\.[0-9]+)?)" +
+          "(?:\\s*::[a-zA-Z0-9_ \\[\\]]+)*" +
+          "\\s*\\)*\\s*$");
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final int DEFAULT_INT_MAX = 10_000;
   private static final int DEFAULT_LONG_MAX = 1_000_000;
@@ -255,6 +267,7 @@ public class DataGenerator {
                   .seenPrimaryKeys(seenPrimaryKeys)
                   .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
                   .softDeleteCols(softDeleteCols)
+                  .multiColumnConstraints(parseMultiColumnConstraints(table.checks()))
                   .build();
 
               processRepetitionRules(rules, params, tableContext);
@@ -355,6 +368,7 @@ public class DataGenerator {
           .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
           .softDeleteValue(params.softDeleteValue())
           .numericScale(params.numericScale())
+          .multiColumnConstraints(context.multiColumnConstraints())
           .build();
   }
 
@@ -371,7 +385,7 @@ public class DataGenerator {
         if (params.softDeleteUseSchemaDefault()) {
             return SqlKeyword.DEFAULT;
         } else {
-            return parseSoftDeleteValue(params.softDeleteValue(), column);
+            return convertStringValue(params.softDeleteValue(), column);
         }
     }
 
@@ -393,7 +407,7 @@ public class DataGenerator {
     return applyNumericConstraints(column, pc, gen, params.numericScale());
   }
 
-  private static Object parseSoftDeleteValue(final String value, final Column column) {
+  private static Object convertStringValue(final String value, final Column column) {
       if (value == null || "NULL".equalsIgnoreCase(value)) return null;
       try {
           return switch (column.jdbcType()) {
@@ -405,7 +419,7 @@ public class DataGenerator {
               default -> value;
           };
       } catch (final Exception e) {
-          log.warn("Failed to parse soft delete value '{}' for column {}. Using NULL.", value, column.name());
+          log.warn("Failed to convert value '{}' for column {}. Using NULL.", value, column.name());
           return null;
       }
   }
@@ -435,6 +449,47 @@ public class DataGenerator {
     
     if (baseValues != null) {
         values.putAll(baseValues);
+    }
+
+    if (params.multiColumnConstraints() != null) {
+      for (final MultiColumnConstraint mcc : params.multiColumnConstraints()) {
+        final List<Map<String, String>> candidates = mcc.allowedCombinations();
+        final List<Map<String, String>> filtered = new ArrayList<>();
+
+        for (final Map<String, String> combo : candidates) {
+          boolean match = true;
+          for (final Map.Entry<String, String> entry : combo.entrySet()) {
+            final String col = entry.getKey();
+            final String valStr = entry.getValue();
+            if (values.containsKey(col)) {
+              final Object existingVal = values.get(col);
+              if (!String.valueOf(existingVal).equals(valStr)) {
+                match = false;
+                break;
+              }
+            }
+          }
+          if (match) filtered.add(combo);
+        }
+
+        if (filtered.isEmpty()) {
+          return Optional.empty();
+        }
+
+        final Map<String, String> chosen =
+            filtered.get(ThreadLocalRandom.current().nextInt(filtered.size()));
+
+        for (final Map.Entry<String, String> entry : chosen.entrySet()) {
+          final String colName = entry.getKey();
+          final String valStr = entry.getValue();
+          if (!values.containsKey(colName)) {
+            final Column col = params.table().column(colName);
+            if (col != null) {
+              values.put(colName, convertStringValue(valStr, col));
+            }
+          }
+        }
+      }
     }
 
     params.table().columns().forEach(column -> {
@@ -990,7 +1045,7 @@ public class DataGenerator {
           return new double[]{max, min};
       }
       return new double[]{min, max};
-  }
+    }
 
   private static double generateRandomDouble(final double min, final double max) {
       return min + (max - min) * ThreadLocalRandom.current().nextDouble();
@@ -1391,6 +1446,82 @@ public class DataGenerator {
     return column.scale() > 0 ? column.scale() : numericScale;
   }
 
+  private static List<MultiColumnConstraint> parseMultiColumnConstraints(final List<String> checks) {
+    final List<MultiColumnConstraint> result = new ArrayList<>();
+    for (final String check : checks) {
+      if ((check.toUpperCase(Locale.ROOT).contains(" OR ")
+          || check.toUpperCase(Locale.ROOT).contains(" AND "))
+          && check.contains("=")) {
+        final MultiColumnConstraint mcc = parseDnfConstraint(check);
+        if (mcc != null) {
+          result.add(mcc);
+        }
+      }
+    }
+    return result;
+  }
+
+  private static MultiColumnConstraint parseDnfConstraint(final String check) {
+    String clean = check.trim();
+    while (clean.startsWith("(") && clean.endsWith(")")) {
+      if (isWrappedInParens(clean)) {
+        clean = clean.substring(1, clean.length() - 1).trim();
+      } else {
+        break;
+      }
+    }
+
+    final String[] clauses = clean.split("(?i)\\s+OR\\s+");
+    final List<Map<String, String>> combinations = new ArrayList<>();
+    final Set<String> columns = new HashSet<>();
+
+    for (final String clause : clauses) {
+      final Map<String, String> combination = new HashMap<>();
+      final String[] conditions = clause.split("(?i)\\s+AND\\s+");
+      for (final String cond : conditions) {
+        String cleanCond = cond.trim();
+        while (cleanCond.startsWith("(") && cleanCond.endsWith(")") && isWrappedInParens(cleanCond)) {
+          cleanCond = cleanCond.substring(1, cleanCond.length() - 1).trim();
+        }
+
+        final Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
+        if (m.find()) {
+          final String col = m.group(1).replaceAll("\"", "");
+          String val = m.group(2);
+          if ((val.startsWith("'") && val.endsWith("'"))
+              || (val.startsWith("\"") && val.endsWith("\""))) {
+            val = val.substring(1, val.length() - 1);
+          }
+          combination.put(col, val);
+        }
+      }
+      if (combination.isEmpty()) return null;
+      combinations.add(combination);
+      if (columns.isEmpty()) {
+        columns.addAll(combination.keySet());
+      } else {
+        if (!columns.equals(combination.keySet())) {
+          return null;
+        }
+      }
+    }
+
+    if (combinations.isEmpty()) return null;
+    return new MultiColumnConstraint(columns, combinations);
+  }
+
+  private static boolean isWrappedInParens(final String s) {
+    if (!s.startsWith("(") || !s.endsWith(")")) return false;
+    int balance = 0;
+    for (int i = 0; i < s.length() - 1; i++) {
+      final char c = s.charAt(i);
+      if (c == '(') balance++;
+      else if (c == ')') balance--;
+      if (balance == 0) return false;
+    }
+    return true;
+  }
+
   @Builder
   public record GenerationParameters(
       List<Table> tables,
@@ -1506,7 +1637,8 @@ public class DataGenerator {
       Set<String> excluded,
       Set<String> seenPrimaryKeys,
       Map<String, Set<String>> seenUniqueKeyCombinations,
-      Set<String> softDeleteCols
+      Set<String> softDeleteCols,
+      List<MultiColumnConstraint> multiColumnConstraints
   ) {}
 
   @Builder
@@ -1539,7 +1671,8 @@ public class DataGenerator {
       Set<String> softDeleteCols,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {}
+      int numericScale,
+      List<MultiColumnConstraint> multiColumnConstraints) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,
@@ -1555,6 +1688,8 @@ public class DataGenerator {
 
   private record ParsedConstraint(
       Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
+
+  private record MultiColumnConstraint(Set<String> columns, List<Map<String, String>> allowedCombinations) {}
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

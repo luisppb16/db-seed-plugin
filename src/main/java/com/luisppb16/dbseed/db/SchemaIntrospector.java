@@ -58,24 +58,24 @@ public class SchemaIntrospector {
     final Map<TableKey, List<ColumnRawData>> rawColumns = loadAllColumns(meta, schema);
     final Map<TableKey, List<String>> allChecks =
         loadAllCheckConstraints(conn, meta, schema, rawTables, rawColumns);
+    final Map<TableKey, List<String>> allPks = loadAllPrimaryKeys(meta, schema);
+    final Map<TableKey, List<List<String>>> allUniqueKeys = loadAllUniqueKeys(meta, schema);
+    final Map<TableKey, List<ForeignKey>> allFks = loadAllForeignKeys(meta, schema, allUniqueKeys);
 
     for (final TableRawData tableData : rawTables) {
       final String tableName = tableData.name();
       final String tableSchema = tableData.schema();
-      final String effectiveSchema = tableSchema != null ? tableSchema : schema;
       final TableKey key = new TableKey(tableSchema, tableName);
 
       final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
       final List<ColumnRawData> tableCols =
           rawColumns.getOrDefault(key, Collections.emptyList());
 
-      // We still need to load PKs to identify PK columns.
-      // Optimization: loadPrimaryKeys is called once per table here.
-      final List<String> pkCols = loadPrimaryKeys(meta, effectiveSchema, tableName);
+      final List<String> pkCols = allPks.getOrDefault(key, Collections.emptyList());
 
       final List<Column> columns = buildColumns(tableCols, pkCols, checks);
-      final List<List<String>> uniqueKeys = loadUniqueKeys(meta, effectiveSchema, tableName);
-      final List<ForeignKey> fks = loadForeignKeys(meta, effectiveSchema, tableName, uniqueKeys);
+      final List<List<String>> uniqueKeys = allUniqueKeys.getOrDefault(key, Collections.emptyList());
+      final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
 
       tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
     }
@@ -161,45 +161,68 @@ public class SchemaIntrospector {
     return columns;
   }
 
-  private static List<String> loadPrimaryKeys(
-      final DatabaseMetaData meta, final String schema, final String table) throws SQLException {
-    final List<String> pks = new ArrayList<>();
-    try (final ResultSet rs = meta.getPrimaryKeys(null, schema, table)) {
+  private static Map<TableKey, List<String>> loadAllPrimaryKeys(
+      final DatabaseMetaData meta, final String schema) throws SQLException {
+    final Map<TableKey, List<String>> map = new LinkedHashMap<>();
+    try (final ResultSet rs = meta.getPrimaryKeys(null, schema, null)) {
       while (rs.next()) {
-        pks.add(rs.getString(COLUMN_NAME));
+        final String tableName = rs.getString(TABLE_NAME);
+        final String tableSchema = rs.getString("TABLE_SCHEM");
+        final TableKey key = new TableKey(tableSchema, tableName);
+        map.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString(COLUMN_NAME));
       }
     }
-    return pks;
+    return map;
   }
 
-  private static List<ForeignKey> loadForeignKeys(
+  private static Map<TableKey, List<ForeignKey>> loadAllForeignKeys(
       final DatabaseMetaData meta,
       final String schema,
-      final String table,
-      final List<List<String>> uniqueKeys)
+      final Map<TableKey, List<List<String>>> allUniqueKeys)
       throws SQLException {
-    final List<ForeignKey> fks = new ArrayList<>();
-    try (final ResultSet rs = meta.getImportedKeys(null, schema, table)) {
-      final Map<String, Map<String, String>> grouped = new LinkedHashMap<>();
-      final Map<String, String> fkToPkTable = new HashMap<>();
+
+    final Map<TableKey, Map<String, Map<String, String>>> groupedMappings = new LinkedHashMap<>();
+    final Map<TableKey, Map<String, String>> fkToPkTable = new HashMap<>();
+
+    try (final ResultSet rs = meta.getImportedKeys(null, schema, null)) {
       while (rs.next()) {
+        final String fkSchema = rs.getString("FKTABLE_SCHEM");
+        final String fkTable = rs.getString("FKTABLE_NAME");
+        final TableKey key = new TableKey(fkSchema, fkTable);
+
         final String fkName = rs.getString("FK_NAME");
         final String fkCol = rs.getString("FKCOLUMN_NAME");
         final String pkCol = rs.getString("PKCOLUMN_NAME");
         final String pkTableName = rs.getString("PKTABLE_NAME");
-        fkToPkTable.put(fkName, pkTableName);
-        grouped.computeIfAbsent(fkName, k -> new LinkedHashMap<>()).put(fkCol, pkCol);
-      }
 
-      for (final Map.Entry<String, Map<String, String>> e : grouped.entrySet()) {
-        final String fkName = e.getKey();
-        final Map<String, String> mapping = Map.copyOf(e.getValue());
-        final String pkTableName = fkToPkTable.get(fkName);
+        groupedMappings
+            .computeIfAbsent(key, k -> new LinkedHashMap<>())
+            .computeIfAbsent(fkName, k -> new LinkedHashMap<>())
+            .put(fkCol, pkCol);
+
+        fkToPkTable.computeIfAbsent(key, k -> new HashMap<>()).put(fkName, pkTableName);
+      }
+    }
+
+    final Map<TableKey, List<ForeignKey>> result = new LinkedHashMap<>();
+    for (Map.Entry<TableKey, Map<String, Map<String, String>>> tableEntry :
+        groupedMappings.entrySet()) {
+      final TableKey key = tableEntry.getKey();
+      final List<ForeignKey> fks = new ArrayList<>();
+      final Map<String, Map<String, String>> fksForTable = tableEntry.getValue();
+      final List<List<String>> uniqueKeys =
+          allUniqueKeys.getOrDefault(key, Collections.emptyList());
+
+      for (Map.Entry<String, Map<String, String>> fkEntry : fksForTable.entrySet()) {
+        final String fkName = fkEntry.getKey();
+        final Map<String, String> mapping = Map.copyOf(fkEntry.getValue());
+        final String pkTableName = fkToPkTable.get(key).get(fkName);
         boolean uniqueOnFk = isUniqueForeignKey(mapping.keySet(), uniqueKeys);
         fks.add(new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk));
       }
+      result.put(key, fks);
     }
-    return fks;
+    return result;
   }
 
   private static boolean isUniqueForeignKey(
@@ -212,18 +235,31 @@ public class SchemaIntrospector {
     return false;
   }
 
-  private static List<List<String>> loadUniqueKeys(
-      final DatabaseMetaData meta, final String schema, final String table) throws SQLException {
-    final Map<String, List<String>> idxCols = new LinkedHashMap<>();
-    try (final ResultSet rs = meta.getIndexInfo(null, schema, table, true, false)) {
+  private static Map<TableKey, List<List<String>>> loadAllUniqueKeys(
+      final DatabaseMetaData meta, final String schema) throws SQLException {
+    final Map<TableKey, Map<String, List<String>>> idxCols = new LinkedHashMap<>();
+    try (final ResultSet rs = meta.getIndexInfo(null, schema, null, true, false)) {
       while (rs.next()) {
+        final String tableName = rs.getString(TABLE_NAME);
+        final String tableSchema = rs.getString("TABLE_SCHEM");
         final String idxName = rs.getString("INDEX_NAME");
         final String colName = rs.getString(COLUMN_NAME);
         if (idxName == null || colName == null) continue;
-        idxCols.computeIfAbsent(idxName, k -> new ArrayList<>()).add(colName);
+
+        final TableKey key = new TableKey(tableSchema, tableName);
+        idxCols
+            .computeIfAbsent(key, k -> new LinkedHashMap<>())
+            .computeIfAbsent(idxName, k -> new ArrayList<>())
+            .add(colName);
       }
     }
-    return idxCols.values().stream().map(List::copyOf).toList();
+    final Map<TableKey, List<List<String>>> result = new LinkedHashMap<>();
+    for (Map.Entry<TableKey, Map<String, List<String>>> entry : idxCols.entrySet()) {
+      final List<List<String>> list =
+          entry.getValue().values().stream().map(List::copyOf).toList();
+      result.put(entry.getKey(), list);
+    }
+    return result;
   }
 
   private static Set<String> loadAllowedValues() {

@@ -360,7 +360,10 @@ public class DataGenerator {
 
   @SuppressWarnings("java:S2245")
   private static Object generateColumnValue(final GenerateSingleRowParameters params, final Column column) {
-    if (params.isFkColumn().test(column) || params.excluded().contains(column.name())) {
+    if (params.excluded().contains(column.name())) {
+      return null;
+    }
+    if (params.isFkColumn().test(column) && !column.primaryKey()) {
       return null;
     }
 
@@ -562,9 +565,21 @@ public class DataGenerator {
                             .allMatch(Column::nullable)));
 
     final List<List<String>> uniqueKeysOnFks =
-        table.uniqueKeys().stream()
-            .filter(uk -> table.fkColumnNames().containsAll(uk))
-            .toList();
+        new ArrayList<>(
+            table.uniqueKeys().stream()
+                .filter(uk -> table.fkColumnNames().containsAll(uk))
+                .map(ArrayList::new)
+                .toList());
+    table.foreignKeys().stream()
+        .filter(ForeignKey::uniqueOnFk)
+        .forEach(
+            fk -> {
+              final List<String> fkCols = new ArrayList<>(fk.columnMapping().keySet());
+              if (uniqueKeysOnFks.stream()
+                  .noneMatch(uk -> new HashSet<>(uk).equals(new HashSet<>(fkCols)))) {
+                uniqueKeysOnFks.add(fkCols);
+              }
+            });
 
     if (!uniqueKeysOnFks.isEmpty()) {
       handleUniqueFkResolution(table, rows, context, uniqueKeysOnFks);
@@ -1139,22 +1154,38 @@ public class DataGenerator {
     Integer maxLen = null;
 
     final String colPattern =
-        "(?i)(?:[A-Za-z0-9_]+\\.)*\"?".concat(Pattern.quote(columnName)).concat("\"?");
+        "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(columnName)).concat("\"?\\s*");
+
+    final String castPattern = "(?:\\s*::[a-zA-Z0-9 ]+)*";
 
     final Pattern betweenPattern =
         Pattern.compile(
-            colPattern.concat(
-                "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+            colPattern
+                .concat(castPattern)
+                .concat(
+                    "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
     final Pattern rangePattern =
         Pattern.compile(
-            colPattern.concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+            colPattern
+                .concat(castPattern)
+                .concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
             Pattern.CASE_INSENSITIVE);
     final Pattern inPattern =
-        Pattern.compile(colPattern.concat("\\s+IN\\s*\\(([^)]+)\\)"), Pattern.CASE_INSENSITIVE);
+        Pattern.compile(
+            colPattern.concat(castPattern).concat("\\s+IN\\s*\\(([^)]+)\\)"),
+            Pattern.CASE_INSENSITIVE);
+    final Pattern anyArrayPattern =
+        Pattern.compile(
+            colPattern
+                .concat(castPattern)
+                .concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
+            Pattern.CASE_INSENSITIVE);
     final Pattern eqPattern =
         Pattern.compile(
-            colPattern.concat("\\s*=\\s*('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
+            colPattern
+                .concat(castPattern)
+                .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
             Pattern.CASE_INSENSITIVE);
     final Pattern lenPattern =
         Pattern.compile(
@@ -1177,6 +1208,7 @@ public class DataGenerator {
       upper = rangeResult.upper();
 
       parseInListConstraint(check, inPattern, allowed);
+      parseAnyArrayConstraint(exprNoParens, anyArrayPattern, allowed);
       parseEqualityConstraint(exprNoParens, eqPattern, allowed);
       maxLen = parseLengthConstraint(check, lenPattern, maxLen);
     }
@@ -1269,6 +1301,27 @@ public class DataGenerator {
                   allowed.add(s);
                 }
               });
+    }
+  }
+
+  private static void parseAnyArrayConstraint(
+      final String check, final Pattern anyArrayPattern, final Set<String> allowed) {
+    final Matcher ma = anyArrayPattern.matcher(check);
+    while (ma.find()) {
+      final String inside = ma.group(1);
+      Arrays.stream(inside.split(","))
+          .map(String::trim)
+          .filter(s -> !s.isEmpty())
+          .map(s -> s.replaceAll("(?i)::[a-z ]+", "")) // Remove Postgres type casts
+          .map(
+              s -> {
+                if ((s.startsWith("'") && s.endsWith("'"))
+                    || (s.startsWith("\"") && s.endsWith("\""))) {
+                  return s.substring(1, s.length() - 1);
+                }
+                return s;
+              })
+          .forEach(allowed::add);
     }
   }
 

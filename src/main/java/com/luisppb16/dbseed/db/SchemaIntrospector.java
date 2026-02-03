@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.experimental.UtilityClass;
@@ -36,6 +37,17 @@ public class SchemaIntrospector {
 
   private static final String COLUMN_NAME = "COLUMN_NAME";
   private static final String TABLE_NAME = "TABLE_NAME";
+
+  private static final String CAST_PATTERN = "(?:\\s*::[a-zA-Z0-9 ]+)*";
+
+  private static final Pattern POSTGRES_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
+  private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
+
+  private static final Map<String, Pattern> IN_PATTERNS = new ConcurrentHashMap<>();
+  private static final Map<String, Pattern> ANY_ARRAY_PATTERNS = new ConcurrentHashMap<>();
+  private static final Map<String, Pattern> EQ_PATTERNS = new ConcurrentHashMap<>();
+  private static final Map<String, Pattern> BETWEEN_PATTERNS = new ConcurrentHashMap<>();
+  private static final Map<String, Pattern> GTE_LTE_PATTERNS = new ConcurrentHashMap<>();
 
   private record TableRawData(String name, String schema, String remarks) {}
 
@@ -269,24 +281,40 @@ public class SchemaIntrospector {
   private static Set<String> inferAllowedValuesFromChecks(
       final List<String> checks, final String columnName) {
     final Set<String> allowed = new HashSet<>();
-    final String colPattern =
-        "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(columnName)).concat("\"?\\s*");
-    final String castPattern = "(?:\\s*::[a-zA-Z0-9 ]+)*";
 
     final Pattern inPattern =
-        Pattern.compile(
-            colPattern.concat(castPattern).concat("\\s+IN\\s*\\(([^)]+)\\)"),
-            Pattern.CASE_INSENSITIVE);
+        IN_PATTERNS.computeIfAbsent(
+            columnName,
+            k -> {
+              final String cp =
+                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+              return Pattern.compile(
+                  cp.concat(CAST_PATTERN).concat("\\s+IN\\s*\\(([^)]+)\\)"),
+                  Pattern.CASE_INSENSITIVE);
+            });
+
     final Pattern anyArrayPattern =
-        Pattern.compile(
-            colPattern.concat(castPattern).concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
-            Pattern.CASE_INSENSITIVE);
+        ANY_ARRAY_PATTERNS.computeIfAbsent(
+            columnName,
+            k -> {
+              final String cp =
+                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+              return Pattern.compile(
+                  cp.concat(CAST_PATTERN).concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
+                  Pattern.CASE_INSENSITIVE);
+            });
+
     final Pattern eqPattern =
-        Pattern.compile(
-            colPattern
-                .concat(castPattern)
-                .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
-            Pattern.CASE_INSENSITIVE);
+        EQ_PATTERNS.computeIfAbsent(
+            columnName,
+            k -> {
+              final String cp =
+                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+              return Pattern.compile(
+                  cp.concat(CAST_PATTERN)
+                      .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
+                  Pattern.CASE_INSENSITIVE);
+            });
 
     for (final String check : checks) {
       if (check == null || check.isBlank()) continue;
@@ -444,7 +472,7 @@ public class SchemaIntrospector {
           if (def != null && !def.isBlank()) {
             final TableKey key = new TableKey(tableSchema, tableName);
             final List<String> list = checks.computeIfAbsent(key, k -> new ArrayList<>());
-            final Matcher m = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)").matcher(def);
+            final Matcher m = POSTGRES_CHECK_PATTERN.matcher(def);
             if (m.find()) {
               list.add(m.group(1));
             } else {
@@ -457,8 +485,7 @@ public class SchemaIntrospector {
   }
 
   private static void extractChecksFromText(final String text, final List<String> out) {
-    final Pattern pattern = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
-    final Matcher matcher = pattern.matcher(text);
+    final Matcher matcher = TEXT_CHECK_PATTERN.matcher(text);
     while (matcher.find()) {
       out.add(matcher.group(1));
     }
@@ -469,38 +496,45 @@ public class SchemaIntrospector {
   }
 
   private static int[] inferBoundsFromChecks(final List<String> checks, final String columnName) {
-    final String colPattern =
-        "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(columnName)).concat("\"?\\s*");
-    final String castPattern = "(?:\\s*::[a-zA-Z0-9 ]+)*";
+    final Pattern betweenPattern =
+        BETWEEN_PATTERNS.computeIfAbsent(
+            columnName,
+            k -> {
+              final String cp =
+                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+              return Pattern.compile(
+                  cp.concat(CAST_PATTERN)
+                      .concat("\\s+BETWEEN\\s+([-+]?[0-9]+)\\s+AND\\s+([-+]?[0-9]+)"));
+            });
+
+    final Pattern gteLtePattern =
+        GTE_LTE_PATTERNS.computeIfAbsent(
+            columnName,
+            k -> {
+              final String cp =
+                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+              return Pattern.compile(
+                  cp.concat(CAST_PATTERN)
+                      .concat("\\s*>=?\\s*([-+]?[0-9]+)\\s*AND\\s*")
+                      .concat(cp)
+                      .concat(CAST_PATTERN)
+                      .concat("\\s*<=?\\s*([-+]?[0-9]+)"));
+            });
 
     for (final String check : checks) {
       if (check == null || check.isBlank()) continue;
       final String exprNoParens = check.replaceAll("[()]+", " ");
 
-      final int[] betweenBounds =
-          parseBounds(
-              exprNoParens,
-              colPattern
-                  .concat(castPattern)
-                  .concat("\\s+BETWEEN\\s+([-+]?[0-9]+)\\s+AND\\s+([-+]?[0-9]+)"));
+      final int[] betweenBounds = parseBounds(exprNoParens, betweenPattern);
       if (betweenBounds.length == 2) return betweenBounds;
 
-      final int[] gteLteBounds =
-          parseBounds(
-              exprNoParens,
-              colPattern
-                  .concat(castPattern)
-                  .concat("\\s*>=?\\s*([-+]?[0-9]+)\\s*AND\\s*")
-                  .concat(colPattern)
-                  .concat(castPattern)
-                  .concat("\\s*<=?\\s*([-+]?[0-9]+)"));
+      final int[] gteLteBounds = parseBounds(exprNoParens, gteLtePattern);
       if (gteLteBounds.length == 2) return gteLteBounds;
     }
     return new int[0];
   }
 
-  private static int[] parseBounds(final String expr, final String regex) {
-    final Pattern pattern = Pattern.compile(regex);
+  private static int[] parseBounds(final String expr, final Pattern pattern) {
     final Matcher matcher = pattern.matcher(expr);
     if (matcher.find()) {
       final int min = Integer.parseInt(matcher.group(1));

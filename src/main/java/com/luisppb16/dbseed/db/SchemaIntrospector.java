@@ -60,9 +60,10 @@ public class SchemaIntrospector {
     final Map<TableKey, List<ColumnRawData>> rawColumns = loadAllColumns(meta, schema);
     final Map<TableKey, List<String>> allChecks =
         loadAllCheckConstraints(conn, meta, schema, rawTables, rawColumns);
-    final Map<TableKey, List<String>> allPks = loadAllPrimaryKeys(meta, schema);
+    final Map<TableKey, List<String>> allPks = loadAllPrimaryKeys(meta, schema, rawTables);
     final Map<TableKey, List<List<String>>> allUniqueKeys = loadAllUniqueKeys(meta, schema, rawTables);
-    final Map<TableKey, List<ForeignKey>> allFks = loadAllForeignKeys(meta, schema, allUniqueKeys);
+    final Map<TableKey, List<ForeignKey>> allFks =
+        loadAllForeignKeys(meta, schema, rawTables, allUniqueKeys);
 
     for (final TableRawData tableData : rawTables) {
       final String tableName = tableData.name();
@@ -164,14 +165,32 @@ public class SchemaIntrospector {
   }
 
   private static Map<TableKey, List<String>> loadAllPrimaryKeys(
-      final DatabaseMetaData meta, final String schema) throws SQLException {
+      final DatabaseMetaData meta, final String schema, final List<TableRawData> rawTables)
+      throws SQLException {
     final Map<TableKey, List<String>> map = new LinkedHashMap<>();
+    boolean bulkSuccess = false;
     try (final ResultSet rs = meta.getPrimaryKeys(null, schema, null)) {
       while (rs.next()) {
         final String tableName = rs.getString(TABLE_NAME);
         final String tableSchema = rs.getString("TABLE_SCHEM");
         final TableKey key = new TableKey(tableSchema, tableName);
         map.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString(COLUMN_NAME));
+      }
+      bulkSuccess = true;
+    } catch (final SQLException e) {
+      log.debug("Bulk loading of primary keys failed, falling back to N+1", e);
+    }
+
+    if (!bulkSuccess) {
+      for (final TableRawData table : rawTables) {
+        try (final ResultSet rs = meta.getPrimaryKeys(null, schema, table.name())) {
+          while (rs.next()) {
+            final String tableName = rs.getString(TABLE_NAME);
+            final String tableSchema = rs.getString("TABLE_SCHEM");
+            final TableKey key = new TableKey(tableSchema, tableName);
+            map.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString(COLUMN_NAME));
+          }
+        }
       }
     }
     return map;
@@ -180,29 +199,30 @@ public class SchemaIntrospector {
   private static Map<TableKey, List<ForeignKey>> loadAllForeignKeys(
       final DatabaseMetaData meta,
       final String schema,
+      final List<TableRawData> rawTables,
       final Map<TableKey, List<List<String>>> allUniqueKeys)
       throws SQLException {
 
     final Map<TableKey, Map<String, Map<String, String>>> groupedMappings = new LinkedHashMap<>();
     final Map<TableKey, Map<String, String>> fkToPkTable = new HashMap<>();
 
+    boolean bulkSuccess = false;
     try (final ResultSet rs = meta.getImportedKeys(null, schema, null)) {
       while (rs.next()) {
-        final String fkSchema = rs.getString("FKTABLE_SCHEM");
-        final String fkTable = rs.getString("FKTABLE_NAME");
-        final TableKey key = new TableKey(fkSchema, fkTable);
+        processFkResultSet(rs, groupedMappings, fkToPkTable);
+      }
+      bulkSuccess = true;
+    } catch (final SQLException e) {
+      log.debug("Bulk loading of foreign keys failed, falling back to N+1", e);
+    }
 
-        final String fkName = rs.getString("FK_NAME");
-        final String fkCol = rs.getString("FKCOLUMN_NAME");
-        final String pkCol = rs.getString("PKCOLUMN_NAME");
-        final String pkTableName = rs.getString("PKTABLE_NAME");
-
-        groupedMappings
-            .computeIfAbsent(key, k -> new LinkedHashMap<>())
-            .computeIfAbsent(fkName, k -> new LinkedHashMap<>())
-            .put(fkCol, pkCol);
-
-        fkToPkTable.computeIfAbsent(key, k -> new HashMap<>()).put(fkName, pkTableName);
+    if (!bulkSuccess) {
+      for (final TableRawData table : rawTables) {
+        try (final ResultSet rs = meta.getImportedKeys(null, schema, table.name())) {
+          while (rs.next()) {
+            processFkResultSet(rs, groupedMappings, fkToPkTable);
+          }
+        }
       }
     }
 
@@ -227,6 +247,28 @@ public class SchemaIntrospector {
     return result;
   }
 
+  private static void processFkResultSet(
+      final ResultSet rs,
+      final Map<TableKey, Map<String, Map<String, String>>> groupedMappings,
+      final Map<TableKey, Map<String, String>> fkToPkTable)
+      throws SQLException {
+    final String fkSchema = rs.getString("FKTABLE_SCHEM");
+    final String fkTable = rs.getString("FKTABLE_NAME");
+    final TableKey key = new TableKey(fkSchema, fkTable);
+
+    final String fkName = rs.getString("FK_NAME");
+    final String fkCol = rs.getString("FKCOLUMN_NAME");
+    final String pkCol = rs.getString("PKCOLUMN_NAME");
+    final String pkTableName = rs.getString("PKTABLE_NAME");
+
+    groupedMappings
+        .computeIfAbsent(key, k -> new LinkedHashMap<>())
+        .computeIfAbsent(fkName, k -> new LinkedHashMap<>())
+        .put(fkCol, pkCol);
+
+    fkToPkTable.computeIfAbsent(key, k -> new HashMap<>()).put(fkName, pkTableName);
+  }
+
   private static boolean isUniqueForeignKey(
       final Set<String> fkCols, final List<List<String>> uniqueKeys) {
     for (final List<String> uk : uniqueKeys) {
@@ -238,32 +280,53 @@ public class SchemaIntrospector {
   }
 
   private static Map<TableKey, List<List<String>>> loadAllUniqueKeys(
-      final DatabaseMetaData meta, final String schema, final List<TableRawData> rawTables) throws SQLException {
+      final DatabaseMetaData meta, final String schema, final List<TableRawData> rawTables)
+      throws SQLException {
     final Map<TableKey, Map<String, List<String>>> idxCols = new LinkedHashMap<>();
-    for (final TableRawData tableData : rawTables) {
-      try (final ResultSet rs = meta.getIndexInfo(null, schema, tableData.name(), true, false)) {
-        while (rs.next()) {
-          final String tableName = rs.getString(TABLE_NAME);
-          final String tableSchema = rs.getString("TABLE_SCHEM");
-          final String idxName = rs.getString("INDEX_NAME");
-          final String colName = rs.getString(COLUMN_NAME);
-          if (idxName == null || colName == null) continue;
 
-          final TableKey key = new TableKey(tableSchema, tableName);
-          idxCols
-              .computeIfAbsent(key, k -> new LinkedHashMap<>())
-              .computeIfAbsent(idxName, k -> new ArrayList<>())
-              .add(colName);
+    boolean bulkSuccess = false;
+    try (final ResultSet rs = meta.getIndexInfo(null, schema, null, true, false)) {
+      while (rs.next()) {
+        processIndexResultSet(rs, idxCols);
+      }
+      bulkSuccess = true;
+    } catch (final SQLException e) {
+      log.debug("Bulk loading of unique keys failed, falling back to N+1", e);
+    }
+
+    if (!bulkSuccess || (idxCols.isEmpty() && !rawTables.isEmpty())) {
+      idxCols.clear();
+      for (final TableRawData tableData : rawTables) {
+        try (final ResultSet rs = meta.getIndexInfo(null, schema, tableData.name(), true, false)) {
+          while (rs.next()) {
+            processIndexResultSet(rs, idxCols);
+          }
         }
       }
     }
+
     final Map<TableKey, List<List<String>>> result = new LinkedHashMap<>();
     for (Map.Entry<TableKey, Map<String, List<String>>> entry : idxCols.entrySet()) {
-      final List<List<String>> list =
-          entry.getValue().values().stream().map(List::copyOf).toList();
+      final List<List<String>> list = entry.getValue().values().stream().map(List::copyOf).toList();
       result.put(entry.getKey(), list);
     }
     return result;
+  }
+
+  private static void processIndexResultSet(
+      final ResultSet rs, final Map<TableKey, Map<String, List<String>>> idxCols)
+      throws SQLException {
+    final String tableName = rs.getString(TABLE_NAME);
+    final String tableSchema = rs.getString("TABLE_SCHEM");
+    final String idxName = rs.getString("INDEX_NAME");
+    final String colName = rs.getString(COLUMN_NAME);
+    if (idxName == null || colName == null) return;
+
+    final TableKey key = new TableKey(tableSchema, tableName);
+    idxCols
+        .computeIfAbsent(key, k -> new LinkedHashMap<>())
+        .computeIfAbsent(idxName, k -> new ArrayList<>())
+        .add(colName);
   }
 
   private static Set<String> inferAllowedValuesFromChecks(

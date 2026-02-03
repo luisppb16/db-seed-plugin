@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -87,7 +88,8 @@ class SchemaIntrospectorTest {
       when(fkResultSet.next()).thenReturn(false);
 
       // Unique Keys
-      when(metaData.getIndexInfo(any(), eq("public"), eq("users"), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
+      lenient().when(metaData.getIndexInfo(any(), eq("public"), isNull(), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
+      lenient().when(metaData.getIndexInfo(any(), eq("public"), eq("users"), eq(true), eq(false))).thenReturn(uniqueKeyResultSet);
       when(uniqueKeyResultSet.next()).thenReturn(false);
 
       // Checks (H2)
@@ -140,9 +142,12 @@ class SchemaIntrospectorTest {
           when(columnResultSet.getString("COLUMN_NAME")).thenReturn("price");
           when(columnResultSet.getInt("DATA_TYPE")).thenReturn(Types.INTEGER);
 
-          when(metaData.getPrimaryKeys(any(), any(), any())).thenReturn(pkResultSet);
-          when(metaData.getImportedKeys(any(), any(), any())).thenReturn(fkResultSet);
-          when(metaData.getIndexInfo(any(), any(), any(), anyBoolean(), anyBoolean())).thenReturn(uniqueKeyResultSet);
+          lenient().when(metaData.getPrimaryKeys(any(), any(), isNull())).thenReturn(pkResultSet);
+          lenient().when(metaData.getPrimaryKeys(any(), any(), eq("items"))).thenReturn(pkResultSet);
+          lenient().when(metaData.getImportedKeys(any(), any(), isNull())).thenReturn(fkResultSet);
+          lenient().when(metaData.getImportedKeys(any(), any(), eq("items"))).thenReturn(fkResultSet);
+          lenient().when(metaData.getIndexInfo(any(), any(), isNull(), anyBoolean(), anyBoolean())).thenReturn(uniqueKeyResultSet);
+          lenient().when(metaData.getIndexInfo(any(), any(), eq("items"), anyBoolean(), anyBoolean())).thenReturn(uniqueKeyResultSet);
 
           // Mock Postgres check constraint query
           when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);

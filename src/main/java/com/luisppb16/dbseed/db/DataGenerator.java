@@ -78,6 +78,8 @@ public class DataGenerator {
   private static final AtomicReference<List<String>> englishDictionaryCache = new AtomicReference<>();
   private static final AtomicReference<List<String>> spanishDictionaryCache = new AtomicReference<>();
   private static final Object DICTIONARY_LOCK = new Object();
+  private static final Map<String, ColumnPatterns> COLUMN_PATTERNS_CACHE =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   public static GenerationResult generate(final GenerationParameters params) {
 
@@ -234,6 +236,16 @@ public class DataGenerator {
                 return;
               }
 
+              final List<CheckExpression> checkExpressions = table.checks().stream()
+                  .filter(c -> c != null && !c.isBlank())
+                  .map(
+                      c -> {
+                        final String noParens = c.replaceAll("[()]+", " ");
+                        return new CheckExpression(
+                            c, noParens, noParens.toLowerCase(Locale.ROOT));
+                      })
+                  .toList();
+
               final Map<String, ParsedConstraint> constraints =
                   table.columns().stream()
                       .collect(
@@ -241,11 +253,16 @@ public class DataGenerator {
                               Column::name,
                               col ->
                                   parseConstraintsForColumn(
-                                      table.checks(), col.name(), col.length())));
+                                      checkExpressions, col.name(), col.length())));
               params.tableConstraints().put(table.name(), constraints);
               final List<Row> rows = new ArrayList<>();
+              final Set<String> fkColumnNames = table.fkColumnNames();
               final Predicate<Column> isFkColumn =
-                  column -> table.fkColumnNames().contains(column.name());
+                  column -> fkColumnNames.contains(column.name());
+              final List<List<String>> relevantUniqueKeys = table.uniqueKeys().stream()
+                  .filter(uk -> !fkColumnNames.containsAll(uk))
+                  .filter(uk -> table.primaryKey().isEmpty() || !table.primaryKey().equals(uk))
+                  .toList();
               final Set<String> seenPrimaryKeys = new HashSet<>();
               final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
               final Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
@@ -268,6 +285,7 @@ public class DataGenerator {
                   .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
                   .softDeleteCols(softDeleteCols)
                   .multiColumnConstraints(parseMultiColumnConstraints(table.checks()))
+                  .relevantUniqueKeys(relevantUniqueKeys)
                   .build();
 
               processRepetitionRules(rules, params, tableContext);
@@ -369,6 +387,7 @@ public class DataGenerator {
           .softDeleteValue(params.softDeleteValue())
           .numericScale(params.numericScale())
           .multiColumnConstraints(context.multiColumnConstraints())
+          .relevantUniqueKeys(context.relevantUniqueKeys())
           .build();
   }
 
@@ -518,7 +537,7 @@ public class DataGenerator {
       return Optional.empty();
     }
 
-    if (!areUniqueKeysUnique(params.table(), values, params.seenUniqueKeyCombinations())) {
+    if (!areUniqueKeysUnique(params.relevantUniqueKeys(), values, params.seenUniqueKeyCombinations())) {
       return Optional.empty();
     }
 
@@ -538,22 +557,19 @@ public class DataGenerator {
   }
 
   private static boolean areUniqueKeysUnique(
-      final Table table, final Map<String, Object> values, final Map<String, Set<String>> seenUniqueKeyCombinations) {
-    for (final List<String> uniqueKeyColumns : table.uniqueKeys()) {
-      if (table.fkColumnNames().containsAll(uniqueKeyColumns)) {
-        continue;
-      }
-      if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
-        final String uniqueKeyCombination =
-            uniqueKeyColumns.stream()
-                .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
-                .collect(Collectors.joining("|"));
-        final Set<String> seenCombinations =
-            seenUniqueKeyCombinations.computeIfAbsent(
-                String.join("__", uniqueKeyColumns), k -> new HashSet<>());
-        if (!seenCombinations.add(uniqueKeyCombination)) {
-          return false;
-        }
+      final List<List<String>> relevantUniqueKeys,
+      final Map<String, Object> values,
+      final Map<String, Set<String>> seenUniqueKeyCombinations) {
+    for (final List<String> uniqueKeyColumns : relevantUniqueKeys) {
+      final String uniqueKeyCombination =
+          uniqueKeyColumns.stream()
+              .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
+              .collect(Collectors.joining("|"));
+      final Set<String> seenCombinations =
+          seenUniqueKeyCombinations.computeIfAbsent(
+              String.join("__", uniqueKeyColumns), k -> new HashSet<>());
+      if (!seenCombinations.add(uniqueKeyCombination)) {
+        return false;
       }
     }
     return true;
@@ -1199,8 +1215,8 @@ public class DataGenerator {
   }
 
   private static ParsedConstraint parseConstraintsForColumn(
-      final List<String> checks, final String columnName, final int columnLength) {
-    if (checks == null || checks.isEmpty())
+      final List<CheckExpression> checkExpressions, final String columnName, final int columnLength) {
+    if (checkExpressions == null || checkExpressions.isEmpty())
       return new ParsedConstraint(null, null, Collections.emptySet(), null);
 
     Double lower = null;
@@ -1208,64 +1224,29 @@ public class DataGenerator {
     final Set<String> allowed = new HashSet<>();
     Integer maxLen = null;
 
-    final String colPattern =
-        "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(columnName)).concat("\"?\\s*");
+    final ColumnPatterns patterns = getColumnPatterns(columnName);
+    final String columnLow = columnName.toLowerCase(Locale.ROOT);
 
-    final String castPattern = "(?:\\s*::[a-zA-Z0-9 ]+)*";
+    for (final CheckExpression ce : checkExpressions) {
+      if (!ce.noParensLow().contains(columnLow)) continue;
 
-    final Pattern betweenPattern =
-        Pattern.compile(
-            colPattern
-                .concat(castPattern)
-                .concat(
-                    "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
-            Pattern.CASE_INSENSITIVE);
-    final Pattern rangePattern =
-        Pattern.compile(
-            colPattern
-                .concat(castPattern)
-                .concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
-            Pattern.CASE_INSENSITIVE);
-    final Pattern inPattern =
-        Pattern.compile(
-            colPattern.concat(castPattern).concat("\\s+IN\\s*\\(([^)]+)\\)"),
-            Pattern.CASE_INSENSITIVE);
-    final Pattern anyArrayPattern =
-        Pattern.compile(
-            colPattern
-                .concat(castPattern)
-                .concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
-            Pattern.CASE_INSENSITIVE);
-    final Pattern eqPattern =
-        Pattern.compile(
-            colPattern
-                .concat(castPattern)
-                .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
-            Pattern.CASE_INSENSITIVE);
-    final Pattern lenPattern =
-        Pattern.compile(
-            "(?i)(?:char_length|length)\\s*\\(\\s*"
-                .concat(colPattern)
-                .concat("\\s*\\)\\s*(<=|<|=)\\s*(\\d+)"));
-
-    for (final String check : checks) {
-      if (check == null || check.isBlank()) continue;
-      final String exprNoParens = check.replaceAll("[()]+", " ");
+      final String check = ce.original();
+      final String exprNoParens = ce.noParens();
 
       final BetweenParseResult betweenResult =
-          parseBetweenConstraint(exprNoParens, betweenPattern, check, lower, upper);
+          parseBetweenConstraint(exprNoParens, patterns.between(), check, lower, upper);
       lower = betweenResult.lower();
       upper = betweenResult.upper();
 
       final RangeParseResult rangeResult =
-          parseRangeConstraint(exprNoParens, rangePattern, check, lower, upper);
+          parseRangeConstraint(exprNoParens, patterns.range(), check, lower, upper);
       lower = rangeResult.lower();
       upper = rangeResult.upper();
 
-      parseInListConstraint(check, inPattern, allowed);
-      parseAnyArrayConstraint(exprNoParens, anyArrayPattern, allowed);
-      parseEqualityConstraint(exprNoParens, eqPattern, allowed);
-      maxLen = parseLengthConstraint(check, lenPattern, maxLen);
+      parseInListConstraint(check, patterns.in(), allowed);
+      parseAnyArrayConstraint(exprNoParens, patterns.anyArray(), allowed);
+      parseEqualityConstraint(exprNoParens, patterns.eq(), allowed);
+      maxLen = parseLengthConstraint(check, patterns.len(), maxLen);
     }
 
     if (columnLength > 0 && (maxLen == null || columnLength < maxLen)) {
@@ -1419,6 +1400,47 @@ public class DataGenerator {
       return value.concat(" ".repeat(length - value.length()));
     }
     return value;
+  }
+
+  private static ColumnPatterns getColumnPatterns(final String columnName) {
+    return COLUMN_PATTERNS_CACHE.computeIfAbsent(
+        columnName,
+        name -> {
+          final String colPattern =
+              "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(name)).concat("\"?\\s*");
+
+          final String castPattern = "(?:\\s*::[a-zA-Z0-9 ]+)*";
+
+          return new ColumnPatterns(
+              Pattern.compile(
+                  colPattern
+                      .concat(castPattern)
+                      .concat(
+                          "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+                  Pattern.CASE_INSENSITIVE),
+              Pattern.compile(
+                  colPattern
+                      .concat(castPattern)
+                      .concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+                  Pattern.CASE_INSENSITIVE),
+              Pattern.compile(
+                  colPattern.concat(castPattern).concat("\\s+IN\\s*\\(([^)]+)\\)"),
+                  Pattern.CASE_INSENSITIVE),
+              Pattern.compile(
+                  colPattern
+                      .concat(castPattern)
+                      .concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
+                  Pattern.CASE_INSENSITIVE),
+              Pattern.compile(
+                  colPattern
+                      .concat(castPattern)
+                      .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
+                  Pattern.CASE_INSENSITIVE),
+              Pattern.compile(
+                  "(?i)(?:char_length|length)\\s*\\(\\s*"
+                      .concat(colPattern)
+                      .concat("\\s*\\)\\s*(<=|<|=)\\s*(\\d+)")));
+        });
   }
 
   private static boolean isSingleWord(final String tableName) {
@@ -1638,7 +1660,8 @@ public class DataGenerator {
       Set<String> seenPrimaryKeys,
       Map<String, Set<String>> seenUniqueKeyCombinations,
       Set<String> softDeleteCols,
-      List<MultiColumnConstraint> multiColumnConstraints
+      List<MultiColumnConstraint> multiColumnConstraints,
+      List<List<String>> relevantUniqueKeys
   ) {}
 
   @Builder
@@ -1672,7 +1695,8 @@ public class DataGenerator {
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
       int numericScale,
-      List<MultiColumnConstraint> multiColumnConstraints) {}
+      List<MultiColumnConstraint> multiColumnConstraints,
+      List<List<String>> relevantUniqueKeys) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,
@@ -1690,6 +1714,16 @@ public class DataGenerator {
       Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
 
   private record MultiColumnConstraint(Set<String> columns, List<Map<String, String>> allowedCombinations) {}
+
+  private record ColumnPatterns(
+      Pattern between,
+      Pattern range,
+      Pattern in,
+      Pattern anyArray,
+      Pattern eq,
+      Pattern len) {}
+
+  private record CheckExpression(String original, String noParens, String noParensLow) {}
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

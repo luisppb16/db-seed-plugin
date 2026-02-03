@@ -244,8 +244,13 @@ public class DataGenerator {
                                       table.checks(), col.name(), col.length())));
               params.tableConstraints().put(table.name(), constraints);
               final List<Row> rows = new ArrayList<>();
+              final Set<String> fkColumnNames = table.fkColumnNames();
               final Predicate<Column> isFkColumn =
-                  column -> table.fkColumnNames().contains(column.name());
+                  column -> fkColumnNames.contains(column.name());
+              final List<List<String>> relevantUniqueKeys = table.uniqueKeys().stream()
+                  .filter(uk -> !fkColumnNames.containsAll(uk))
+                  .filter(uk -> table.primaryKey().isEmpty() || !table.primaryKey().equals(uk))
+                  .toList();
               final Set<String> seenPrimaryKeys = new HashSet<>();
               final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
               final Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
@@ -268,6 +273,7 @@ public class DataGenerator {
                   .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
                   .softDeleteCols(softDeleteCols)
                   .multiColumnConstraints(parseMultiColumnConstraints(table.checks()))
+                  .relevantUniqueKeys(relevantUniqueKeys)
                   .build();
 
               processRepetitionRules(rules, params, tableContext);
@@ -369,6 +375,7 @@ public class DataGenerator {
           .softDeleteValue(params.softDeleteValue())
           .numericScale(params.numericScale())
           .multiColumnConstraints(context.multiColumnConstraints())
+          .relevantUniqueKeys(context.relevantUniqueKeys())
           .build();
   }
 
@@ -518,7 +525,7 @@ public class DataGenerator {
       return Optional.empty();
     }
 
-    if (!areUniqueKeysUnique(params.table(), values, params.seenUniqueKeyCombinations())) {
+    if (!areUniqueKeysUnique(params.relevantUniqueKeys(), values, params.seenUniqueKeyCombinations())) {
       return Optional.empty();
     }
 
@@ -538,22 +545,19 @@ public class DataGenerator {
   }
 
   private static boolean areUniqueKeysUnique(
-      final Table table, final Map<String, Object> values, final Map<String, Set<String>> seenUniqueKeyCombinations) {
-    for (final List<String> uniqueKeyColumns : table.uniqueKeys()) {
-      if (table.fkColumnNames().containsAll(uniqueKeyColumns)) {
-        continue;
-      }
-      if (!table.primaryKey().equals(uniqueKeyColumns) || table.primaryKey().isEmpty()) {
-        final String uniqueKeyCombination =
-            uniqueKeyColumns.stream()
-                .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
-                .collect(Collectors.joining("|"));
-        final Set<String> seenCombinations =
-            seenUniqueKeyCombinations.computeIfAbsent(
-                String.join("__", uniqueKeyColumns), k -> new HashSet<>());
-        if (!seenCombinations.add(uniqueKeyCombination)) {
-          return false;
-        }
+      final List<List<String>> relevantUniqueKeys,
+      final Map<String, Object> values,
+      final Map<String, Set<String>> seenUniqueKeyCombinations) {
+    for (final List<String> uniqueKeyColumns : relevantUniqueKeys) {
+      final String uniqueKeyCombination =
+          uniqueKeyColumns.stream()
+              .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
+              .collect(Collectors.joining("|"));
+      final Set<String> seenCombinations =
+          seenUniqueKeyCombinations.computeIfAbsent(
+              String.join("__", uniqueKeyColumns), k -> new HashSet<>());
+      if (!seenCombinations.add(uniqueKeyCombination)) {
+        return false;
       }
     }
     return true;
@@ -1638,7 +1642,8 @@ public class DataGenerator {
       Set<String> seenPrimaryKeys,
       Map<String, Set<String>> seenUniqueKeyCombinations,
       Set<String> softDeleteCols,
-      List<MultiColumnConstraint> multiColumnConstraints
+      List<MultiColumnConstraint> multiColumnConstraints,
+      List<List<String>> relevantUniqueKeys
   ) {}
 
   @Builder
@@ -1672,7 +1677,8 @@ public class DataGenerator {
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
       int numericScale,
-      List<MultiColumnConstraint> multiColumnConstraints) {}
+      List<MultiColumnConstraint> multiColumnConstraints,
+      List<List<String>> relevantUniqueKeys) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,

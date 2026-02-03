@@ -77,14 +77,16 @@ class SchemaIntrospectorTest {
       when(columnResultSet.getString("REMARKS")).thenReturn("");
 
       // PKs
-      when(metaData.getPrimaryKeys(any(), eq("public"), isNull())).thenReturn(pkResultSet);
+      lenient().when(metaData.getPrimaryKeys(any(), eq("public"), isNull())).thenReturn(pkResultSet);
+      lenient().when(metaData.getPrimaryKeys(any(), eq("public"), eq("users"))).thenReturn(pkResultSet);
       when(pkResultSet.next()).thenReturn(true).thenReturn(false);
       when(pkResultSet.getString("TABLE_NAME")).thenReturn("users");
       when(pkResultSet.getString("TABLE_SCHEM")).thenReturn("public");
       when(pkResultSet.getString("COLUMN_NAME")).thenReturn("id");
 
       // FKs
-      when(metaData.getImportedKeys(any(), eq("public"), isNull())).thenReturn(fkResultSet);
+      lenient().when(metaData.getImportedKeys(any(), eq("public"), isNull())).thenReturn(fkResultSet);
+      lenient().when(metaData.getImportedKeys(any(), eq("public"), eq("users"))).thenReturn(fkResultSet);
       when(fkResultSet.next()).thenReturn(false);
 
       // Unique Keys

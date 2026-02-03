@@ -73,12 +73,8 @@ class TopologicalSorterTest {
 
       TopologicalSorter.SortResult result = TopologicalSorter.sort(List.of(tableA, tableB));
 
-      // Graph: A -> B.
-      // Topological order: A, B.
-      // This means "A comes before B".
-      // Usually topological sort implies if U -> V, U is before V.
-      // The implementation produces this order.
-      assertThat(result.ordered()).containsExactly("A", "B");
+      // For seeding, B must come before A because A depends on B.
+      assertThat(result.ordered()).containsExactly("B", "A");
       assertThat(result.cycles()).isEmpty();
     }
 
@@ -91,9 +87,9 @@ class TopologicalSorterTest {
 
       TopologicalSorter.SortResult result = TopologicalSorter.sort(List.of(a, b, c));
 
-      // Graph: A->B, B->C, A->C.
-      // Topological order: A, B, C.
-      assertThat(result.ordered()).containsExactly("A", "B", "C");
+      // Dependencies: B depends on C. A depends on B and C.
+      // Order for seeding: C, B, A.
+      assertThat(result.ordered()).containsExactly("C", "B", "A");
       assertThat(result.cycles()).isEmpty();
     }
   }
@@ -144,20 +140,19 @@ class TopologicalSorterTest {
       TopologicalSorter.SortResult result = TopologicalSorter.sort(List.of(a, b, c, d));
 
       // C-D is a cycle (SCC).
-      // B depends on that SCC (B->C). So B -> {CD}.
-      // A depends on B (A->B). So A -> B.
-      // Topological order: A -> B -> {CD}.
-      // So A, B, C, D (or A, B, D, C).
+      // B depends on that SCC (B->C).
+      // A depends on B (A->B).
+      // Order for seeding: {CD} comes before B, which comes before A.
 
-      assertThat(result.ordered()).containsSubsequence("A", "B");
+      assertThat(result.ordered()).containsSubsequence("B", "A");
 
-      // Check that B comes before C and D
+      // Check that C and D come before B
       int idxB = result.ordered().indexOf("B");
       int idxC = result.ordered().indexOf("C");
       int idxD = result.ordered().indexOf("D");
 
-      assertThat(idxB).isLessThan(idxC);
-      assertThat(idxB).isLessThan(idxD);
+      assertThat(idxC).isLessThan(idxB);
+      assertThat(idxD).isLessThan(idxB);
 
       assertThat(result.cycles()).hasSize(1);
       assertThat(result.cycles().getFirst()).containsExactlyInAnyOrder("C", "D");
@@ -183,39 +178,8 @@ class TopologicalSorterTest {
 
       TopologicalSorter.SortResult result = TopologicalSorter.sort(List.of(a));
 
-      // With only one table A, the graph keySet contains "A".
-      // Dependencies: A -> Z.
-      // Since Z is not in input, it's not in graph keys.
-      // Tarjan runs on A.
-      // A depends on Z. graph.get(A) returns [Z].
-      // Tarjan visits Z.
-      // Z is not in indexMap. strongConnect(Z) called.
-      // inside strongConnect(Z):
-      // graph.get(Z) returns empty set (default).
-      // Z has no children.
-      // Z SCC found (itself). result adds {Z}.
-      // Then returns to A.
-      // A SCC found (itself). result adds {A}.
-      // Result SCCs: {Z}, {A}.
-      // Reduced graph: {Z} -> idx 0. {A} -> idx 1.
-      // Edge from A(1) to Z(0). 1 -> 0.
-      // InDegree: 0=1, 1=0.
-      // Topological Sort Queue: 1 (A).
-      // Pop A. List: [A]. Decrement Z(0).
-      // Queue: [Z].
-      // Pop Z. List: [A, Z].
-
-      // So the result contains Z as well! even if it wasn't in the input list, because Tarjan discovers it.
-      // Wait, Tarjan iterates over graph.keySet().
-      // graph keySet is built from input tables. So Z is NOT in keySet.
-      // "graph.keySet().forEach(v -> ...)"
-      // So strongConnect(Z) is NOT called from the loop.
-      // BUT, strongConnect(A) calls strongConnect(w) for neighbors.
-      // A has neighbor Z.
-      // So strongConnect(Z) IS called recursively!
-      // So Z is added to SCCs.
-
-      assertThat(result.ordered()).containsExactly("A", "Z");
+      // My new implementation ignores Z if it's not in the input list.
+      assertThat(result.ordered()).containsExactly("A");
       assertThat(result.cycles()).isEmpty();
     }
   }

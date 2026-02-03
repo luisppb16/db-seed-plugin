@@ -109,7 +109,8 @@ public final class GenerateSeedAction extends AnAction {
       final DialogSelections selections = new DialogSelections(
           pkDialog.getSelectionByTable(),
           pkDialog.getExcludedColumnsByTable(),
-          pkDialog.getRepetitionRules()
+          pkDialog.getRepetitionRules(),
+          pkDialog.getExcludedTables()
       );
       
       // Update config with Soft Delete settings from Step 3
@@ -168,10 +169,15 @@ public final class GenerateSeedAction extends AnAction {
           .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
       indicator.setText("Sorting tables...");
-      final TopologicalSorter.SortResult sort = TopologicalSorter.sort(tables);
+      final List<Table> filteredTables =
+          tables.stream()
+              .filter(t -> !selections.excludedTables().contains(t.name()))
+              .toList();
+
+      final TopologicalSorter.SortResult sort = TopologicalSorter.sort(filteredTables);
 
       final Map<String, Table> tableMap =
-          tables.stream().collect(Collectors.toMap(Table::name, t -> t));
+          filteredTables.stream().collect(Collectors.toMap(Table::name, t -> t));
 
       final List<Table> ordered =
           sort.ordered().stream().map(tableMap::get).filter(Objects::nonNull).toList();
@@ -236,5 +242,6 @@ public final class GenerateSeedAction extends AnAction {
   private record DialogSelections(
       Map<String, Set<String>> pkUuidOverrides,
       Map<String, Set<String>> excludedColumns,
-      Map<String, List<RepetitionRule>> repetitionRules) {}
+      Map<String, List<RepetitionRule>> repetitionRules,
+      Set<String> excludedTables) {}
 }

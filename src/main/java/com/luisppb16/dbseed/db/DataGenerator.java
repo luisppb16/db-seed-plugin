@@ -53,8 +53,6 @@ import net.datafaker.Faker;
 @UtilityClass
 public class DataGenerator {
 
-  private static final Pattern SINGLE_WORD_PATTERN =
-      Pattern.compile("^\\p{L}[\\p{L}\\p{N}]*$");
   private static final Pattern COL_EQ_VAL_PATTERN =
       Pattern.compile(
           "(?i)^\\s*\\(*\\s*" +
@@ -145,7 +143,7 @@ public class DataGenerator {
 
     final Instant start = Instant.now();
 
-    final List<Table> orderedTables = orderByWordAndFk(params.tables());
+    final List<Table> orderedTables = List.copyOf(params.tables());
     final Map<String, Table> tableMap =
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
@@ -173,6 +171,7 @@ public class DataGenerator {
             dictionaryWords,
             tableMap,
             params.deferred(),
+            params.useLatinDictionary(),
             params.softDeleteColumns(),
             params.softDeleteUseSchemaDefault(),
             params.softDeleteValue(),
@@ -205,6 +204,7 @@ public class DataGenerator {
             .tableConstraints(context.tableConstraints())
             .data(context.data())
             .dictionaryWords(context.dictionaryWords())
+            .useLatinDictionary(context.useLatinDictionary())
             .softDeleteColumns(context.softDeleteColumns())
             .softDeleteUseSchemaDefault(context.softDeleteUseSchemaDefault())
             .softDeleteValue(context.softDeleteValue())
@@ -317,6 +317,7 @@ public class DataGenerator {
                           .isFkColumn(context.isFkColumn())
                           .excluded(context.excluded())
                           .dictionaryWords(params.dictionaryWords())
+                          .useLatinDictionary(params.useLatinDictionary())
                           .softDeleteCols(context.softDeleteCols())
                           .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                           .softDeleteValue(params.softDeleteValue())
@@ -380,6 +381,7 @@ public class DataGenerator {
           .isFkColumn(context.isFkColumn())
           .excluded(context.excluded())
           .dictionaryWords(params.dictionaryWords())
+          .useLatinDictionary(params.useLatinDictionary())
           .seenPrimaryKeys(context.seenPrimaryKeys())
           .seenUniqueKeyCombinations(context.seenUniqueKeyCombinations())
           .softDeleteCols(context.softDeleteCols())
@@ -421,6 +423,7 @@ public class DataGenerator {
             params.usedUuids(),
             pc,
             params.dictionaryWords(),
+            params.useLatinDictionary(),
             params.numericScale());
 
     return applyNumericConstraints(column, pc, gen, params.numericScale());
@@ -523,6 +526,7 @@ public class DataGenerator {
                     .isFkColumn(params.isFkColumn())
                     .excluded(params.excluded())
                     .dictionaryWords(params.dictionaryWords())
+                    .useLatinDictionary(params.useLatinDictionary())
                     .softDeleteCols(params.softDeleteCols())
                     .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                     .softDeleteValue(params.softDeleteValue())
@@ -854,6 +858,7 @@ public class DataGenerator {
       final Set<UUID> usedUuids,
       final ParsedConstraint pc,
       final List<String> dictionaryWords,
+      final boolean useLatinDictionary,
       final int numericScale) {
     if (column.uuid()) {
       return generateUuidValue(column, usedUuids, pc);
@@ -876,7 +881,8 @@ public class DataGenerator {
     Integer maxLen = pc != null ? pc.maxLength() : null;
     if (maxLen == null || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
 
-    return generateDefaultValue(faker, column, index, maxLen, dictionaryWords, numericScale);
+    return generateDefaultValue(
+        faker, column, index, maxLen, dictionaryWords, useLatinDictionary, numericScale);
   }
 
   private static Object generateUuidValue(final Column column, final Set<UUID> usedUuids, final ParsedConstraint pc) {
@@ -923,7 +929,13 @@ public class DataGenerator {
 
   @SuppressWarnings("java:S2245")
   private static Object generateDefaultValue(
-      final Faker faker, final Column column, final int index, final Integer maxLen, final List<String> dictionaryWords, final int numericScale) {
+      final Faker faker,
+      final Column column,
+      final int index,
+      final Integer maxLen,
+      final List<String> dictionaryWords,
+      final boolean useLatinDictionary,
+      final int numericScale) {
     return switch (column.jdbcType()) {
       case Types.CHAR,
           Types.VARCHAR,
@@ -931,7 +943,7 @@ public class DataGenerator {
           Types.NVARCHAR,
           Types.LONGVARCHAR,
           Types.LONGNVARCHAR ->
-          generateString(faker, maxLen, column.jdbcType(), dictionaryWords);
+          generateString(faker, maxLen, column.jdbcType(), dictionaryWords, useLatinDictionary);
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);
       case Types.BIGINT -> boundedLong(column);
       case Types.BOOLEAN, Types.BIT -> faker.bool().bool();
@@ -1120,14 +1132,24 @@ public class DataGenerator {
 
   @SuppressWarnings("java:S2245")
   private static String generateString(
-      final Faker faker, final Integer maxLen, final int jdbcType, final List<String> dictionaryWords) {
+      final Faker faker,
+      final Integer maxLen,
+      final int jdbcType,
+      final List<String> dictionaryWords,
+      final boolean useLatinDictionary) {
     final int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
     if (len == 2) return faker.country().countryCode2();
     if (len == 3) return faker.country().countryCode3();
     if (len == 24) return normalizeToLength("ES".concat(faker.number().digits(22)), len, jdbcType);
 
-    if (!dictionaryWords.isEmpty()) {
-      final int numWords = ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), 5));
+    boolean useDictionary = !dictionaryWords.isEmpty();
+    if (useDictionary && useLatinDictionary) {
+      useDictionary = ThreadLocalRandom.current().nextBoolean();
+    }
+
+    if (useDictionary) {
+      final int numWords =
+          ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), 5));
       final StringBuilder phraseBuilder = new StringBuilder();
       for (int i = 0; i < numWords; i++) {
         phraseBuilder.append(pickRandom(dictionaryWords, Types.VARCHAR)).append(" ");
@@ -1163,7 +1185,7 @@ public class DataGenerator {
       }
       words.addAll(spanishDictionaryCache.get());
     }
-    if (useLatinDictionary || words.isEmpty()) {
+    if (words.isEmpty()) {
       return Collections.emptyList();
     }
     return words;
@@ -1443,26 +1465,6 @@ public class DataGenerator {
         });
   }
 
-  private static boolean isSingleWord(final String tableName) {
-    return SINGLE_WORD_PATTERN.matcher(tableName).matches();
-  }
-
-  private static List<Table> orderByWordAndFk(final List<Table> tables) {
-    final List<Table> singleWord = tables.stream().filter(t -> isSingleWord(t.name())).toList();
-    final List<Table> multiWord = tables.stream().filter(t -> !isSingleWord(t.name())).toList();
-
-    final List<Table> ordered = new ArrayList<>(orderByFk(singleWord));
-    ordered.addAll(orderByFk(multiWord));
-    return List.copyOf(ordered);
-  }
-
-  private static List<Table> orderByFk(final List<Table> tables) {
-    final List<Table> ordered = new ArrayList<>(tables);
-    ordered.sort(
-        Comparator.comparingInt((Table table) -> table.foreignKeys().size())
-            .thenComparing(Table::name, String.CASE_INSENSITIVE_ORDER));
-    return List.copyOf(ordered);
-  }
 
   private static int getEffectiveScale(final Column column, final int numericScale) {
     return column.scale() > 0 ? column.scale() : numericScale;
@@ -1587,6 +1589,7 @@ public class DataGenerator {
       List<String> dictionaryWords,
       Map<String, Table> tableMap,
       boolean deferred,
+      boolean useLatinDictionary,
       List<PendingUpdate> updates,
       Set<String> inserted,
       Map<String, Deque<Row>> uniqueFkParentQueues,
@@ -1607,6 +1610,7 @@ public class DataGenerator {
         final List<String> dictionaryWords,
         final Map<String, Table> tableMap,
         final boolean deferred,
+        boolean useLatinDictionary,
         final String softDeleteColumns,
         final boolean softDeleteUseSchemaDefault,
         final String softDeleteValue,
@@ -1623,6 +1627,7 @@ public class DataGenerator {
           dictionaryWords,
           tableMap,
           deferred,
+          useLatinDictionary,
           new ArrayList<>(),
           new HashSet<>(),
           new HashMap<>(),
@@ -1644,6 +1649,7 @@ public class DataGenerator {
       Map<String, Map<String, ParsedConstraint>> tableConstraints,
       Map<Table, List<Row>> data,
       List<String> dictionaryWords,
+      boolean useLatinDictionary,
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
@@ -1674,6 +1680,7 @@ public class DataGenerator {
       Predicate<Column> isFkColumn,
       Set<String> excluded,
       List<String> dictionaryWords,
+      boolean useLatinDictionary,
       Set<String> softDeleteCols,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
@@ -1689,6 +1696,7 @@ public class DataGenerator {
       Predicate<Column> isFkColumn,
       Set<String> excluded,
       List<String> dictionaryWords,
+      boolean useLatinDictionary,
       Set<String> seenPrimaryKeys,
       Map<String, Set<String>> seenUniqueKeyCombinations,
       Set<String> softDeleteCols,

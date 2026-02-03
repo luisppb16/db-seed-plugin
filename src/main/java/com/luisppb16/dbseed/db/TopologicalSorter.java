@@ -28,18 +28,19 @@ public class TopologicalSorter {
 
   public static SortResult sort(List<Table> tables) {
 
-    // Build a directed graph: table → tables referenced by FK.
-    Map<String, Set<String>> graph =
-        tables.stream()
-            .collect(
-                Collectors.toMap(
-                    Table::name,
-                    t ->
-                        t.foreignKeys().stream()
-                            .map(ForeignKey::pkTable)
-                            .collect(Collectors.toCollection(LinkedHashSet::new)),
-                    (a, b) -> a,
-                    LinkedHashMap::new));
+    // Build a directed graph: dependency → tables that depend on it.
+    Map<String, Set<String>> graph = new LinkedHashMap<>();
+    tables.forEach(t -> graph.put(t.name(), new LinkedHashSet<>()));
+
+    tables.forEach(
+        t ->
+            t.foreignKeys()
+                .forEach(
+                    fk -> {
+                      if (graph.containsKey(fk.pkTable())) {
+                        graph.get(fk.pkTable()).add(t.name());
+                      }
+                    }));
 
     // Detect strongly connected components (SCCs) with Tarjan.
     Tarjan tarjan = new Tarjan(graph);

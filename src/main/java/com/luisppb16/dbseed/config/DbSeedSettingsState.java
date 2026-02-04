@@ -28,6 +28,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final String DEFAULT_SOFT_DELETE_VALUE = "NULL";
   private static final boolean DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT = true;
   private static final String DEFAULT_SOFT_DELETE_COLUMNS = "deleted_at,is_deleted";
+  private static final String DEFAULT_AI_LOCAL_ENDPOINT = "http://localhost:11434";
+  private static final String DEFAULT_AI_MODEL_NAME = "deepseek-coder:1.3b";
 
   private boolean useLatinDictionary = true;
   private boolean useEnglishDictionary = false;
@@ -39,6 +41,12 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private String softDeleteColumns = DEFAULT_SOFT_DELETE_COLUMNS;
   private boolean softDeleteUseSchemaDefault = DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT;
   private String softDeleteValue = DEFAULT_SOFT_DELETE_VALUE;
+
+  // AI Configuration
+  private boolean enableAiDialect = false;
+  private boolean enableContextAwareGeneration = false;
+  private String aiLocalEndpoint = DEFAULT_AI_LOCAL_ENDPOINT;
+  private String aiModelName = DEFAULT_AI_MODEL_NAME;
 
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
@@ -73,5 +81,11 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.softDeleteValue =
         Objects.requireNonNullElse(state.softDeleteValue, DEFAULT_SOFT_DELETE_VALUE);
     this.softDeleteUseSchemaDefault = state.softDeleteUseSchemaDefault;
+
+    // AI Configuration defaults
+    this.enableAiDialect = state.enableAiDialect;
+    this.enableContextAwareGeneration = state.enableContextAwareGeneration;
+    this.aiLocalEndpoint = Objects.requireNonNullElse(state.aiLocalEndpoint, DEFAULT_AI_LOCAL_ENDPOINT);
+    this.aiModelName = Objects.requireNonNullElse(state.aiModelName, DEFAULT_AI_MODEL_NAME);
   }
 }

@@ -25,6 +25,10 @@ public class ConnectionConfigPersistence {
   private static final String SOFT_DELETE_USE_DEFAULT_KEY = "dbseed.connection.softDeleteUseDefault";
   private static final String SOFT_DELETE_VALUE_KEY = "dbseed.connection.softDeleteValue";
   private static final String NUMERIC_SCALE_KEY = "dbseed.connection.numericScale";
+  private static final String AI_ENABLE_DIALECT_KEY = "dbseed.connection.ai.enableDialect";
+  private static final String AI_ENABLE_CONTEXT_KEY = "dbseed.connection.ai.enableContext";
+  private static final String AI_ENDPOINT_KEY = "dbseed.connection.ai.endpoint";
+  private static final String AI_MODEL_KEY = "dbseed.connection.ai.model";
 
   private static final String DEFAULT_URL = "jdbc:postgresql://localhost:5432/postgres";
   private static final String DEFAULT_USER = "postgres";
@@ -53,6 +57,13 @@ public class ConnectionConfigPersistence {
     
     properties.setValue(NUMERIC_SCALE_KEY, String.valueOf(config.numericScale()));
 
+    if (config.aiConfig() != null) {
+      properties.setValue(AI_ENABLE_DIALECT_KEY, String.valueOf(config.aiConfig().enableAiDialect()));
+      properties.setValue(AI_ENABLE_CONTEXT_KEY, String.valueOf(config.aiConfig().enableContextAwareGeneration()));
+      properties.setValue(AI_ENDPOINT_KEY, config.aiConfig().aiLocalEndpoint());
+      properties.setValue(AI_MODEL_KEY, config.aiConfig().aiModelName());
+    }
+
     log.info("Connection configuration saved for project {}.", project.getName());
   }
 
@@ -72,6 +83,14 @@ public class ConnectionConfigPersistence {
     final String softDeleteValue = properties.getValue(SOFT_DELETE_VALUE_KEY);
     final int numericScale = properties.getInt(NUMERIC_SCALE_KEY, DEFAULT_NUMERIC_SCALE);
 
+    final DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
+    final LocalAIConfiguration aiConfig = LocalAIConfiguration.builder()
+        .enableAiDialect(properties.getBoolean(AI_ENABLE_DIALECT_KEY, globalSettings.isEnableAiDialect()))
+        .enableContextAwareGeneration(properties.getBoolean(AI_ENABLE_CONTEXT_KEY, globalSettings.isEnableContextAwareGeneration()))
+        .aiLocalEndpoint(properties.getValue(AI_ENDPOINT_KEY, globalSettings.getAiLocalEndpoint()))
+        .aiModelName(properties.getValue(AI_MODEL_KEY, globalSettings.getAiModelName()))
+        .build();
+
     final GenerationConfig config =
         GenerationConfig.builder()
             .url(url)
@@ -84,6 +103,7 @@ public class ConnectionConfigPersistence {
             .softDeleteUseSchemaDefault(softDeleteUseDefault)
             .softDeleteValue(softDeleteValue)
             .numericScale(numericScale)
+            .aiConfig(aiConfig)
             .build();
 
     log.debug("Configuration loaded: {}", config);

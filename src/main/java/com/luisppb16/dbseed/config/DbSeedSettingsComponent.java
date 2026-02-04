@@ -37,6 +37,12 @@ public class DbSeedSettingsComponent {
   private final JBCheckBox mySoftDeleteUseSchemaDefault = new JBCheckBox("Use schema default value");
   private final JBTextField mySoftDeleteValue = new JBTextField();
 
+  // AI Components
+  private final JBCheckBox myEnableAiDialect = new JBCheckBox("Enable AI Dialect Adapter");
+  private final JBCheckBox myEnableContextAwareGeneration = new JBCheckBox("Enable AI Context-Aware Generation");
+  private final JBTextField myAiLocalEndpoint = new JBTextField();
+  private final JBTextField myAiModelName = new JBTextField();
+
   public DbSeedSettingsComponent() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.getColumnSpinnerStep());
@@ -50,6 +56,12 @@ public class DbSeedSettingsComponent {
     mySoftDeleteUseSchemaDefault.setSelected(settings.isSoftDeleteUseSchemaDefault());
     mySoftDeleteValue.setText(settings.getSoftDeleteValue());
     mySoftDeleteValue.setEnabled(!settings.isSoftDeleteUseSchemaDefault());
+
+    // AI Init
+    myEnableAiDialect.setSelected(settings.isEnableAiDialect());
+    myEnableContextAwareGeneration.setSelected(settings.isEnableContextAwareGeneration());
+    myAiLocalEndpoint.setText(settings.getAiLocalEndpoint());
+    myAiModelName.setText(settings.getAiModelName());
 
     mySoftDeleteUseSchemaDefault.addActionListener(e -> 
         mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected())
@@ -82,6 +94,12 @@ public class DbSeedSettingsComponent {
             .addComponent(mySoftDeleteUseSchemaDefault, 1)
             .addLabeledComponent(new JBLabel("Soft delete value (if not default):"), mySoftDeleteValue, 1, false)
             
+            .addComponent(new TitledSeparator("AI Integration (Local DeepSeek)"))
+            .addComponent(myEnableAiDialect, 1)
+            .addComponent(myEnableContextAwareGeneration, 1)
+            .addLabeledComponent(new JBLabel("AI local endpoint:"), myAiLocalEndpoint, 1, false)
+            .addLabeledComponent(new JBLabel("AI model name:"), myAiModelName, 1, false)
+
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
   }
@@ -158,5 +176,38 @@ public class DbSeedSettingsComponent {
 
   public void setSoftDeleteValue(String value) {
     mySoftDeleteValue.setText(value);
+  }
+
+  // AI Getters/Setters
+  public boolean getEnableAiDialect() {
+    return myEnableAiDialect.isSelected();
+  }
+
+  public void setEnableAiDialect(boolean enable) {
+    myEnableAiDialect.setSelected(enable);
+  }
+
+  public boolean getEnableContextAwareGeneration() {
+    return myEnableContextAwareGeneration.isSelected();
+  }
+
+  public void setEnableContextAwareGeneration(boolean enable) {
+    myEnableContextAwareGeneration.setSelected(enable);
+  }
+
+  public String getAiLocalEndpoint() {
+    return myAiLocalEndpoint.getText();
+  }
+
+  public void setAiLocalEndpoint(String endpoint) {
+    myAiLocalEndpoint.setText(endpoint);
+  }
+
+  public String getAiModelName() {
+    return myAiModelName.getText();
+  }
+
+  public void setAiModelName(String name) {
+    myAiModelName.setText(name);
   }
 }

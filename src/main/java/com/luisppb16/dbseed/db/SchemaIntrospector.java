@@ -165,6 +165,7 @@ public class SchemaIntrospector {
           new Column(
               raw.name(),
               raw.type(),
+              raw.typeName(),
               raw.nullable(),
               pkSet.contains(raw.name()),
               isUuid,

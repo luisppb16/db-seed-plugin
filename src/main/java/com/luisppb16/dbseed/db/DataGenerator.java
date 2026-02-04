@@ -6,10 +6,12 @@
 package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.model.Column;
+import com.luisppb16.dbseed.config.LocalAIConfiguration;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.service.LocalAIService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -106,6 +108,7 @@ public class DataGenerator {
             .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
             .softDeleteValue(params.softDeleteValue())
             .numericScale(params.numericScale())
+            .aiConfig(params.aiConfig())
             .build());
   }
 
@@ -158,6 +161,10 @@ public class DataGenerator {
 
     final Map<String, Map<String, ParsedConstraint>> tableConstraints = new HashMap<>();
 
+    final LocalAIService aiService = (params.aiConfig() != null && params.aiConfig().enableContextAwareGeneration())
+        ? new LocalAIService(params.aiConfig().aiLocalEndpoint(), params.aiConfig().aiModelName())
+        : null;
+
     final GenerationContext context =
         new GenerationContext(
             orderedTables,
@@ -175,7 +182,8 @@ public class DataGenerator {
             params.softDeleteColumns(),
             params.softDeleteUseSchemaDefault(),
             params.softDeleteValue(),
-            params.numericScale());
+            params.numericScale(),
+            aiService);
 
     executeGenerationSteps(context);
 
@@ -322,6 +330,7 @@ public class DataGenerator {
                           .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                           .softDeleteValue(params.softDeleteValue())
                           .numericScale(params.numericScale())
+                          .aiService(params.aiService())
                           .build(),
                       col
                   );
@@ -390,6 +399,7 @@ public class DataGenerator {
           .numericScale(params.numericScale())
           .multiColumnConstraints(context.multiColumnConstraints())
           .relevantUniqueKeys(context.relevantUniqueKeys())
+          .aiService(params.aiService())
           .build();
   }
 
@@ -400,6 +410,13 @@ public class DataGenerator {
     }
     if (params.isFkColumn().test(column) && !column.primaryKey()) {
       return null;
+    }
+
+    if (params.aiService() != null && isTextJdbc(column.jdbcType())) {
+        final String aiValue = params.aiService().generateSemanticValue(column.name(), column.typeName());
+        if (aiValue != null && isValidAiValue(aiValue, column, params.constraints().get(column.name()))) {
+            return aiValue;
+        }
     }
 
     if (params.softDeleteCols() != null && params.softDeleteCols().contains(column.name())) {
@@ -427,6 +444,26 @@ public class DataGenerator {
             params.numericScale());
 
     return applyNumericConstraints(column, pc, gen, params.numericScale());
+  }
+
+  private static boolean isTextJdbc(final int jdbcType) {
+      return switch (jdbcType) {
+          case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR, Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR -> true;
+          default -> false;
+      };
+  }
+
+  private static boolean isValidAiValue(final String value, final Column column, final ParsedConstraint pc) {
+      if (column.length() > 0 && value.length() > column.length()) {
+          return false;
+      }
+      if (pc != null && pc.maxLength() != null && value.length() > pc.maxLength()) {
+          return false;
+      }
+      if (pc != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()) {
+          return pc.allowedValues().contains(value);
+      }
+      return true;
   }
 
   private static Object convertStringValue(final String value, final Column column) {
@@ -531,6 +568,7 @@ public class DataGenerator {
                     .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
                     .softDeleteValue(params.softDeleteValue())
                     .numericScale(params.numericScale())
+                    .aiService(params.aiService())
                     .build(),
                  column
              ));
@@ -1560,7 +1598,8 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {}
+      int numericScale,
+      LocalAIConfiguration aiConfig) {}
 
   @Builder
   private record GenerationInternalParameters(
@@ -1575,7 +1614,8 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {}
+      int numericScale,
+      LocalAIConfiguration aiConfig) {}
 
   private record GenerationContext(
       List<Table> orderedTables,
@@ -1596,7 +1636,8 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {
+      int numericScale,
+      LocalAIService aiService) {
 
     GenerationContext(
         final List<Table> orderedTables,
@@ -1614,7 +1655,8 @@ public class DataGenerator {
         final String softDeleteColumns,
         final boolean softDeleteUseSchemaDefault,
         final String softDeleteValue,
-        final int numericScale) {
+        final int numericScale,
+        final LocalAIService aiService) {
       this(
           orderedTables,
           rowsPerTable,
@@ -1634,7 +1676,8 @@ public class DataGenerator {
           softDeleteColumns,
           softDeleteUseSchemaDefault,
           softDeleteValue,
-          numericScale);
+          numericScale,
+          aiService);
     }
   }
 
@@ -1653,7 +1696,8 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {}
+      int numericScale,
+      LocalAIService aiService) {}
 
   @Builder
   private record TableGenerationContext(
@@ -1684,7 +1728,8 @@ public class DataGenerator {
       Set<String> softDeleteCols,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {}
+      int numericScale,
+      LocalAIService aiService) {}
 
   @Builder
   private record GenerateAndValidateRowParameters(
@@ -1704,7 +1749,8 @@ public class DataGenerator {
       String softDeleteValue,
       int numericScale,
       List<MultiColumnConstraint> multiColumnConstraints,
-      List<List<String>> relevantUniqueKeys) {}
+      List<List<String>> relevantUniqueKeys,
+      LocalAIService aiService) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap,

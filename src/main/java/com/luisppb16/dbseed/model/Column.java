@@ -13,6 +13,7 @@ import lombok.Builder;
 public record Column(
     String name,
     int jdbcType,
+    String typeName,
     boolean nullable,
     boolean primaryKey,
     boolean uuid,

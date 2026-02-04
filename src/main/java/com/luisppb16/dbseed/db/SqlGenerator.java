@@ -6,9 +6,11 @@
 package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.config.DriverInfo;
+import com.luisppb16.dbseed.config.LocalAIConfiguration;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.service.LocalAIService;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -37,7 +39,7 @@ public class SqlGenerator {
 
   public static String generate(
       Map<Table, List<Row>> data, List<PendingUpdate> updates, boolean deferred) {
-    return generate(data, updates, deferred, null);
+    return generate(data, updates, deferred, null, null);
   }
 
   public static String generate(
@@ -45,17 +47,29 @@ public class SqlGenerator {
       List<PendingUpdate> updates,
       boolean deferred,
       DriverInfo driverInfo) {
+    return generate(data, updates, deferred, driverInfo, null);
+  }
+
+  public static String generate(
+      Map<Table, List<Row>> data,
+      List<PendingUpdate> updates,
+      boolean deferred,
+      DriverInfo driverInfo,
+      LocalAIConfiguration aiConfig) {
     final StringBuilder sb = new StringBuilder();
     final SqlDialect dialect = SqlDialect.resolve(driverInfo);
     final SqlOptions opts = new SqlOptions(true);
+    final LocalAIService aiService = (aiConfig != null && aiConfig.enableAiDialect())
+        ? new LocalAIService(aiConfig.aiLocalEndpoint(), aiConfig.aiModelName())
+        : null;
 
     if (deferred) {
       sb.append(dialect.beginTransaction());
       sb.append(dialect.disableConstraints());
     }
 
-    generateInsertStatements(sb, data, opts, dialect);
-    generateUpdateStatements(sb, updates, opts, dialect);
+    generateInsertStatements(sb, data, opts, dialect, aiService, driverInfo);
+    generateUpdateStatements(sb, updates, opts, dialect, aiService, driverInfo);
 
     if (deferred) {
       sb.append(dialect.enableConstraints());
@@ -66,7 +80,12 @@ public class SqlGenerator {
   }
 
   private static void generateInsertStatements(
-      final StringBuilder sb, final Map<Table, List<Row>> data, final SqlOptions opts, final SqlDialect dialect) {
+      final StringBuilder sb,
+      final Map<Table, List<Row>> data,
+      final SqlOptions opts,
+      final SqlDialect dialect,
+      final LocalAIService aiService,
+      final DriverInfo driverInfo) {
     data.forEach(
         (table, rows) -> {
           if (rows == null || rows.isEmpty()) {
@@ -80,8 +99,17 @@ public class SqlGenerator {
                   .map(col -> qualified(opts, col, dialect))
                   .collect(Collectors.joining(", "));
 
-          for (int i = 0; i < rows.size(); i += BATCH_SIZE) {
-            appendBatch(sb, tableName, columnList, rows, i, columnOrder, dialect);
+          final int batchSize = aiService != null ? 10 : BATCH_SIZE;
+
+          for (int i = 0; i < rows.size(); i += batchSize) {
+            if (aiService != null) {
+              final StringBuilder batchSb = new StringBuilder();
+              appendBatch(batchSb, tableName, columnList, rows, i, columnOrder, SqlDialect.STANDARD, batchSize);
+              final String converted = aiService.convertDialect(batchSb.toString(), dialect.name());
+              sb.append(converted != null ? converted : batchSb.toString()).append("\n");
+            } else {
+              appendBatch(sb, tableName, columnList, rows, i, columnOrder, dialect, batchSize);
+            }
           }
         });
   }
@@ -93,14 +121,15 @@ public class SqlGenerator {
       final List<Row> rows,
       final int startIndex,
       final List<String> columnOrder,
-      final SqlDialect dialect) {
+      final SqlDialect dialect,
+      final int batchSize) {
     sb.append("INSERT INTO ")
         .append(tableName)
         .append(" (")
         .append(columnList)
         .append(") VALUES\n");
 
-    final List<Row> batch = rows.subList(startIndex, Math.min(startIndex + BATCH_SIZE, rows.size()));
+    final List<Row> batch = rows.subList(startIndex, Math.min(startIndex + batchSize, rows.size()));
     for (int j = 0; j < batch.size(); j++) {
       final Row row = batch.get(j);
       sb.append('(');
@@ -119,9 +148,15 @@ public class SqlGenerator {
   }
 
   private static void generateUpdateStatements(
-      final StringBuilder sb, final List<PendingUpdate> updates, final SqlOptions opts, final SqlDialect dialect) {
+      final StringBuilder sb,
+      final List<PendingUpdate> updates,
+      final SqlOptions opts,
+      final SqlDialect dialect,
+      final LocalAIService aiService,
+      final DriverInfo driverInfo) {
     if (updates != null && !updates.isEmpty()) {
       for (final PendingUpdate update : updates) {
+        final StringBuilder updateSb = new StringBuilder();
         final String tableName = qualified(opts, update.table(), dialect);
 
         final String setPart =
@@ -142,13 +177,20 @@ public class SqlGenerator {
                             .concat(formatValue(e.getValue(), dialect)))
                 .collect(Collectors.joining(" AND "));
 
-        sb.append("UPDATE ")
+        updateSb.append("UPDATE ")
             .append(tableName)
             .append(" SET ")
             .append(setPart)
             .append(" WHERE ")
             .append(wherePart)
             .append(";\n");
+
+        if (aiService != null) {
+          final String converted = aiService.convertDialect(updateSb.toString(), dialect.name());
+          sb.append(converted != null ? converted : updateSb.toString()).append("\n");
+        } else {
+          sb.append(updateSb);
+        }
       }
     }
   }

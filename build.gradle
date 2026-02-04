@@ -46,6 +46,7 @@ dependencies {
     }
 
     implementation 'net.datafaker:datafaker:2.5.3'
+    implementation 'dev.langchain4j:langchain4j-ollama:0.35.0'
 
     compileOnly 'org.projectlombok:lombok:1.18.42'
     annotationProcessor 'org.projectlombok:lombok:1.18.42'

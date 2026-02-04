@@ -14,6 +14,7 @@ import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
+import com.luisppb16.dbseed.config.LocalAIConfiguration;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.Cursor;
 import java.awt.GridBagConstraints;
@@ -58,6 +59,10 @@ public final class SeedDialog extends DialogWrapper {
   private final JTextField schemaField = new JTextField(DEFAULT_SCHEMA);
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
+  private final JCheckBox aiDialectBox = new JCheckBox("Enable AI Dialect Adapter");
+  private final JCheckBox aiContextAwareBox = new JCheckBox("Enable AI Context-Aware Generation");
+  private final JTextField aiEndpointField = new JTextField();
+  private final JTextField aiModelNameField = new JTextField();
 
   private String loadedSoftDeleteColumns;
   private boolean loadedSoftDeleteUseSchemaDefault;
@@ -192,6 +197,19 @@ public final class SeedDialog extends DialogWrapper {
     rowsSpinner.setValue(config.rowsPerTable());
     deferredBox.setSelected(config.deferred());
 
+    if (config.aiConfig() != null) {
+      aiDialectBox.setSelected(config.aiConfig().enableAiDialect());
+      aiContextAwareBox.setSelected(config.aiConfig().enableContextAwareGeneration());
+      aiEndpointField.setText(config.aiConfig().aiLocalEndpoint());
+      aiModelNameField.setText(config.aiConfig().aiModelName());
+    } else {
+      final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+      aiDialectBox.setSelected(settings.isEnableAiDialect());
+      aiContextAwareBox.setSelected(settings.isEnableContextAwareGeneration());
+      aiEndpointField.setText(settings.getAiLocalEndpoint());
+      aiModelNameField.setText(settings.getAiModelName());
+    }
+
     loadedSoftDeleteColumns = config.softDeleteColumns();
     loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
     loadedSoftDeleteValue = config.softDeleteValue();
@@ -206,6 +224,11 @@ public final class SeedDialog extends DialogWrapper {
     deferredBox.setSelected(config.deferred());
 
     final DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
+    aiDialectBox.setSelected(globalSettings.isEnableAiDialect());
+    aiContextAwareBox.setSelected(globalSettings.isEnableContextAwareGeneration());
+    aiEndpointField.setText(globalSettings.getAiLocalEndpoint());
+    aiModelNameField.setText(globalSettings.getAiModelName());
+
     loadedSoftDeleteColumns = globalSettings.getSoftDeleteColumns();
     loadedSoftDeleteUseSchemaDefault = globalSettings.isSoftDeleteUseSchemaDefault();
     loadedSoftDeleteValue = globalSettings.getSoftDeleteValue();
@@ -287,10 +310,20 @@ public final class SeedDialog extends DialogWrapper {
     addRow(panel, c, row++, "Rows per table:", rowsSpinner);
 
     c.gridx = 0;
-    c.gridy = row;
+    c.gridy = row++;
     c.gridwidth = 2;
     c.anchor = GridBagConstraints.WEST;
     panel.add(deferredBox, c);
+
+    c.gridy = row++;
+    panel.add(aiDialectBox, c);
+
+    c.gridy = row++;
+    panel.add(aiContextAwareBox, c);
+
+    c.gridwidth = 1;
+    addRow(panel, c, row++, "AI Endpoint:", aiEndpointField);
+    addRow(panel, c, row++, "AI Model:", aiModelNameField);
 
     return panel;
   }
@@ -366,6 +399,12 @@ public final class SeedDialog extends DialogWrapper {
         .softDeleteUseSchemaDefault(loadedSoftDeleteUseSchemaDefault)
         .softDeleteValue(loadedSoftDeleteValue)
         .numericScale(loadedNumericScale)
+        .aiConfig(LocalAIConfiguration.builder()
+            .enableAiDialect(aiDialectBox.isSelected())
+            .enableContextAwareGeneration(aiContextAwareBox.isSelected())
+            .aiLocalEndpoint(aiEndpointField.getText().trim())
+            .aiModelName(aiModelNameField.getText().trim())
+            .build())
         .build();
   }
 

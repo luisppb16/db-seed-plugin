@@ -40,6 +40,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -113,33 +114,40 @@ public final class GenerateSeedAction extends AnAction {
           pkDialog.getExcludedTables()
       );
       
-      // Update config with Soft Delete settings from Step 3
+      // Update config with Soft Delete and AI settings from Step 3
       final GenerationConfig finalConfig = config.toBuilder()
           .softDeleteColumns(pkDialog.getSoftDeleteColumns())
           .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
           .softDeleteValue(pkDialog.getSoftDeleteValue())
           .numericScale(pkDialog.getNumericScale()) // Get scale from Step 3
+          .aiConfig(config.aiConfig()) // aiConfig is already in config from SeedDialog
           .build();
       
       // Persist the updated configuration including Soft Delete settings
       ConnectionConfigPersistence.save(project, finalConfig);
 
-      // Step 3: Generate Data (Background)
+      // Step 3: Generate Data (Background) using Virtual Threads
       ProgressManager.getInstance()
           .run(
               new Task.Backgroundable(project, APP_NAME.getValue(), false) {
                 @Override
                 public void run(@NotNull final ProgressIndicator indicator) {
-                  try {
-                    final String sql =
-                        generateSeedSql(
-                            finalConfig,
-                            tables,
-                            selections,
-                            indicator,
-                            settings,
-                            chosenDriver);
-                    ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
+                  try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                    executor.submit(() -> {
+                      try {
+                        final String sql =
+                            generateSeedSql(
+                                finalConfig,
+                                tables,
+                                selections,
+                                indicator,
+                                settings,
+                                chosenDriver);
+                        ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
+                      } catch (final Exception ex) {
+                        handleException(project, ex);
+                      }
+                    }).get();
                   } catch (final Exception ex) {
                     handleException(project, ex);
                   }
@@ -204,10 +212,11 @@ public final class GenerateSeedAction extends AnAction {
                   .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
                   .softDeleteValue(config.softDeleteValue())
                   .numericScale(config.numericScale()) // Pass scale
+                  .aiConfig(config.aiConfig())
                   .build());
 
       indicator.setText("Building SQL...");
-      final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
+      final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo, config.aiConfig());
 
       log.info("Seed SQL generated successfully.");
       return sql;

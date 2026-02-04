@@ -44,7 +44,11 @@ public class DbSeedSettingsConfigurable implements Configurable {
         || mySettingsComponent.getUseSpanishDictionary() != settings.isUseSpanishDictionary()
         || !Objects.equals(mySettingsComponent.getSoftDeleteColumns(), settings.getSoftDeleteColumns())
         || mySettingsComponent.getSoftDeleteUseSchemaDefault() != settings.isSoftDeleteUseSchemaDefault()
-        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue());
+        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue())
+        || mySettingsComponent.getEnableAiDialect() != settings.isEnableAiDialect()
+        || mySettingsComponent.getEnableContextAwareGeneration() != settings.isEnableContextAwareGeneration()
+        || !Objects.equals(mySettingsComponent.getAiLocalEndpoint(), settings.getAiLocalEndpoint())
+        || !Objects.equals(mySettingsComponent.getAiModelName(), settings.getAiModelName());
   }
 
   @Override
@@ -59,6 +63,11 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setSoftDeleteColumns(mySettingsComponent.getSoftDeleteColumns());
     settings.setSoftDeleteUseSchemaDefault(mySettingsComponent.getSoftDeleteUseSchemaDefault());
     settings.setSoftDeleteValue(mySettingsComponent.getSoftDeleteValue());
+
+    settings.setEnableAiDialect(mySettingsComponent.getEnableAiDialect());
+    settings.setEnableContextAwareGeneration(mySettingsComponent.getEnableContextAwareGeneration());
+    settings.setAiLocalEndpoint(mySettingsComponent.getAiLocalEndpoint());
+    settings.setAiModelName(mySettingsComponent.getAiModelName());
   }
 
   @Override
@@ -73,6 +82,11 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setSoftDeleteColumns(settings.getSoftDeleteColumns());
     mySettingsComponent.setSoftDeleteUseSchemaDefault(settings.isSoftDeleteUseSchemaDefault());
     mySettingsComponent.setSoftDeleteValue(settings.getSoftDeleteValue());
+
+    mySettingsComponent.setEnableAiDialect(settings.isEnableAiDialect());
+    mySettingsComponent.setEnableContextAwareGeneration(settings.isEnableContextAwareGeneration());
+    mySettingsComponent.setAiLocalEndpoint(settings.getAiLocalEndpoint());
+    mySettingsComponent.setAiModelName(settings.getAiModelName());
   }
 
   @Override

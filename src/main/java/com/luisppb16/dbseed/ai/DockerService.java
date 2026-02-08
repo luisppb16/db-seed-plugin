@@ -8,6 +8,9 @@ package com.luisppb16.dbseed.ai;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
@@ -40,15 +43,21 @@ public class DockerService {
       return;
     }
 
-    if (containerExists()) {
-      runCommand(statusUpdater, "docker", "start", CONTAINER_NAME);
-    } else {
-      runCommand(statusUpdater, "docker", "run", "-d",
-          "--name", CONTAINER_NAME,
-          "-p", OLLAMA_PORT + ":" + OLLAMA_PORT,
-          "-v", "ollama_data:/root/.ollama",
-          OLLAMA_IMAGE);
+    String downloadsPath = System.getProperty("user.home") + "/Downloads/db-seed-ollama";
+    Path path = Paths.get(downloadsPath);
+    if (!Files.exists(path)) {
+        Files.createDirectories(path);
     }
+
+    if (containerExists()) {
+        runCommand(statusUpdater, "docker", "rm", "-f", CONTAINER_NAME);
+    }
+
+    runCommand(statusUpdater, "docker", "run", "-d",
+        "--name", CONTAINER_NAME,
+        "-p", OLLAMA_PORT + ":" + OLLAMA_PORT,
+        "-v", path.toAbsolutePath().toString() + ":/root/.ollama",
+        OLLAMA_IMAGE);
   }
 
   public void pullModel(String modelName, Consumer<String> statusUpdater) throws IOException, InterruptedException {

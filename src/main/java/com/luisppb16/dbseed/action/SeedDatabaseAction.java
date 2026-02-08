@@ -22,6 +22,7 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.luisppb16.dbseed.ai.DockerService;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
@@ -32,6 +33,7 @@ import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.AiSetupProgressDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
@@ -67,6 +69,15 @@ public class SeedDatabaseAction extends AnAction {
     if (project == null) {
       log.debug("Action canceled: no active project.");
       return;
+    }
+
+    DockerService dockerService = new DockerService();
+    String model = DbSeedSettingsState.getInstance().getAiModel();
+    if (!dockerService.isAiReady(model)) {
+        AiSetupProgressDialog setupDialog = new AiSetupProgressDialog(project);
+        if (!setupDialog.showAndGet()) {
+            return;
+        }
     }
 
     try {

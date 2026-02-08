@@ -23,7 +23,9 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.testFramework.LightVirtualFile;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
+import com.luisppb16.dbseed.ai.DockerService;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
+import com.intellij.openapi.application.ApplicationManager;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
@@ -32,6 +34,7 @@ import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.AiSetupProgressDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
@@ -59,6 +62,15 @@ public final class GenerateSeedAction extends AnAction {
     if (project == null) {
       log.debug("Action canceled: no active project.");
       return;
+    }
+
+    DockerService dockerService = new DockerService();
+    String model = DbSeedSettingsState.getInstance().getAiModel();
+    if (!dockerService.isAiReady(model)) {
+        AiSetupProgressDialog setupDialog = new AiSetupProgressDialog(project);
+        if (!setupDialog.showAndGet()) {
+            return;
+        }
     }
 
     try {

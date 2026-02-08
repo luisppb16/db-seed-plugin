@@ -9,14 +9,14 @@ import lombok.Builder;
 
 @Builder(toBuilder = true)
 public record GenerationConfig(
-    String url, 
-    String user, 
-    String password, 
-    String schema, 
-    int rowsPerTable, 
+    String url,
+    String user,
+    String password,
+    String schema,
+    int rowsPerTable,
     boolean deferred,
     String softDeleteColumns,
     boolean softDeleteUseSchemaDefault,
     String softDeleteValue,
     int numericScale // New field for user-defined scale
-) {}
+    ) {}

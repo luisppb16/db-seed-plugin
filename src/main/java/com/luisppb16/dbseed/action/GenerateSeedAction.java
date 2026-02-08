@@ -79,48 +79,53 @@ public final class GenerateSeedAction extends AnAction {
 
       // Step 1: Introspect Schema (Background)
       final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
-      
-      ProgressManager.getInstance().run(new Task.Modal(project, "Introspecting Schema", true) {
-          @Override
-          public void run(@NotNull ProgressIndicator indicator) {
-              indicator.setIndeterminate(true);
-              try (Connection conn = DriverManager.getConnection(config.url(), config.user(), config.password())) {
-                  List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
-                  tablesRef.set(tables);
-              } catch (Exception ex) {
-                  ApplicationManager.getApplication().invokeLater(() -> handleException(project, ex));
-              }
-          }
-      });
-      
+
+      ProgressManager.getInstance()
+          .run(
+              new Task.Modal(project, "Introspecting Schema", true) {
+                @Override
+                public void run(@NotNull ProgressIndicator indicator) {
+                  indicator.setIndeterminate(true);
+                  try (Connection conn =
+                      DriverManager.getConnection(config.url(), config.user(), config.password())) {
+                    List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
+                    tablesRef.set(tables);
+                  } catch (Exception ex) {
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> handleException(project, ex));
+                  }
+                }
+              });
+
       final List<Table> tables = tablesRef.get();
       if (tables == null || tables.isEmpty()) {
-          if (tables != null) notifyError(project, "No tables found in schema " + config.schema());
-          return;
+        if (tables != null) notifyError(project, "No tables found in schema " + config.schema());
+        return;
       }
 
       // Step 2: Show PkUuidSelectionDialog (EDT)
       // Pass the config from Step 2 to Step 3 so it can be updated with Soft Delete settings
       final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(tables, config);
       if (!pkDialog.showAndGet()) {
-          return;
+        return;
       }
-      
-      final DialogSelections selections = new DialogSelections(
-          pkDialog.getSelectionByTable(),
-          pkDialog.getExcludedColumnsByTable(),
-          pkDialog.getRepetitionRules(),
-          pkDialog.getExcludedTables()
-      );
-      
+
+      final DialogSelections selections =
+          new DialogSelections(
+              pkDialog.getSelectionByTable(),
+              pkDialog.getExcludedColumnsByTable(),
+              pkDialog.getRepetitionRules(),
+              pkDialog.getExcludedTables());
+
       // Update config with Soft Delete settings from Step 3
-      final GenerationConfig finalConfig = config.toBuilder()
-          .softDeleteColumns(pkDialog.getSoftDeleteColumns())
-          .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
-          .softDeleteValue(pkDialog.getSoftDeleteValue())
-          .numericScale(pkDialog.getNumericScale()) // Get scale from Step 3
-          .build();
-      
+      final GenerationConfig finalConfig =
+          config.toBuilder()
+              .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+              .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+              .softDeleteValue(pkDialog.getSoftDeleteValue())
+              .numericScale(pkDialog.getNumericScale()) // Get scale from Step 3
+              .build();
+
       // Persist the updated configuration including Soft Delete settings
       ConnectionConfigPersistence.save(project, finalConfig);
 
@@ -133,12 +138,7 @@ public final class GenerateSeedAction extends AnAction {
                   try {
                     final String sql =
                         generateSeedSql(
-                            finalConfig,
-                            tables,
-                            selections,
-                            indicator,
-                            settings,
-                            chosenDriver);
+                            finalConfig, tables, selections, indicator, settings, chosenDriver);
                     ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
                   } catch (final Exception ex) {
                     handleException(project, ex);
@@ -159,58 +159,60 @@ public final class GenerateSeedAction extends AnAction {
       DbSeedSettingsState settings,
       DriverInfo driverInfo) {
 
-      Map<String, Map<String, String>> pkUuidOverridesAdapted = selections.pkUuidOverrides().entrySet().stream()
-          .collect(Collectors.toMap(
-              Map.Entry::getKey,
-              e -> e.getValue().stream().collect(Collectors.toMap(c -> c, c -> ""))
-          ));
-      
-      Map<String, List<String>> excludedColumnsList = selections.excludedColumns().entrySet().stream()
-          .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
+    Map<String, Map<String, String>> pkUuidOverridesAdapted =
+        selections.pkUuidOverrides().entrySet().stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    e -> e.getValue().stream().collect(Collectors.toMap(c -> c, c -> ""))));
 
-      indicator.setText("Sorting tables...");
-      final List<Table> filteredTables =
-          tables.stream()
-              .filter(t -> !selections.excludedTables().contains(t.name()))
-              .toList();
+    Map<String, List<String>> excludedColumnsList =
+        selections.excludedColumns().entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
-      final TopologicalSorter.SortResult sort = TopologicalSorter.sort(filteredTables);
+    indicator.setText("Sorting tables...");
+    final List<Table> filteredTables =
+        tables.stream().filter(t -> !selections.excludedTables().contains(t.name())).toList();
 
-      final Map<String, Table> tableMap =
-          filteredTables.stream().collect(Collectors.toMap(Table::name, t -> t));
+    final TopologicalSorter.SortResult sort = TopologicalSorter.sort(filteredTables);
 
-      final List<Table> ordered =
-          sort.ordered().stream().map(tableMap::get).filter(Objects::nonNull).toList();
-      log.debug("Sorted {} tables.", ordered.size());
+    final Map<String, Table> tableMap =
+        filteredTables.stream().collect(Collectors.toMap(Table::name, t -> t));
 
-      final boolean mustForceDeferred = TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableMap);
-      final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
-      log.debug("Effective deferred: {}", effectiveDeferred);
+    final List<Table> ordered =
+        sort.ordered().stream().map(tableMap::get).filter(Objects::nonNull).toList();
+    log.debug("Sorted {} tables.", ordered.size());
 
-      indicator.setText("Generating data...");
-      final DataGenerator.GenerationResult gen =
-          DataGenerator.generate(
-              DataGenerator.GenerationParameters.builder()
-                  .tables(ordered)
-                  .rowsPerTable(config.rowsPerTable())
-                  .deferred(effectiveDeferred)
-                  .pkUuidOverrides(pkUuidOverridesAdapted)
-                  .excludedColumns(excludedColumnsList)
-                  .repetitionRules(selections.repetitionRules())
-                  .useLatinDictionary(settings.isUseLatinDictionary())
-                  .useEnglishDictionary(settings.isUseEnglishDictionary())
-                  .useSpanishDictionary(settings.isUseSpanishDictionary())
-                  .softDeleteColumns(config.softDeleteColumns())
-                  .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
-                  .softDeleteValue(config.softDeleteValue())
-                  .numericScale(config.numericScale()) // Pass scale
-                  .build());
+    final boolean mustForceDeferred =
+        TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableMap);
+    final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
+    log.debug("Effective deferred: {}", effectiveDeferred);
 
-      indicator.setText("Building SQL...");
-      final String sql = SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
+    indicator.setText("Generating data...");
+    final DataGenerator.GenerationResult gen =
+        DataGenerator.generate(
+            DataGenerator.GenerationParameters.builder()
+                .tables(ordered)
+                .rowsPerTable(config.rowsPerTable())
+                .deferred(effectiveDeferred)
+                .pkUuidOverrides(pkUuidOverridesAdapted)
+                .excludedColumns(excludedColumnsList)
+                .repetitionRules(selections.repetitionRules())
+                .useLatinDictionary(settings.isUseLatinDictionary())
+                .useEnglishDictionary(settings.isUseEnglishDictionary())
+                .useSpanishDictionary(settings.isUseSpanishDictionary())
+                .softDeleteColumns(config.softDeleteColumns())
+                .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
+                .softDeleteValue(config.softDeleteValue())
+                .numericScale(config.numericScale()) // Pass scale
+                .build());
 
-      log.info("Seed SQL generated successfully.");
-      return sql;
+    indicator.setText("Building SQL...");
+    final String sql =
+        SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
+
+    log.info("Seed SQL generated successfully.");
+    return sql;
   }
 
   private void openEditor(final Project project, final String sql) {
@@ -228,7 +230,7 @@ public final class GenerateSeedAction extends AnAction {
       message = "An unexpected error occurred: " + ex.getMessage();
     }
     log.error("Error during seed SQL generation.", ex);
-    
+
     // Ensure notification is shown on EDT
     ApplicationManager.getApplication().invokeLater(() -> notifyError(project, message));
   }

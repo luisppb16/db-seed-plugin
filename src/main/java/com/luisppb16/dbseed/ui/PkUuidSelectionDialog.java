@@ -77,7 +77,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   // Soft Delete UI Components
   private final JBTextField softDeleteColumnsField = new JBTextField();
-  private final JBCheckBox softDeleteUseSchemaDefaultBox = new JBCheckBox("Use schema default value");
+  private final JBCheckBox softDeleteUseSchemaDefaultBox =
+      new JBCheckBox("Use schema default value");
   private final JBTextField softDeleteValueField = new JBTextField();
 
   // Numeric Scale UI Component
@@ -87,7 +88,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
 
-  public PkUuidSelectionDialog(@NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
+  public PkUuidSelectionDialog(
+      @NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
     super(true);
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
     this.initialConfig = Objects.requireNonNull(initialConfig, "Initial config cannot be null.");
@@ -141,9 +143,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     softDeleteValueField.setText(val);
 
     softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected());
-    softDeleteUseSchemaDefaultBox.addActionListener(e ->
-        softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected())
-    );
+    softDeleteUseSchemaDefaultBox.addActionListener(
+        e -> softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected()));
   }
 
   @Override
@@ -190,7 +191,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         () -> {
           final boolean modified =
               !softDeleteColumnsField.getText().equals(global.getSoftDeleteColumns())
-                  || softDeleteUseSchemaDefaultBox.isSelected() != global.isSoftDeleteUseSchemaDefault()
+                  || softDeleteUseSchemaDefaultBox.isSelected()
+                      != global.isSoftDeleteUseSchemaDefault()
                   || !softDeleteValueField.getText().equals(global.getSoftDeleteValue());
           statusLabel.setText(modified ? "Modified from global settings" : "Using global settings");
           statusLabel.setIcon(modified ? AllIcons.General.Modified : null);
@@ -291,14 +293,21 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           tblLabel.setBorder(JBUI.Borders.emptyBottom(4));
 
           final List<JCheckBox> tableBoxes = new ArrayList<>();
-          table.primaryKey().forEach(pkCol -> {
-            final JCheckBox box = new JCheckBox(TREAT_AS_UUID_PREFIX + pkCol);
-            box.setSelected(selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
-            pkCheckBoxes.computeIfAbsent(table.name(), k -> new LinkedHashMap<>()).put(pkCol, box);
-            box.addActionListener(e -> onPkBoxChanged(table.name(), pkCol, box.isSelected()));
-            tableBoxes.add(box);
-            checkBoxes.add(box);
-          });
+          table
+              .primaryKey()
+              .forEach(
+                  pkCol -> {
+                    final JCheckBox box = new JCheckBox(TREAT_AS_UUID_PREFIX + pkCol);
+                    box.setSelected(
+                        selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
+                    pkCheckBoxes
+                        .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
+                        .put(pkCol, box);
+                    box.addActionListener(
+                        e -> onPkBoxChanged(table.name(), pkCol, box.isSelected()));
+                    tableBoxes.add(box);
+                    checkBoxes.add(box);
+                  });
 
           listPanel.add(createTablePanel(tblLabel, tableBoxes), c);
           c.gridy++;
@@ -318,7 +327,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private void onPkBoxChanged(String tableName, String pkCol, boolean isSelected) {
-    updateSelectionAndSync(tableName, pkCol, isSelected, selectionByTable, excludeCheckBoxes, excludedColumnsByTable);
+    updateSelectionAndSync(
+        tableName, pkCol, isSelected, selectionByTable, excludeCheckBoxes, excludedColumnsByTable);
   }
 
   private JComponent createColumnExclusionPanel() {
@@ -334,16 +344,28 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           tblBox.setSelected(excludedTables.contains(table.name()));
 
           final List<JCheckBox> currentTableColumnBoxes = new ArrayList<>();
-          table.columns().forEach(column -> {
-            final JCheckBox box = new JCheckBox(column.name());
-            box.setSelected(excludedColumnsByTable.getOrDefault(table.name(), Set.of()).contains(column.name()));
-            excludeCheckBoxes.computeIfAbsent(table.name(), k -> new LinkedHashMap<>()).put(column.name(), box);
-            box.addActionListener(e -> onExcludeBoxChanged(table.name(), column.name(), box.isSelected()));
-            currentTableColumnBoxes.add(box);
-            checkBoxes.add(box);
-          });
+          table
+              .columns()
+              .forEach(
+                  column -> {
+                    final JCheckBox box = new JCheckBox(column.name());
+                    box.setSelected(
+                        excludedColumnsByTable
+                            .getOrDefault(table.name(), Set.of())
+                            .contains(column.name()));
+                    excludeCheckBoxes
+                        .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
+                        .put(column.name(), box);
+                    box.addActionListener(
+                        e -> onExcludeBoxChanged(table.name(), column.name(), box.isSelected()));
+                    currentTableColumnBoxes.add(box);
+                    checkBoxes.add(box);
+                  });
 
-          tblBox.addActionListener(e -> onTableExcludeBoxChanged(table.name(), tblBox.isSelected(), currentTableColumnBoxes));
+          tblBox.addActionListener(
+              e ->
+                  onTableExcludeBoxChanged(
+                      table.name(), tblBox.isSelected(), currentTableColumnBoxes));
           checkBoxes.add(tblBox);
 
           listPanel.add(createTablePanel(tblBox, currentTableColumnBoxes), c);
@@ -374,11 +396,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     if (parent instanceof JPanel panel) {
       for (Component child : panel.getComponents()) {
         if (child instanceof JPanel columnsPanel) {
-           for (Component colChild : columnsPanel.getComponents()) {
-             if (colChild instanceof JCheckBox cb) {
-               boxes.add(cb);
-             }
-           }
+          for (Component colChild : columnsPanel.getComponents()) {
+            if (colChild instanceof JCheckBox cb) {
+              boxes.add(cb);
+            }
+          }
         }
       }
     }
@@ -386,7 +408,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private void onExcludeBoxChanged(String tableName, String columnName, boolean isSelected) {
-    updateSelectionAndSync(tableName, columnName, isSelected, excludedColumnsByTable, pkCheckBoxes, selectionByTable);
+    updateSelectionAndSync(
+        tableName, columnName, isSelected, excludedColumnsByTable, pkCheckBoxes, selectionByTable);
   }
 
   private void updateSelectionAndSync(
@@ -416,7 +439,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     }
   }
 
-  private void onTableExcludeBoxChanged(String tableName, boolean isSelected, List<JCheckBox> columnBoxes) {
+  private void onTableExcludeBoxChanged(
+      String tableName, boolean isSelected, List<JCheckBox> columnBoxes) {
     if (isSelected) {
       excludedTables.add(tableName);
     } else {
@@ -609,7 +633,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private String getHeaderText(JPanel tablePanel) {
     for (final Component c : tablePanel.getComponents()) {
-      if (c instanceof final JCheckBox box && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
+      if (c instanceof final JCheckBox box
+          && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
         return box.getText();
       } else if (c instanceof final JLabel label) {
         return label.getText();

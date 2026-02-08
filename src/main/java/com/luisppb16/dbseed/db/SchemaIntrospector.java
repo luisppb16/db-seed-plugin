@@ -49,19 +49,6 @@ public class SchemaIntrospector {
   private static final Map<String, Pattern> BETWEEN_PATTERNS = new ConcurrentHashMap<>();
   private static final Map<String, Pattern> GTE_LTE_PATTERNS = new ConcurrentHashMap<>();
 
-  private record TableRawData(String name, String schema, String remarks) {}
-
-  private record ColumnRawData(
-      String name,
-      int type,
-      String typeName,
-      boolean nullable,
-      int length,
-      int scale,
-      String remarks) {}
-
-  private record TableKey(String schema, String table) {}
-
   public static List<Table> introspect(final Connection conn, final String schema)
       throws SQLException {
     Objects.requireNonNull(conn, "Connection cannot be null");
@@ -84,13 +71,13 @@ public class SchemaIntrospector {
       final TableKey key = new TableKey(tableSchema, tableName);
 
       final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
-      final List<ColumnRawData> tableCols =
-          rawColumns.getOrDefault(key, Collections.emptyList());
+      final List<ColumnRawData> tableCols = rawColumns.getOrDefault(key, Collections.emptyList());
 
       final List<String> pkCols = allPks.getOrDefault(key, Collections.emptyList());
 
       final List<Column> columns = buildColumns(tableCols, pkCols, checks);
-      final List<List<String>> uniqueKeys = allUniqueKeys.getOrDefault(key, Collections.emptyList());
+      final List<List<String>> uniqueKeys =
+          allUniqueKeys.getOrDefault(key, Collections.emptyList());
       final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
 
       tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
@@ -307,7 +294,8 @@ public class SchemaIntrospector {
   }
 
   private static Map<TableKey, List<List<String>>> loadAllUniqueKeys(
-      final DatabaseMetaData meta, final String schema, final List<TableRawData> rawTables) throws SQLException {
+      final DatabaseMetaData meta, final String schema, final List<TableRawData> rawTables)
+      throws SQLException {
     final Map<TableKey, Map<String, List<String>>> idxCols = new LinkedHashMap<>();
     for (final TableRawData tableData : rawTables) {
       try (final ResultSet rs = meta.getIndexInfo(null, schema, tableData.name(), true, false)) {
@@ -328,8 +316,7 @@ public class SchemaIntrospector {
     }
     final Map<TableKey, List<List<String>>> result = new LinkedHashMap<>();
     for (Map.Entry<TableKey, Map<String, List<String>>> entry : idxCols.entrySet()) {
-      final List<List<String>> list =
-          entry.getValue().values().stream().map(List::copyOf).toList();
+      final List<List<String>> list = entry.getValue().values().stream().map(List::copyOf).toList();
       result.put(entry.getKey(), list);
     }
     return result;
@@ -600,4 +587,17 @@ public class SchemaIntrospector {
     }
     return new int[0];
   }
+
+  private record TableRawData(String name, String schema, String remarks) {}
+
+  private record ColumnRawData(
+      String name,
+      int type,
+      String typeName,
+      boolean nullable,
+      int length,
+      int scale,
+      String remarks) {}
+
+  private record TableKey(String schema, String table) {}
 }

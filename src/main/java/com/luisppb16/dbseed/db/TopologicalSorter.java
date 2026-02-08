@@ -5,7 +5,6 @@
 
 package com.luisppb16.dbseed.db;
 
-import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
 import java.util.ArrayDeque;
 import java.util.ArrayList;

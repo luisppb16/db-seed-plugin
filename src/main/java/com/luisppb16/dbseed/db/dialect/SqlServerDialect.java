@@ -6,7 +6,7 @@
 package com.luisppb16.dbseed.db.dialect;
 
 public class SqlServerDialect extends AbstractDialect {
-    public SqlServerDialect() {
-        super("sqlserver.properties");
-    }
+  public SqlServerDialect() {
+    super("sqlserver.properties");
+  }
 }

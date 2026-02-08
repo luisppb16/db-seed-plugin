@@ -6,7 +6,7 @@
 package com.luisppb16.dbseed.db.dialect;
 
 public class StandardDialect extends AbstractDialect {
-    public StandardDialect() {
-        super("standard.properties");
-    }
+  public StandardDialect() {
+    super("standard.properties");
+  }
 }

@@ -22,7 +22,8 @@ public class ConnectionConfigPersistence {
   private static final String ROWS_KEY = "dbseed.connection.rows";
   private static final String DEFERRED_KEY = "dbseed.connection.deferred";
   private static final String SOFT_DELETE_COLUMNS_KEY = "dbseed.connection.softDeleteColumns";
-  private static final String SOFT_DELETE_USE_DEFAULT_KEY = "dbseed.connection.softDeleteUseDefault";
+  private static final String SOFT_DELETE_USE_DEFAULT_KEY =
+      "dbseed.connection.softDeleteUseDefault";
   private static final String SOFT_DELETE_VALUE_KEY = "dbseed.connection.softDeleteValue";
   private static final String NUMERIC_SCALE_KEY = "dbseed.connection.numericScale";
 
@@ -42,15 +43,16 @@ public class ConnectionConfigPersistence {
     properties.setValue(SCHEMA_KEY, config.schema());
     properties.setValue(ROWS_KEY, String.valueOf(config.rowsPerTable()));
     properties.setValue(DEFERRED_KEY, String.valueOf(config.deferred()));
-    
+
     if (config.softDeleteColumns() != null) {
-        properties.setValue(SOFT_DELETE_COLUMNS_KEY, config.softDeleteColumns());
+      properties.setValue(SOFT_DELETE_COLUMNS_KEY, config.softDeleteColumns());
     }
-    properties.setValue(SOFT_DELETE_USE_DEFAULT_KEY, String.valueOf(config.softDeleteUseSchemaDefault()));
+    properties.setValue(
+        SOFT_DELETE_USE_DEFAULT_KEY, String.valueOf(config.softDeleteUseSchemaDefault()));
     if (config.softDeleteValue() != null) {
-        properties.setValue(SOFT_DELETE_VALUE_KEY, config.softDeleteValue());
+      properties.setValue(SOFT_DELETE_VALUE_KEY, config.softDeleteValue());
     }
-    
+
     properties.setValue(NUMERIC_SCALE_KEY, String.valueOf(config.numericScale()));
 
     log.info("Connection configuration saved for project {}.", project.getName());
@@ -66,7 +68,7 @@ public class ConnectionConfigPersistence {
     final String schema = properties.getValue(SCHEMA_KEY, DEFAULT_SCHEMA);
     final int rows = properties.getInt(ROWS_KEY, DEFAULT_ROWS);
     final boolean deferred = properties.getBoolean(DEFERRED_KEY, DEFAULT_DEFERRED);
-    
+
     final String softDeleteColumns = properties.getValue(SOFT_DELETE_COLUMNS_KEY);
     final boolean softDeleteUseDefault = properties.getBoolean(SOFT_DELETE_USE_DEFAULT_KEY, true);
     final String softDeleteValue = properties.getValue(SOFT_DELETE_VALUE_KEY);

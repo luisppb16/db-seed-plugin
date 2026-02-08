@@ -6,7 +6,7 @@
 package com.luisppb16.dbseed.db.dialect;
 
 public class SqliteDialect extends AbstractDialect {
-    public SqliteDialect() {
-        super("sqlite.properties");
-    }
+  public SqliteDialect() {
+    super("sqlite.properties");
+  }
 }

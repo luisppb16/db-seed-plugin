@@ -34,7 +34,8 @@ public class DbSeedSettingsComponent {
 
   // Soft Delete Components
   private final JBTextField mySoftDeleteColumns = new JBTextField();
-  private final JBCheckBox mySoftDeleteUseSchemaDefault = new JBCheckBox("Use schema default value");
+  private final JBCheckBox mySoftDeleteUseSchemaDefault =
+      new JBCheckBox("Use schema default value");
   private final JBTextField mySoftDeleteValue = new JBTextField();
 
   public DbSeedSettingsComponent() {
@@ -51,22 +52,29 @@ public class DbSeedSettingsComponent {
     mySoftDeleteValue.setText(settings.getSoftDeleteValue());
     mySoftDeleteValue.setEnabled(!settings.isSoftDeleteUseSchemaDefault());
 
-    mySoftDeleteUseSchemaDefault.addActionListener(e -> 
-        mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected())
-    );
+    mySoftDeleteUseSchemaDefault.addActionListener(
+        e -> mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected()));
 
-    final FileChooserDescriptor folderDescriptor = FileChooserDescriptorFactory
-        .createSingleFolderDescriptor()
-        .withTitle("Select Default Output Directory");
-    myDefaultOutputDirectory.addActionListener(e -> {
-      final String currentPath = myDefaultOutputDirectory.getText();
-      final var currentFile = currentPath.isEmpty() ? null : LocalFileSystem.getInstance().findFileByPath(currentPath);
-      FileChooser.chooseFile(folderDescriptor, null, currentFile, file -> {
-        if (file != null) {
-          myDefaultOutputDirectory.setText(file.getPath());
-        }
-      });
-    });
+    final FileChooserDescriptor folderDescriptor =
+        FileChooserDescriptorFactory.createSingleFolderDescriptor()
+            .withTitle("Select Default Output Directory");
+    myDefaultOutputDirectory.addActionListener(
+        e -> {
+          final String currentPath = myDefaultOutputDirectory.getText();
+          final var currentFile =
+              currentPath.isEmpty()
+                  ? null
+                  : LocalFileSystem.getInstance().findFileByPath(currentPath);
+          FileChooser.chooseFile(
+              folderDescriptor,
+              null,
+              currentFile,
+              file -> {
+                if (file != null) {
+                  myDefaultOutputDirectory.setText(file.getPath());
+                }
+              });
+        });
 
     myMainPanel =
         FormBuilder.createFormBuilder()
@@ -76,12 +84,15 @@ public class DbSeedSettingsComponent {
             .addComponent(myUseLatinDictionary, 1)
             .addComponent(myUseEnglishDictionary, 1)
             .addComponent(myUseSpanishDictionary, 1)
-            
             .addComponent(new TitledSeparator("Soft Delete Configuration"))
-            .addLabeledComponent(new JBLabel("Soft delete columns (comma separated):"), mySoftDeleteColumns, 1, false)
+            .addLabeledComponent(
+                new JBLabel("Soft delete columns (comma separated):"),
+                mySoftDeleteColumns,
+                1,
+                false)
             .addComponent(mySoftDeleteUseSchemaDefault, 1)
-            .addLabeledComponent(new JBLabel("Soft delete value (if not default):"), mySoftDeleteValue, 1, false)
-            
+            .addLabeledComponent(
+                new JBLabel("Soft delete value (if not default):"), mySoftDeleteValue, 1, false)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
   }

@@ -12,4 +12,4 @@ public record RepetitionRule(
     int count,
     Map<String, Object> fixedValues, // Column -> Specific Value
     Set<String> randomConstantColumns // Columns that should be random but constant for this batch
-) {}
+    ) {}

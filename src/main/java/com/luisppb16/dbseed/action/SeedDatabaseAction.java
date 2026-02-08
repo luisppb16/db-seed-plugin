@@ -87,7 +87,8 @@ public class SeedDatabaseAction extends AnAction {
 
     final int exitCode = seedDialog.getExitCode();
     switch (exitCode) {
-      case DialogWrapper.OK_EXIT_CODE -> runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
+      case DialogWrapper.OK_EXIT_CODE ->
+          runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
       case SeedDialog.BACK_EXIT_CODE -> {
         // Re-open driver selection if user goes back
         try {
@@ -193,15 +194,17 @@ public class SeedDatabaseAction extends AnAction {
 
         final Map<String, List<String>> excludedColumns =
             excludedColumnsSet.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
+                .collect(
+                    Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
         final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
-        final GenerationConfig finalConfig = config.toBuilder()
-            .softDeleteColumns(pkDialog.getSoftDeleteColumns())
-            .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
-            .softDeleteValue(pkDialog.getSoftDeleteValue())
-            .build();
+        final GenerationConfig finalConfig =
+            config.toBuilder()
+                .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+                .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+                .softDeleteValue(pkDialog.getSoftDeleteValue())
+                .build();
 
         // Persist the updated configuration including Soft Delete settings
         ConnectionConfigPersistence.save(project, finalConfig);
@@ -217,7 +220,8 @@ public class SeedDatabaseAction extends AnAction {
                       indicator.setFraction(0.3);
 
                       final boolean mustForceDeferred =
-                          TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableByName);
+                          TopologicalSorter.requiresDeferredDueToNonNullableCycles(
+                              sort, tableByName);
                       final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
                       log.debug("Effective deferred: {}", effectiveDeferred);
 
@@ -234,16 +238,19 @@ public class SeedDatabaseAction extends AnAction {
                                   .useEnglishDictionary(settings.isUseEnglishDictionary())
                                   .useSpanishDictionary(settings.isUseSpanishDictionary())
                                   .softDeleteColumns(finalConfig.softDeleteColumns())
-                                  .softDeleteUseSchemaDefault(finalConfig.softDeleteUseSchemaDefault())
+                                  .softDeleteUseSchemaDefault(
+                                      finalConfig.softDeleteUseSchemaDefault())
                                   .softDeleteValue(finalConfig.softDeleteValue())
                                   .build());
                       log.info(
-                          "Data generation completed for {} rows per table.", finalConfig.rowsPerTable());
+                          "Data generation completed for {} rows per table.",
+                          finalConfig.rowsPerTable());
 
                       indicator.setText("Building SQL...");
                       indicator.setFraction(0.8);
                       final String sql =
-                          SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
+                          SqlGenerator.generate(
+                              gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
                       log.info("SQL script built successfully.");
 
                       indicator.setText("Opening editor...");

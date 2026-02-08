@@ -6,7 +6,7 @@
 package com.luisppb16.dbseed.db.dialect;
 
 public class MySQLDialect extends AbstractDialect {
-    public MySQLDialect() {
-        super("mysql.properties");
-    }
+  public MySQLDialect() {
+    super("mysql.properties");
+  }
 }

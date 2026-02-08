@@ -6,7 +6,7 @@
 package com.luisppb16.dbseed.db.dialect;
 
 public class PostgreSqlDialect extends AbstractDialect {
-    public PostgreSqlDialect() {
-        super("postgresql.properties");
-    }
+  public PostgreSqlDialect() {
+    super("postgresql.properties");
+  }
 }

@@ -42,8 +42,10 @@ public class DbSeedSettingsConfigurable implements Configurable {
         || mySettingsComponent.getUseLatinDictionary() != settings.isUseLatinDictionary()
         || mySettingsComponent.getUseEnglishDictionary() != settings.isUseEnglishDictionary()
         || mySettingsComponent.getUseSpanishDictionary() != settings.isUseSpanishDictionary()
-        || !Objects.equals(mySettingsComponent.getSoftDeleteColumns(), settings.getSoftDeleteColumns())
-        || mySettingsComponent.getSoftDeleteUseSchemaDefault() != settings.isSoftDeleteUseSchemaDefault()
+        || !Objects.equals(
+            mySettingsComponent.getSoftDeleteColumns(), settings.getSoftDeleteColumns())
+        || mySettingsComponent.getSoftDeleteUseSchemaDefault()
+            != settings.isSoftDeleteUseSchemaDefault()
         || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue());
   }
 
@@ -55,7 +57,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setUseLatinDictionary(mySettingsComponent.getUseLatinDictionary());
     settings.setUseEnglishDictionary(mySettingsComponent.getUseEnglishDictionary());
     settings.setUseSpanishDictionary(mySettingsComponent.getUseSpanishDictionary());
-    
+
     settings.setSoftDeleteColumns(mySettingsComponent.getSoftDeleteColumns());
     settings.setSoftDeleteUseSchemaDefault(mySettingsComponent.getSoftDeleteUseSchemaDefault());
     settings.setSoftDeleteValue(mySettingsComponent.getSoftDeleteValue());
@@ -69,7 +71,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setUseLatinDictionary(settings.isUseLatinDictionary());
     mySettingsComponent.setUseEnglishDictionary(settings.isUseEnglishDictionary());
     mySettingsComponent.setUseSpanishDictionary(settings.isUseSpanishDictionary());
-    
+
     mySettingsComponent.setSoftDeleteColumns(settings.getSoftDeleteColumns());
     mySettingsComponent.setSoftDeleteUseSchemaDefault(settings.isSoftDeleteUseSchemaDefault());
     mySettingsComponent.setSoftDeleteValue(settings.getSoftDeleteValue());

@@ -25,7 +25,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,18 +52,26 @@ import net.datafaker.Faker;
 @UtilityClass
 public class DataGenerator {
 
+  private static final String CAST_REGEX = "(?:\\s*::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)*";
   private static final Pattern COL_EQ_VAL_PATTERN =
       Pattern.compile(
-          "(?i)^\\s*\\(*\\s*" +
-          "(?:(?:\"?[A-Za-z0-9_]+\"?)\\.)*" +
-          "(?:\\(*\\s*)?" +
-          "\"?([A-Za-z0-9_]+)\"?" +
-          "(?:\\s*\\)*)?" +
-          "(?:\\s*::[a-zA-Z0-9_ \\[\\]]+)*" +
-          "\\s*=\\s*" +
-          "((?:'.*?')|(?:\\\".*?\\\")|[0-9A-Za-z_+-]+(?:\\.[0-9]+)?)" +
-          "(?:\\s*::[a-zA-Z0-9_ \\[\\]]+)*" +
-          "\\s*\\)*\\s*$");
+          "(?i)^"
+              + "[\\s()]*"
+              + "(?:(?:\"?\\w+\"?)\\.)*"
+              + "\"?(\\w+)\"?"
+              + "[\\s()]*"
+              + CAST_REGEX
+              + "\\s*=\\s*"
+              + "("
+              + "'(?:[^']|'')*'"
+              + "|"
+              + "\"(?:[^\"]|\"\")*\""
+              + "|"
+              + "[\\w+-]+(?:\\.\\d+)?"
+              + ")"
+              + CAST_REGEX
+              + "[\\s()]*"
+              + "$");
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final int DEFAULT_INT_MAX = 10_000;
   private static final int DEFAULT_LONG_MAX = 1_000_000;
@@ -73,15 +80,18 @@ public class DataGenerator {
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
   private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
 
-  private static final AtomicReference<List<String>> englishDictionaryCache = new AtomicReference<>();
-  private static final AtomicReference<List<String>> spanishDictionaryCache = new AtomicReference<>();
+  private static final AtomicReference<List<String>> englishDictionaryCache =
+      new AtomicReference<>();
+  private static final AtomicReference<List<String>> spanishDictionaryCache =
+      new AtomicReference<>();
   private static final Object DICTIONARY_LOCK = new Object();
   private static final Map<String, ColumnPatterns> COLUMN_PATTERNS_CACHE =
       new java.util.concurrent.ConcurrentHashMap<>();
 
   public static GenerationResult generate(final GenerationParameters params) {
 
-    final Map<String, Table> overridden = applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
+    final Map<String, Table> overridden =
+        applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
 
     final List<Table> list = new ArrayList<>(overridden.values());
 
@@ -148,10 +158,7 @@ public class DataGenerator {
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
     final List<String> dictionaryWords =
-        loadDictionaryWords(
-            params.useLatinDictionary(),
-            params.useEnglishDictionary(),
-            params.useSpanishDictionary());
+        loadDictionaryWords(params.useEnglishDictionary(), params.useSpanishDictionary());
     final Faker faker = new Faker();
     final Map<Table, List<Row>> data = new LinkedHashMap<>();
     final Set<UUID> usedUuids = new HashSet<>();
@@ -211,7 +218,11 @@ public class DataGenerator {
             .numericScale(context.numericScale())
             .build());
 
-    validateNumericConstraints(context.orderedTables(), context.tableConstraints(), context.data(), context.numericScale());
+    validateNumericConstraints(
+        context.orderedTables(),
+        context.tableConstraints(),
+        context.data(),
+        context.numericScale());
     resolveForeignKeys(context);
   }
 
@@ -219,10 +230,10 @@ public class DataGenerator {
 
     final Set<String> softDeleteCols = new HashSet<>();
     if (params.softDeleteColumns() != null) {
-        Arrays.stream(params.softDeleteColumns().split(","))
-            .map(String::trim)
-            .filter(s -> !s.isEmpty())
-            .forEach(softDeleteCols::add);
+      Arrays.stream(params.softDeleteColumns().split(","))
+          .map(String::trim)
+          .filter(s -> !s.isEmpty())
+          .forEach(softDeleteCols::add);
     }
 
     params
@@ -236,15 +247,16 @@ public class DataGenerator {
                 return;
               }
 
-              final List<CheckExpression> checkExpressions = table.checks().stream()
-                  .filter(c -> c != null && !c.isBlank())
-                  .map(
-                      c -> {
-                        final String noParens = c.replaceAll("[()]+", " ");
-                        return new CheckExpression(
-                            c, noParens, noParens.toLowerCase(Locale.ROOT));
-                      })
-                  .toList();
+              final List<CheckExpression> checkExpressions =
+                  table.checks().stream()
+                      .filter(c -> c != null && !c.isBlank())
+                      .map(
+                          c -> {
+                            final String noParens = c.replaceAll("[()]+", " ");
+                            return new CheckExpression(
+                                c, noParens, noParens.toLowerCase(Locale.ROOT));
+                          })
+                      .toList();
 
               final Map<String, ParsedConstraint> constraints =
                   table.columns().stream()
@@ -257,40 +269,43 @@ public class DataGenerator {
               params.tableConstraints().put(table.name(), constraints);
               final List<Row> rows = new ArrayList<>();
               final Set<String> fkColumnNames = table.fkColumnNames();
-              final Predicate<Column> isFkColumn =
-                  column -> fkColumnNames.contains(column.name());
-              final List<List<String>> relevantUniqueKeys = table.uniqueKeys().stream()
-                  .filter(uk -> !fkColumnNames.containsAll(uk))
-                  .filter(uk -> table.primaryKey().isEmpty() || !table.primaryKey().equals(uk))
-                  .toList();
+              final Predicate<Column> isFkColumn = column -> fkColumnNames.contains(column.name());
+              final List<List<String>> relevantUniqueKeys =
+                  table.uniqueKeys().stream()
+                      .filter(uk -> !fkColumnNames.containsAll(uk))
+                      .filter(uk -> table.primaryKey().isEmpty() || !table.primaryKey().equals(uk))
+                      .toList();
               final Set<String> seenPrimaryKeys = new HashSet<>();
               final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
-              final Set<String> excluded = params.excludedColumns().getOrDefault(table.name(), Set.of());
+              final Set<String> excluded =
+                  params.excludedColumns().getOrDefault(table.name(), Set.of());
 
               final AtomicInteger generatedCount = new AtomicInteger(0);
-              
+
               List<RepetitionRule> rules = Collections.emptyList();
               if (params.repetitionRules() != null) {
-                  rules = params.repetitionRules().getOrDefault(table.name(), Collections.emptyList());
+                rules =
+                    params.repetitionRules().getOrDefault(table.name(), Collections.emptyList());
               }
 
-              final TableGenerationContext tableContext = TableGenerationContext.builder()
-                  .table(table)
-                  .generatedCount(generatedCount)
-                  .rows(rows)
-                  .constraints(constraints)
-                  .isFkColumn(isFkColumn)
-                  .excluded(excluded)
-                  .seenPrimaryKeys(seenPrimaryKeys)
-                  .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
-                  .softDeleteCols(softDeleteCols)
-                  .multiColumnConstraints(parseMultiColumnConstraints(table.checks()))
-                  .relevantUniqueKeys(relevantUniqueKeys)
-                  .build();
+              final TableGenerationContext tableContext =
+                  TableGenerationContext.builder()
+                      .table(table)
+                      .generatedCount(generatedCount)
+                      .rows(rows)
+                      .constraints(constraints)
+                      .isFkColumn(isFkColumn)
+                      .excluded(excluded)
+                      .seenPrimaryKeys(seenPrimaryKeys)
+                      .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
+                      .softDeleteCols(softDeleteCols)
+                      .multiColumnConstraints(parseMultiColumnConstraints(table.checks()))
+                      .relevantUniqueKeys(relevantUniqueKeys)
+                      .build();
 
               processRepetitionRules(rules, params, tableContext);
               fillRemainingRows(params, tableContext);
-              
+
               params.data().put(table, rows);
               log.debug("Generated {} rows for table {}.", rows.size(), table.name());
             });
@@ -300,101 +315,98 @@ public class DataGenerator {
       final List<RepetitionRule> rules,
       final GenerateTableRowsParameters params,
       final TableGenerationContext context) {
-      
-      for (final RepetitionRule rule : rules) {
-        final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
-          
-          rule.randomConstantColumns().forEach(colName -> {
-              final Column col = context.table().column(colName);
-              if (col != null) {
-                  final Object val = generateColumnValue(
-                      GenerateSingleRowParameters.builder()
-                          .faker(params.faker())
-                          .table(context.table())
-                          .index(context.generatedCount().get())
-                          .usedUuids(params.usedUuids())
-                          .constraints(context.constraints())
-                          .isFkColumn(context.isFkColumn())
-                          .excluded(context.excluded())
-                          .dictionaryWords(params.dictionaryWords())
-                          .useLatinDictionary(params.useLatinDictionary())
-                          .softDeleteCols(context.softDeleteCols())
-                          .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
-                          .softDeleteValue(params.softDeleteValue())
-                          .numericScale(params.numericScale())
-                          .build(),
-                      col
-                  );
-                  baseValues.put(colName, val);
-              }
-          });
 
-          for (int i = 0; i < rule.count(); i++) {
-              int attempts = 0;
-              while (attempts < MAX_GENERATE_ATTEMPTS) {
-                  final Optional<Row> generatedRow = generateAndValidateRowWithBase(
-                      createRowParams(params, context),
-                      baseValues
-                  );
-                  
-                  if (generatedRow.isPresent()) {
-                      context.rows().add(generatedRow.get());
-                      context.generatedCount().incrementAndGet();
-                      break;
-                  }
-                  attempts++;
-              }
+    for (final RepetitionRule rule : rules) {
+      final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
+
+      rule.randomConstantColumns()
+          .forEach(
+              colName -> {
+                final Column col = context.table().column(colName);
+                if (col != null) {
+                  final Object val =
+                      generateColumnValue(
+                          GenerateSingleRowParameters.builder()
+                              .faker(params.faker())
+                              .table(context.table())
+                              .index(context.generatedCount().get())
+                              .usedUuids(params.usedUuids())
+                              .constraints(context.constraints())
+                              .isFkColumn(context.isFkColumn())
+                              .excluded(context.excluded())
+                              .dictionaryWords(params.dictionaryWords())
+                              .useLatinDictionary(params.useLatinDictionary())
+                              .softDeleteCols(context.softDeleteCols())
+                              .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                              .softDeleteValue(params.softDeleteValue())
+                              .numericScale(params.numericScale())
+                              .build(),
+                          col);
+                  baseValues.put(colName, val);
+                }
+              });
+
+      for (int i = 0; i < rule.count(); i++) {
+        int attempts = 0;
+        while (attempts < MAX_GENERATE_ATTEMPTS) {
+          final Optional<Row> generatedRow =
+              generateAndValidateRowWithBase(createRowParams(params, context), baseValues);
+
+          if (generatedRow.isPresent()) {
+            context.rows().add(generatedRow.get());
+            context.generatedCount().incrementAndGet();
+            break;
           }
+          attempts++;
+        }
       }
+    }
   }
 
   private static void fillRemainingRows(
-      final GenerateTableRowsParameters params,
-      final TableGenerationContext context) {
-      
-      int attempts = 0;
-      while (context.generatedCount().get() < params.rowsPerTable()
-          && attempts < params.rowsPerTable() * MAX_GENERATE_ATTEMPTS) {
+      final GenerateTableRowsParameters params, final TableGenerationContext context) {
 
-        final Optional<Row> generatedRow =
-            generateAndValidateRow(
-                createRowParams(params, context));
+    int attempts = 0;
+    while (context.generatedCount().get() < params.rowsPerTable()
+        && attempts < params.rowsPerTable() * MAX_GENERATE_ATTEMPTS) {
 
-        generatedRow.ifPresent(
-            row -> {
-              context.rows().add(row);
-              context.generatedCount().incrementAndGet();
-            });
-        attempts++;
-      }
+      final Optional<Row> generatedRow = generateAndValidateRow(createRowParams(params, context));
+
+      generatedRow.ifPresent(
+          row -> {
+            context.rows().add(row);
+            context.generatedCount().incrementAndGet();
+          });
+      attempts++;
+    }
   }
 
   private static GenerateAndValidateRowParameters createRowParams(
-      final GenerateTableRowsParameters params,
-      final TableGenerationContext context) {
-      return GenerateAndValidateRowParameters.builder()
-          .table(context.table())
-          .generatedCount(context.generatedCount().get())
-          .faker(params.faker())
-          .usedUuids(params.usedUuids())
-          .constraints(context.constraints())
-          .isFkColumn(context.isFkColumn())
-          .excluded(context.excluded())
-          .dictionaryWords(params.dictionaryWords())
-          .useLatinDictionary(params.useLatinDictionary())
-          .seenPrimaryKeys(context.seenPrimaryKeys())
-          .seenUniqueKeyCombinations(context.seenUniqueKeyCombinations())
-          .softDeleteCols(context.softDeleteCols())
-          .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
-          .softDeleteValue(params.softDeleteValue())
-          .numericScale(params.numericScale())
-          .multiColumnConstraints(context.multiColumnConstraints())
-          .relevantUniqueKeys(context.relevantUniqueKeys())
-          .build();
+      final GenerateTableRowsParameters params, final TableGenerationContext context) {
+    return GenerateAndValidateRowParameters.builder()
+        .table(context.table())
+        .generatedCount(context.generatedCount().get())
+        .faker(params.faker())
+        .usedUuids(params.usedUuids())
+        .constraints(context.constraints())
+        .isFkColumn(context.isFkColumn())
+        .excluded(context.excluded())
+        .dictionaryWords(params.dictionaryWords())
+        .useLatinDictionary(params.useLatinDictionary())
+        .seenPrimaryKeys(context.seenPrimaryKeys())
+        .seenUniqueKeyCombinations(context.seenUniqueKeyCombinations())
+        .softDeleteCols(context.softDeleteCols())
+        .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+        .softDeleteValue(params.softDeleteValue())
+        .numericScale(params.numericScale())
+        .multiColumnConstraints(context.multiColumnConstraints())
+        .relevantUniqueKeys(context.relevantUniqueKeys())
+        .build();
   }
 
   @SuppressWarnings("java:S2245")
-  private static Object generateColumnValue(final GenerateSingleRowParameters params, final Column column) {
+  private static Object generateColumnValue(
+      final GenerateSingleRowParameters params, final Column column) {
     if (params.excluded().contains(column.name())) {
       return null;
     }
@@ -403,11 +415,11 @@ public class DataGenerator {
     }
 
     if (params.softDeleteCols() != null && params.softDeleteCols().contains(column.name())) {
-        if (params.softDeleteUseSchemaDefault()) {
-            return SqlKeyword.DEFAULT;
-        } else {
-            return convertStringValue(params.softDeleteValue(), column);
-        }
+      if (params.softDeleteUseSchemaDefault()) {
+        return SqlKeyword.DEFAULT;
+      } else {
+        return convertStringValue(params.softDeleteValue(), column);
+      }
     }
 
     if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
@@ -415,39 +427,33 @@ public class DataGenerator {
     }
 
     final ParsedConstraint pc = params.constraints().get(column.name());
-    final Object gen =
-        generateValue(
-            params.faker(),
-            column,
-            params.index(),
-            params.usedUuids(),
-            pc,
-            params.dictionaryWords(),
-            params.useLatinDictionary(),
-            params.numericScale());
+    final Object gen = generateValue(params, column, pc);
 
     return applyNumericConstraints(column, pc, gen, params.numericScale());
   }
 
   private static Object convertStringValue(final String value, final Column column) {
-      if (value == null || "NULL".equalsIgnoreCase(value)) return null;
-      try {
-          return switch (column.jdbcType()) {
-              case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
-              case Types.BIGINT -> Long.parseLong(value);
-              case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(value);
-              case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
-              case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
-              default -> value;
-          };
-      } catch (final Exception e) {
-          log.warn("Failed to convert value '{}' for column {}. Using NULL.", value, column.name());
-          return null;
-      }
+    if (value == null || "NULL".equalsIgnoreCase(value)) return null;
+    try {
+      return switch (column.jdbcType()) {
+        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
+        case Types.BIGINT -> Long.parseLong(value);
+        case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(value);
+        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
+        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
+        default -> value;
+      };
+    } catch (final Exception e) {
+      log.warn("Failed to convert value '{}' for column {}. Using NULL.", value, column.name());
+      return null;
+    }
   }
 
   private static Object applyNumericConstraints(
-      final Column column, final ParsedConstraint pc, final Object generatedValue, final int numericScale) {
+      final Column column,
+      final ParsedConstraint pc,
+      final Object generatedValue,
+      final int numericScale) {
     if (isNumericJdbc(column.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
       Object currentGen = generatedValue;
       int attempts = 0;
@@ -460,92 +466,104 @@ public class DataGenerator {
     return generatedValue;
   }
 
-  private static Optional<Row> generateAndValidateRow(final GenerateAndValidateRowParameters params) {
-      return generateAndValidateRowWithBase(params, Collections.emptyMap());
+  private static Optional<Row> generateAndValidateRow(
+      final GenerateAndValidateRowParameters params) {
+    return generateAndValidateRowWithBase(params, Collections.emptyMap());
   }
 
   private static Optional<Row> generateAndValidateRowWithBase(
       final GenerateAndValidateRowParameters params, final Map<String, Object> baseValues) {
 
     final Map<String, Object> values = new LinkedHashMap<>();
-    
+
     if (baseValues != null) {
-        values.putAll(baseValues);
+      values.putAll(baseValues);
     }
 
-    if (params.multiColumnConstraints() != null) {
-      for (final MultiColumnConstraint mcc : params.multiColumnConstraints()) {
-        final List<Map<String, String>> candidates = mcc.allowedCombinations();
-        final List<Map<String, String>> filtered = new ArrayList<>();
-
-        for (final Map<String, String> combo : candidates) {
-          boolean match = true;
-          for (final Map.Entry<String, String> entry : combo.entrySet()) {
-            final String col = entry.getKey();
-            final String valStr = entry.getValue();
-            if (values.containsKey(col)) {
-              final Object existingVal = values.get(col);
-              if (!String.valueOf(existingVal).equals(valStr)) {
-                match = false;
-                break;
-              }
-            }
-          }
-          if (match) filtered.add(combo);
-        }
-
-        if (filtered.isEmpty()) {
-          return Optional.empty();
-        }
-
-        final Map<String, String> chosen =
-            filtered.get(ThreadLocalRandom.current().nextInt(filtered.size()));
-
-        for (final Map.Entry<String, String> entry : chosen.entrySet()) {
-          final String colName = entry.getKey();
-          final String valStr = entry.getValue();
-          if (!values.containsKey(colName)) {
-            final Column col = params.table().column(colName);
-            if (col != null) {
-              values.put(colName, convertStringValue(valStr, col));
-            }
-          }
-        }
-      }
+    if (!applyMultiColumnConstraints(params, values)) {
+      return Optional.empty();
     }
 
-    params.table().columns().forEach(column -> {
-        if (!values.containsKey(column.name())) {
-             values.put(column.name(), generateColumnValue(
-                 GenerateSingleRowParameters.builder()
-                    .faker(params.faker())
-                    .table(params.table())
-                    .index(params.generatedCount())
-                    .usedUuids(params.usedUuids())
-                    .constraints(params.constraints())
-                    .isFkColumn(params.isFkColumn())
-                    .excluded(params.excluded())
-                    .dictionaryWords(params.dictionaryWords())
-                    .useLatinDictionary(params.useLatinDictionary())
-                    .softDeleteCols(params.softDeleteCols())
-                    .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
-                    .softDeleteValue(params.softDeleteValue())
-                    .numericScale(params.numericScale())
-                    .build(),
-                 column
-             ));
-        }
-    });
+    generateRemainingColumnValues(params, values);
 
     if (!isPrimaryKeyUnique(params.table(), values, params.seenPrimaryKeys())) {
       return Optional.empty();
     }
 
-    if (!areUniqueKeysUnique(params.relevantUniqueKeys(), values, params.seenUniqueKeyCombinations())) {
+    if (!areUniqueKeysUnique(
+        params.relevantUniqueKeys(), values, params.seenUniqueKeyCombinations())) {
       return Optional.empty();
     }
 
     return Optional.of(new Row(values));
+  }
+
+  private static boolean applyMultiColumnConstraints(
+      final GenerateAndValidateRowParameters params, final Map<String, Object> values) {
+    if (params.multiColumnConstraints() == null) {
+      return true;
+    }
+
+    for (final MultiColumnConstraint mcc : params.multiColumnConstraints()) {
+      final List<Map<String, String>> filtered =
+          mcc.allowedCombinations().stream()
+              .filter(
+                  combo ->
+                      combo.entrySet().stream()
+                          .allMatch(
+                              entry ->
+                                  !values.containsKey(entry.getKey())
+                                      || String.valueOf(values.get(entry.getKey()))
+                                          .equals(entry.getValue())))
+              .toList();
+
+      if (filtered.isEmpty()) {
+        return false;
+      }
+
+      final Map<String, String> chosen =
+          filtered.get(ThreadLocalRandom.current().nextInt(filtered.size()));
+
+      chosen.forEach(
+          (colName, valStr) -> {
+            final Column col = params.table().column(colName);
+            if (col != null) {
+              values.put(colName, convertStringValue(valStr, col));
+            }
+          });
+    }
+    return true;
+  }
+
+  private static void generateRemainingColumnValues(
+      final GenerateAndValidateRowParameters params, final Map<String, Object> values) {
+    params
+        .table()
+        .columns()
+        .forEach(
+            column -> {
+              if (!values.containsKey(column.name())) {
+                values.put(
+                    column.name(),
+                    generateColumnValue(
+                        GenerateSingleRowParameters.builder()
+                            .faker(params.faker())
+                            .table(params.table())
+                            .index(params.generatedCount())
+                            .usedUuids(params.usedUuids())
+                            .constraints(params.constraints())
+                            .isFkColumn(params.isFkColumn())
+                            .excluded(params.excluded())
+                            .dictionaryWords(params.dictionaryWords())
+                            .useLatinDictionary(params.useLatinDictionary())
+                            .softDeleteCols(params.softDeleteCols())
+                            .softDeleteUseSchemaDefault(params.softDeleteUseSchemaDefault())
+                            .softDeleteValue(params.softDeleteValue())
+                            .numericScale(params.numericScale())
+                            .build(),
+                        column));
+              }
+            });
   }
 
   private static boolean isPrimaryKeyUnique(
@@ -597,7 +615,10 @@ public class DataGenerator {
   }
 
   private static void validateRowNumericConstraints(
-      final Table table, final Row row, final Map<String, ParsedConstraint> constraints, final int numericScale) {
+      final Table table,
+      final Row row,
+      final Map<String, ParsedConstraint> constraints,
+      final int numericScale) {
     for (final Column col : table.columns()) {
       final ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
@@ -626,7 +647,8 @@ public class DataGenerator {
     context.orderedTables().forEach(table -> resolveForeignKeysForTable(table, fkContext));
   }
 
-  private static void resolveForeignKeysForTable(final Table table, final ForeignKeyResolutionContext context) {
+  private static void resolveForeignKeysForTable(
+      final Table table, final ForeignKeyResolutionContext context) {
     final List<Row> rows = Objects.requireNonNull(context.data().get(table));
 
     final Map<ForeignKey, Boolean> fkNullableCache =
@@ -852,16 +874,9 @@ public class DataGenerator {
   }
 
   private static Object generateValue(
-      final Faker faker,
-      final Column column,
-      final int index,
-      final Set<UUID> usedUuids,
-      final ParsedConstraint pc,
-      final List<String> dictionaryWords,
-      final boolean useLatinDictionary,
-      final int numericScale) {
+      final GenerateSingleRowParameters params, final Column column, final ParsedConstraint pc) {
     if (column.uuid()) {
-      return generateUuidValue(column, usedUuids, pc);
+      return generateUuidValue(column, params.usedUuids(), pc);
     }
 
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
@@ -874,7 +889,8 @@ public class DataGenerator {
 
     final ParsedConstraint effectivePc = determineEffectiveNumericConstraint(column, pc);
     if (effectivePc.min() != null || effectivePc.max() != null) {
-      final Object bounded = generateNumericWithinBounds(column, effectivePc, numericScale);
+      final Object bounded =
+          generateNumericWithinBounds(column, effectivePc, params.numericScale());
       if (bounded != null) return bounded;
     }
 
@@ -882,10 +898,17 @@ public class DataGenerator {
     if (maxLen == null || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
 
     return generateDefaultValue(
-        faker, column, index, maxLen, dictionaryWords, useLatinDictionary, numericScale);
+        params.faker(),
+        column,
+        params.index(),
+        maxLen,
+        params.dictionaryWords(),
+        params.useLatinDictionary(),
+        params.numericScale());
   }
 
-  private static Object generateUuidValue(final Column column, final Set<UUID> usedUuids, final ParsedConstraint pc) {
+  private static Object generateUuidValue(
+      final Column column, final Set<UUID> usedUuids, final ParsedConstraint pc) {
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
       final UUID uuid = tryParseUuidFromAllowedValues(column.allowedValues(), usedUuids);
       if (uuid != null) return uuid;
@@ -1039,12 +1062,14 @@ public class DataGenerator {
     return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
   }
 
-  private static double getDoubleMin(final Column column, final ParsedConstraint pc, final int numericScale) {
+  private static double getDoubleMin(
+      final Column column, final ParsedConstraint pc, final int numericScale) {
     final boolean hasMin = pc != null && pc.min() != null;
     final double colMinValue = column.minValue() != 0 ? column.minValue() : 1.0;
     if (hasMin) return pc.min();
 
-    if (column.minValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
+    if (column.minValue() == 0
+        && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)) {
       final double max = getDoubleMax(column, pc, numericScale);
       if (colMinValue > max) {
         return 0.0;
@@ -1053,30 +1078,34 @@ public class DataGenerator {
     return colMinValue;
   }
 
-  private static double getDoubleMax(final Column column, final ParsedConstraint pc, final int numericScale) {
+  private static double getDoubleMax(
+      final Column column, final ParsedConstraint pc, final int numericScale) {
     final boolean hasMax = pc != null && pc.max() != null;
     final double colMaxValue = column.maxValue() != 0 ? column.maxValue() : DEFAULT_DECIMAL_MAX;
     if (hasMax) return pc.max();
 
-    if (column.maxValue() == 0 && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC) && column.length() > 0) {
-        final int precision = column.length();
-        final int scale = getEffectiveScale(column, numericScale);
-        return Math.pow(10.0, (double) precision - scale) - Math.pow(10.0, -scale);
+    if (column.maxValue() == 0
+        && (column.jdbcType() == Types.DECIMAL || column.jdbcType() == Types.NUMERIC)
+        && column.length() > 0) {
+      final int precision = column.length();
+      final int scale = getEffectiveScale(column, numericScale);
+      return Math.pow(10.0, (double) precision - scale) - Math.pow(10.0, -scale);
     }
     return colMaxValue;
   }
 
-  private static double[] getNumericBounds(final Column column, final ParsedConstraint pc, final int numericScale) {
-      double min = getDoubleMin(column, pc, numericScale);
-      double max = getDoubleMax(column, pc, numericScale);
-      if (min > max) {
-          return new double[]{max, min};
-      }
-      return new double[]{min, max};
+  private static double[] getNumericBounds(
+      final Column column, final ParsedConstraint pc, final int numericScale) {
+    double min = getDoubleMin(column, pc, numericScale);
+    double max = getDoubleMax(column, pc, numericScale);
+    if (min > max) {
+      return new double[] {max, min};
     }
+    return new double[] {min, max};
+  }
 
   private static double generateRandomDouble(final double min, final double max) {
-      return min + (max - min) * ThreadLocalRandom.current().nextDouble();
+    return min + (max - min) * ThreadLocalRandom.current().nextDouble();
   }
 
   @SuppressWarnings("java:S2245")
@@ -1096,7 +1125,8 @@ public class DataGenerator {
   }
 
   @SuppressWarnings("java:S2245")
-  private static Object generateNumericWithinBounds(final Column column, final ParsedConstraint pc, final int numericScale) {
+  private static Object generateNumericWithinBounds(
+      final Column column, final ParsedConstraint pc, final int numericScale) {
     switch (column.jdbcType()) {
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> {
         int min = getIntMin(column, pc);
@@ -1163,7 +1193,7 @@ public class DataGenerator {
   }
 
   private static List<String> loadDictionaryWords(
-      final boolean useLatinDictionary, final boolean useEnglishDictionary, final boolean useSpanishDictionary) {
+      final boolean useEnglishDictionary, final boolean useSpanishDictionary) {
     final List<String> words = new ArrayList<>();
     if (useEnglishDictionary) {
       if (englishDictionaryCache.get() == null) {
@@ -1237,7 +1267,9 @@ public class DataGenerator {
   }
 
   private static ParsedConstraint parseConstraintsForColumn(
-      final List<CheckExpression> checkExpressions, final String columnName, final int columnLength) {
+      final List<CheckExpression> checkExpressions,
+      final String columnName,
+      final int columnLength) {
     if (checkExpressions == null || checkExpressions.isEmpty())
       return new ParsedConstraint(null, null, Collections.emptySet(), null);
 
@@ -1266,7 +1298,7 @@ public class DataGenerator {
       upper = rangeResult.upper();
 
       parseInListConstraint(check, patterns.in(), allowed);
-      parseAnyArrayConstraint(exprNoParens, patterns.anyArray(), allowed);
+      parseAnyArrayConstraint(check, patterns.anyArray(), allowed);
       parseEqualityConstraint(exprNoParens, patterns.eq(), allowed);
       maxLen = parseLengthConstraint(check, patterns.len(), maxLen);
     }
@@ -1325,7 +1357,8 @@ public class DataGenerator {
     return new RangeParseResult(newLower, newUpper);
   }
 
-  private static Double updateLowerBound(final String op, final double val, final Double currentLower) {
+  private static Double updateLowerBound(
+      final String op, final double val, final Double currentLower) {
     return switch (op) {
       case ">" ->
           (currentLower == null) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
@@ -1334,7 +1367,8 @@ public class DataGenerator {
     };
   }
 
-  private static Double updateUpperBound(final String op, final double val, final Double currentUpper) {
+  private static Double updateUpperBound(
+      final String op, final double val, final Double currentUpper) {
     return switch (op) {
       case "<" ->
           (currentUpper == null) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
@@ -1343,22 +1377,11 @@ public class DataGenerator {
     };
   }
 
-  private static void parseInListConstraint(final String check, final Pattern inPattern, final Set<String> allowed) {
+  private static void parseInListConstraint(
+      final String check, final Pattern inPattern, final Set<String> allowed) {
     final Matcher mi = inPattern.matcher(check);
     while (mi.find()) {
-      final String inside = mi.group(1);
-      Arrays.stream(inside.split(","))
-          .map(String::trim)
-          .filter(s -> !s.isEmpty())
-          .forEach(
-              s -> {
-                if ((s.startsWith("'") && s.endsWith("'"))
-                    || (s.startsWith("\"") && s.endsWith("\""))) {
-                  allowed.add(s.substring(1, s.length() - 1));
-                } else {
-                  allowed.add(s);
-                }
-              });
+      extractValuesFromList(mi.group(1), allowed, false);
     }
   }
 
@@ -1366,31 +1389,26 @@ public class DataGenerator {
       final String check, final Pattern anyArrayPattern, final Set<String> allowed) {
     final Matcher ma = anyArrayPattern.matcher(check);
     while (ma.find()) {
-      final String inside = ma.group(1);
-      Arrays.stream(inside.split(","))
-          .map(String::trim)
-          .filter(s -> !s.isEmpty())
-          .map(s -> s.replaceAll("(?i)::[a-z ]+", "")) // Remove Postgres type casts
-          .map(
-              s -> {
-                if ((s.startsWith("'") && s.endsWith("'"))
-                    || (s.startsWith("\"") && s.endsWith("\""))) {
-                  return s.substring(1, s.length() - 1);
-                }
-                return s;
-              })
-          .forEach(allowed::add);
+      extractValuesFromList(ma.group(1), allowed, true);
     }
+  }
+
+  private static void extractValuesFromList(
+      final String list, final Set<String> allowed, final boolean removeCasts) {
+    Arrays.stream(list.split(","))
+        .map(String::trim)
+        .filter(s -> !s.isEmpty())
+        .map(s -> removeCasts ? s.replaceAll("(?i)::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*", "") : s)
+        .map(DataGenerator::stripQuotes)
+        .forEach(allowed::add);
   }
 
   private static void parseEqualityConstraint(
       final String exprNoParens, final Pattern eqPattern, final Set<String> allowed) {
     final Matcher me = eqPattern.matcher(exprNoParens);
     while (me.find()) {
-      String s = me.group(1).trim();
-      if (s.startsWith("'") && s.endsWith("'")) s = s.substring(1, s.length() - 1);
-      if (s.startsWith("\"") && s.endsWith("\"")) s = s.substring(1, s.length() - 1);
-      if (!s.isEmpty()) allowed.add(s);
+      final String s = stripQuotes(me.group(1));
+      if (s != null && !s.isEmpty()) allowed.add(s);
     }
   }
 
@@ -1413,7 +1431,8 @@ public class DataGenerator {
     return newMaxLen;
   }
 
-  private static String normalizeToLength(final String value, final int length, final int jdbcType) {
+  private static String normalizeToLength(
+      final String value, final int length, final int jdbcType) {
     if (length <= 0) return value;
     if (value.length() > length) {
       return value.substring(0, length);
@@ -1429,34 +1448,30 @@ public class DataGenerator {
         columnName,
         name -> {
           final String colPattern =
-              "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(name)).concat("\"?\\s*");
-
-          final String castPattern = "(?:\\s*::[a-zA-Z0-9 ]+)*";
+              "(?i)(?:\\w+\\.)*+\\s*\"?".concat(Pattern.quote(name)).concat("\"?\\s*");
 
           return new ColumnPatterns(
               Pattern.compile(
                   colPattern
-                      .concat(castPattern)
+                      .concat(CAST_REGEX)
                       .concat(
-                          "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+                          "\\s+BETWEEN\\s+([-+]?\\d+(?:\\.\\d+)?)\\s+AND\\s+([-+]?\\d+(?:\\.\\d+)?)"),
                   Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   colPattern
-                      .concat(castPattern)
-                      .concat("\\s*(>=|<=|>|<|=)\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"),
+                      .concat(CAST_REGEX)
+                      .concat("\\s*(>=|<=|>|<|=)\\s*([-+]?\\d+(?:\\.\\d+)?)"),
                   Pattern.CASE_INSENSITIVE),
               Pattern.compile(
-                  colPattern.concat(castPattern).concat("\\s+IN\\s*\\(([^)]+)\\)"),
+                  colPattern.concat(CAST_REGEX).concat("\\s+IN\\s*\\(([^)]+)\\)"),
+                  Pattern.CASE_INSENSITIVE),
+              Pattern.compile(
+                  colPattern.concat(CAST_REGEX).concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
                   Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   colPattern
-                      .concat(castPattern)
-                      .concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
-                  Pattern.CASE_INSENSITIVE),
-              Pattern.compile(
-                  colPattern
-                      .concat(castPattern)
-                      .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
+                      .concat(CAST_REGEX)
+                      .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\"[^\"]*+\"|[\\w+-]+)"),
                   Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   "(?i)(?:char_length|length)\\s*\\(\\s*"
@@ -1465,16 +1480,16 @@ public class DataGenerator {
         });
   }
 
-
   private static int getEffectiveScale(final Column column, final int numericScale) {
     return column.scale() > 0 ? column.scale() : numericScale;
   }
 
-  private static List<MultiColumnConstraint> parseMultiColumnConstraints(final List<String> checks) {
+  private static List<MultiColumnConstraint> parseMultiColumnConstraints(
+      final List<String> checks) {
     final List<MultiColumnConstraint> result = new ArrayList<>();
     for (final String check : checks) {
-      if ((check.toUpperCase(Locale.ROOT).contains(" OR ")
-          || check.toUpperCase(Locale.ROOT).contains(" AND "))
+      if ((check.toUpperCase(Locale.ROOT).matches(".*\\bOR\\b.*")
+              || check.toUpperCase(Locale.ROOT).matches(".*\\bAND\\b.*"))
           && check.contains("=")) {
         final MultiColumnConstraint mcc = parseDnfConstraint(check);
         if (mcc != null) {
@@ -1486,52 +1501,59 @@ public class DataGenerator {
   }
 
   private static MultiColumnConstraint parseDnfConstraint(final String check) {
-    String clean = check.trim();
-    while (clean.startsWith("(") && clean.endsWith(")")) {
-      if (isWrappedInParens(clean)) {
-        clean = clean.substring(1, clean.length() - 1).trim();
-      } else {
-        break;
-      }
+    final String clean = cleanParens(check);
+    final List<Map<String, String>> combinations =
+        Arrays.stream(clean.split("(?i)\\s+OR\\s+|(?<=\\))\\s*OR\\s*|\\s*OR\\s*(?=\\()"))
+            .map(DataGenerator::parseAndClause)
+            .filter(Objects::nonNull)
+            .filter(m -> !m.isEmpty())
+            .toList();
+
+    if (combinations.isEmpty()) {
+      log.debug("Failed to parse DNF constraint: {}", check);
+      return null;
     }
 
-    final String[] clauses = clean.split("(?i)\\s+OR\\s+");
-    final List<Map<String, String>> combinations = new ArrayList<>();
-    final Set<String> columns = new HashSet<>();
+    final Set<String> allColumns =
+        combinations.stream().flatMap(m -> m.keySet().stream()).collect(Collectors.toSet());
 
-    for (final String clause : clauses) {
-      final Map<String, String> combination = new HashMap<>();
-      final String[] conditions = clause.split("(?i)\\s+AND\\s+");
-      for (final String cond : conditions) {
-        String cleanCond = cond.trim();
-        while (cleanCond.startsWith("(") && cleanCond.endsWith(")") && isWrappedInParens(cleanCond)) {
-          cleanCond = cleanCond.substring(1, cleanCond.length() - 1).trim();
-        }
+    return new MultiColumnConstraint(allColumns, combinations);
+  }
 
-        final Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
-        if (m.find()) {
-          final String col = m.group(1).replaceAll("\"", "");
-          String val = m.group(2);
-          if ((val.startsWith("'") && val.endsWith("'"))
-              || (val.startsWith("\"") && val.endsWith("\""))) {
-            val = val.substring(1, val.length() - 1);
-          }
-          combination.put(col, val);
-        }
-      }
-      if (combination.isEmpty()) return null;
-      combinations.add(combination);
-      if (columns.isEmpty()) {
-        columns.addAll(combination.keySet());
+  private static String cleanParens(final String s) {
+    String clean = s.trim();
+    while (clean.startsWith("(") && clean.endsWith(")") && isWrappedInParens(clean)) {
+      clean = clean.substring(1, clean.length() - 1).trim();
+    }
+    return clean;
+  }
+
+  private static Map<String, String> parseAndClause(final String clause) {
+    final Map<String, String> combination = new HashMap<>();
+    final String[] conditions = clause.split("(?i)\\s+AND\\s+|(?<=\\))\\s*AND\\s*|\\s*AND\\s*(?=\\()");
+    for (final String cond : conditions) {
+      final String cleanCond = cleanParens(cond);
+      final Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
+      if (m.find()) {
+        final String col = m.group(1).replace("\"", "");
+        final String val = stripQuotes(m.group(2));
+        combination.put(col, val);
       } else {
-        if (!columns.equals(combination.keySet())) {
-          return null;
-        }
+        log.debug("Failed to parse AND clause condition: {}", cleanCond);
+        return null;
       }
     }
+    return combination;
+  }
 
-    if (combinations.isEmpty()) return null;
-    return new MultiColumnConstraint(columns, combinations);
+  private static String stripQuotes(final String s) {
+    if (s == null) return null;
+    final String trimmed = s.trim();
+    if ((trimmed.startsWith("'") && trimmed.endsWith("'"))
+        || (trimmed.startsWith("\"") && trimmed.endsWith("\""))) {
+      return trimmed.substring(1, trimmed.length() - 1);
+    }
+    return trimmed;
   }
 
   private static boolean isWrappedInParens(final String s) {
@@ -1667,8 +1689,7 @@ public class DataGenerator {
       Map<String, Set<String>> seenUniqueKeyCombinations,
       Set<String> softDeleteCols,
       List<MultiColumnConstraint> multiColumnConstraints,
-      List<List<String>> relevantUniqueKeys
-  ) {}
+      List<List<String>> relevantUniqueKeys) {}
 
   @Builder
   private record GenerateSingleRowParameters(
@@ -1721,15 +1742,11 @@ public class DataGenerator {
   private record ParsedConstraint(
       Double min, Double max, Set<String> allowedValues, Integer maxLength) {}
 
-  private record MultiColumnConstraint(Set<String> columns, List<Map<String, String>> allowedCombinations) {}
+  private record MultiColumnConstraint(
+      Set<String> columns, List<Map<String, String>> allowedCombinations) {}
 
   private record ColumnPatterns(
-      Pattern between,
-      Pattern range,
-      Pattern in,
-      Pattern anyArray,
-      Pattern eq,
-      Pattern len) {}
+      Pattern between, Pattern range, Pattern in, Pattern anyArray, Pattern eq, Pattern len) {}
 
   private record CheckExpression(String original, String noParens, String noParensLow) {}
 

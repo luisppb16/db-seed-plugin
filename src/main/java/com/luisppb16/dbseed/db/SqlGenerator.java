@@ -98,11 +98,11 @@ public class SqlGenerator {
             update.fkValues().entrySet().stream()
                 .map(
                     e -> {
-                        StringBuilder valSb = new StringBuilder();
-                        dialect.formatValue(e.getValue(), valSb);
-                        return qualified(opts, e.getKey(), dialect)
-                            .concat("=")
-                            .concat(valSb.toString());
+                      StringBuilder valSb = new StringBuilder();
+                      dialect.formatValue(e.getValue(), valSb);
+                      return qualified(opts, e.getKey(), dialect)
+                          .concat("=")
+                          .concat(valSb.toString());
                     })
                 .collect(Collectors.joining(", "));
 
@@ -110,11 +110,11 @@ public class SqlGenerator {
             update.pkValues().entrySet().stream()
                 .map(
                     e -> {
-                        StringBuilder valSb = new StringBuilder();
-                        dialect.formatValue(e.getValue(), valSb);
-                        return qualified(opts, e.getKey(), dialect)
-                            .concat("=")
-                            .concat(valSb.toString());
+                      StringBuilder valSb = new StringBuilder();
+                      dialect.formatValue(e.getValue(), valSb);
+                      return qualified(opts, e.getKey(), dialect)
+                          .concat("=")
+                          .concat(valSb.toString());
                     })
                 .collect(Collectors.joining(" AND "));
 

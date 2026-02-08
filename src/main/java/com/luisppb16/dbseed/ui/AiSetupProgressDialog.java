@@ -16,6 +16,7 @@ import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -95,7 +96,7 @@ public class AiSetupProgressDialog extends DialogWrapper {
         appendLog("FATAL ERROR: " + e.getMessage());
         progressBar.setIndeterminate(false);
       }
-    }, Thread.ofVirtual().factory());
+    }, Executors.newVirtualThreadPerTaskExecutor());
   }
 
   private void updateStatus(String status, int progress) {

@@ -55,7 +55,7 @@ public class DataGenerator {
   private static final String CAST_REGEX = "(?:\\s*::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)*";
   private static final Pattern COL_EQ_VAL_PATTERN =
       Pattern.compile(
-          "(?is)^"
+          "(?i)^"
               + "[\\s()]*"
               + "(?:(?:\"?\\w+\"?)\\.)*"
               + "\"?(\\w+)\"?"
@@ -79,7 +79,6 @@ public class DataGenerator {
   private static final int UUID_GENERATION_LIMIT = 1_000_000;
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
   private static final String SPANISH_DICTIONARY_PATH = "/dictionaries/spanish-words.txt";
-  private static final Pattern MULTI_COL_PATTERN = Pattern.compile("(?is).*\\b(OR|AND)\\b.*");
 
   private static final AtomicReference<List<String>> englishDictionaryCache =
       new AtomicReference<>();
@@ -192,13 +191,12 @@ public class DataGenerator {
     final double seconds = duration.toMillis() / 1000.0;
 
     log.info(
-        "Generation completed in {} seconds. Tables: {}, deferred updates: {}, failed constraints: {}",
+        "Generation completed in {} seconds. Tables: {}, deferred updates: {}",
         String.format(Locale.ROOT, "%.3f", seconds),
         context.orderedTables().size(),
-        context.updates().size(),
-        context.failedConstraints().size());
+        context.updates().size());
 
-    return new GenerationResult(context.data(), context.updates(), context.failedConstraints());
+    return new GenerationResult(context.data(), context.updates());
   }
 
   private static void executeGenerationSteps(final GenerationContext context) {
@@ -218,7 +216,6 @@ public class DataGenerator {
             .softDeleteUseSchemaDefault(context.softDeleteUseSchemaDefault())
             .softDeleteValue(context.softDeleteValue())
             .numericScale(context.numericScale())
-            .failedConstraints(context.failedConstraints())
             .build());
 
     validateNumericConstraints(
@@ -256,15 +253,10 @@ public class DataGenerator {
                       .map(
                           c -> {
                             final String noParens = c.replaceAll("[()]+", " ");
-                            boolean multiCol =
-                                MULTI_COL_PATTERN.matcher(c).matches() && c.contains("=");
                             return new CheckExpression(
-                                c, noParens, noParens.toLowerCase(Locale.ROOT), multiCol);
+                                c, noParens, noParens.toLowerCase(Locale.ROOT));
                           })
                       .toList();
-
-              final List<CheckExpression> singleColExpressions =
-                  checkExpressions.stream().filter(ce -> !ce.isMultiColumn()).toList();
 
               final Map<String, ParsedConstraint> constraints =
                   table.columns().stream()
@@ -273,7 +265,7 @@ public class DataGenerator {
                               Column::name,
                               col ->
                                   parseConstraintsForColumn(
-                                      singleColExpressions, col.name(), col.length())));
+                                      checkExpressions, col.name(), col.length())));
               params.tableConstraints().put(table.name(), constraints);
               final List<Row> rows = new ArrayList<>();
               final Set<String> fkColumnNames = table.fkColumnNames();
@@ -307,9 +299,7 @@ public class DataGenerator {
                       .seenPrimaryKeys(seenPrimaryKeys)
                       .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
                       .softDeleteCols(softDeleteCols)
-                      .multiColumnConstraints(
-                          parseMultiColumnConstraints(
-                              table.name(), table.checks(), params.failedConstraints()))
+                      .multiColumnConstraints(parseMultiColumnConstraints(table.checks()))
                       .relevantUniqueKeys(relevantUniqueKeys)
                       .build();
 
@@ -510,7 +500,7 @@ public class DataGenerator {
 
   private static boolean applyMultiColumnConstraints(
       final GenerateAndValidateRowParameters params, final Map<String, Object> values) {
-    if (params.multiColumnConstraints() == null || params.multiColumnConstraints().isEmpty()) {
+    if (params.multiColumnConstraints() == null) {
       return true;
     }
 
@@ -534,7 +524,6 @@ public class DataGenerator {
       final Map<String, String> chosen =
           filtered.get(ThreadLocalRandom.current().nextInt(filtered.size()));
 
-      log.debug("Applying multi-column combination for table {}: {}", params.table().name(), chosen);
       chosen.forEach(
           (colName, valStr) -> {
             final Column col = params.table().column(colName);
@@ -1467,25 +1456,25 @@ public class DataGenerator {
                       .concat(CAST_REGEX)
                       .concat(
                           "\\s+BETWEEN\\s+([-+]?\\d+(?:\\.\\d+)?)\\s+AND\\s+([-+]?\\d+(?:\\.\\d+)?)"),
-                  Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                  Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   colPattern
                       .concat(CAST_REGEX)
                       .concat("\\s*(>=|<=|>|<|=)\\s*([-+]?\\d+(?:\\.\\d+)?)"),
-                  Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                  Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   colPattern.concat(CAST_REGEX).concat("\\s+IN\\s*\\(([^)]+)\\)"),
-                  Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                  Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   colPattern.concat(CAST_REGEX).concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
-                  Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                  Pattern.CASE_INSENSITIVE),
               Pattern.compile(
                   colPattern
                       .concat(CAST_REGEX)
                       .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\"[^\"]*+\"|[\\w+-]+)"),
-                  Pattern.CASE_INSENSITIVE | Pattern.DOTALL),
+                  Pattern.CASE_INSENSITIVE),
               Pattern.compile(
-                  "(?is)(?:char_length|length)\\s*\\(\\s*"
+                  "(?i)(?:char_length|length)\\s*\\(\\s*"
                       .concat(colPattern)
                       .concat("\\s*\\)\\s*(<=|<|=)\\s*(\\d+)")));
         });
@@ -1496,20 +1485,15 @@ public class DataGenerator {
   }
 
   private static List<MultiColumnConstraint> parseMultiColumnConstraints(
-      final String tableName, final List<String> checks, final List<FailedConstraint> failed) {
+      final List<String> checks) {
     final List<MultiColumnConstraint> result = new ArrayList<>();
     for (final String check : checks) {
-      if (MULTI_COL_PATTERN.matcher(check).matches() && check.contains("=")) {
+      if ((check.toUpperCase(Locale.ROOT).matches(".*\\bOR\\b.*")
+              || check.toUpperCase(Locale.ROOT).matches(".*\\bAND\\b.*"))
+          && check.contains("=")) {
         final MultiColumnConstraint mcc = parseDnfConstraint(check);
         if (mcc != null) {
-          log.debug(
-              "Successfully parsed multi-column constraint for table {} with {} combinations",
-              tableName,
-              mcc.allowedCombinations().size());
           result.add(mcc);
-        } else {
-          log.warn("Failed to parse multi-column constraint for table {}: {}", tableName, check);
-          failed.add(new FailedConstraint(tableName, check));
         }
       }
     }
@@ -1613,8 +1597,7 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale,
-      List<FailedConstraint> failedConstraints) {}
+      int numericScale) {}
 
   private record GenerationContext(
       List<Table> orderedTables,
@@ -1632,7 +1615,6 @@ public class DataGenerator {
       List<PendingUpdate> updates,
       Set<String> inserted,
       Map<String, Deque<Row>> uniqueFkParentQueues,
-      List<FailedConstraint> failedConstraints,
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
@@ -1671,7 +1653,6 @@ public class DataGenerator {
           new ArrayList<>(),
           new HashSet<>(),
           new HashMap<>(),
-          new ArrayList<>(),
           softDeleteColumns,
           softDeleteUseSchemaDefault,
           softDeleteValue,
@@ -1694,8 +1675,7 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale,
-      List<FailedConstraint> failedConstraints) {}
+      int numericScale) {}
 
   @Builder
   private record TableGenerationContext(
@@ -1768,13 +1748,7 @@ public class DataGenerator {
   private record ColumnPatterns(
       Pattern between, Pattern range, Pattern in, Pattern anyArray, Pattern eq, Pattern len) {}
 
-  private record CheckExpression(
-      String original, String noParens, String noParensLow, boolean isMultiColumn) {}
+  private record CheckExpression(String original, String noParens, String noParensLow) {}
 
-  public record FailedConstraint(String table, String constraint) {}
-
-  public record GenerationResult(
-      Map<Table, List<Row>> rows,
-      List<PendingUpdate> updates,
-      List<FailedConstraint> failedConstraints) {}
+  public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

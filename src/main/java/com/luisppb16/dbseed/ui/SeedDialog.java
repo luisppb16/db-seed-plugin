@@ -46,7 +46,7 @@ public final class SeedDialog extends DialogWrapper {
 
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private static final String DEFAULT_POSTGRES_USER = "postgres";
-  private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql:
+  private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
   private static final String DEFAULT_SCHEMA = "public";
 
   private final DriverInfo driverInfo;

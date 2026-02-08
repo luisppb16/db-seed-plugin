@@ -27,7 +27,7 @@ public class ConnectionConfigPersistence {
   private static final String SOFT_DELETE_VALUE_KEY = "dbseed.connection.softDeleteValue";
   private static final String NUMERIC_SCALE_KEY = "dbseed.connection.numericScale";
 
-  private static final String DEFAULT_URL = "jdbc:postgresql:
+  private static final String DEFAULT_URL = "jdbc:postgresql://localhost:5432/postgres";
   private static final String DEFAULT_USER = "postgres";
   private static final String DEFAULT_SCHEMA = "public";
   private static final int DEFAULT_ROWS = 10;

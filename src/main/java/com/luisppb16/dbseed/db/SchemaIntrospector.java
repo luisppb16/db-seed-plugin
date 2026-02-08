@@ -40,8 +40,8 @@ public class SchemaIntrospector {
 
   private static final String CAST_PATTERN = "(?:\\s*::[a-zA-Z0-9 ]+)*";
 
-  private static final Pattern POSTGRES_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
-  private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
+  private static final Pattern POSTGRES_CHECK_PATTERN = Pattern.compile("(?is)CHECK\\s*\\((.*)\\)");
+  private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?is)CHECK\\s*\\((.*?)\\)");
 
   private static final Map<String, Pattern> IN_PATTERNS = new ConcurrentHashMap<>();
   private static final Map<String, Pattern> ANY_ARRAY_PATTERNS = new ConcurrentHashMap<>();
@@ -331,10 +331,8 @@ public class SchemaIntrospector {
             columnName,
             k -> {
               final String cp =
-                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
-              return Pattern.compile(
-                  cp.concat(CAST_PATTERN).concat("\\s+IN\\s*\\(([^)]+)\\)"),
-                  Pattern.CASE_INSENSITIVE);
+                  "(?is)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+              return Pattern.compile(cp.concat(CAST_PATTERN).concat("\\s+IN\\s*\\(([^)]+)\\)"));
             });
 
     final Pattern anyArrayPattern =
@@ -342,10 +340,9 @@ public class SchemaIntrospector {
             columnName,
             k -> {
               final String cp =
-                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+                  "(?is)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
               return Pattern.compile(
-                  cp.concat(CAST_PATTERN).concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"),
-                  Pattern.CASE_INSENSITIVE);
+                  cp.concat(CAST_PATTERN).concat("\\s*=\\s*ANY\\s+ARRAY\\s*\\[(.*?)\\]"));
             });
 
     final Pattern eqPattern =
@@ -353,11 +350,10 @@ public class SchemaIntrospector {
             columnName,
             k -> {
               final String cp =
-                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+                  "(?is)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
               return Pattern.compile(
                   cp.concat(CAST_PATTERN)
-                      .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
-                  Pattern.CASE_INSENSITIVE);
+                      .concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"));
             });
 
     for (final String check : checks) {
@@ -545,7 +541,7 @@ public class SchemaIntrospector {
             columnName,
             k -> {
               final String cp =
-                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+                  "(?is)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
               return Pattern.compile(
                   cp.concat(CAST_PATTERN)
                       .concat("\\s+BETWEEN\\s+([-+]?[0-9]+)\\s+AND\\s+([-+]?[0-9]+)"));
@@ -556,7 +552,7 @@ public class SchemaIntrospector {
             columnName,
             k -> {
               final String cp =
-                  "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
+                  "(?is)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
               return Pattern.compile(
                   cp.concat(CAST_PATTERN)
                       .concat("\\s*>=?\\s*([-+]?[0-9]+)\\s*AND\\s*")

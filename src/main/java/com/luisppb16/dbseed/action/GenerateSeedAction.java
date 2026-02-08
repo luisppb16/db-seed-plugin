@@ -136,10 +136,17 @@ public final class GenerateSeedAction extends AnAction {
                 @Override
                 public void run(@NotNull final ProgressIndicator indicator) {
                   try {
-                    final String sql =
+                    final SeedGenerationResult result =
                         generateSeedSql(
                             finalConfig, tables, selections, indicator, settings, chosenDriver);
-                    ApplicationManager.getApplication().invokeLater(() -> openEditor(project, sql));
+                    ApplicationManager.getApplication()
+                        .invokeLater(
+                            () -> {
+                              openEditor(project, result.sql());
+                              if (!result.failedConstraints().isEmpty()) {
+                                notifyFailedConstraints(project, result.failedConstraints());
+                              }
+                            });
                   } catch (final Exception ex) {
                     handleException(project, ex);
                   }
@@ -151,7 +158,7 @@ public final class GenerateSeedAction extends AnAction {
     }
   }
 
-  private String generateSeedSql(
+  private SeedGenerationResult generateSeedSql(
       @NotNull final GenerationConfig config,
       @NotNull final List<Table> tables,
       @NotNull final DialogSelections selections,
@@ -212,7 +219,7 @@ public final class GenerateSeedAction extends AnAction {
         SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
 
     log.info("Seed SQL generated successfully.");
-    return sql;
+    return new SeedGenerationResult(sql, gen.failedConstraints());
   }
 
   private void openEditor(final Project project, final String sql) {
@@ -240,6 +247,26 @@ public final class GenerateSeedAction extends AnAction {
         new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
         project);
   }
+
+  private void notifyFailedConstraints(
+      final Project project, final List<DataGenerator.FailedConstraint> failed) {
+    final String message =
+        failed.stream()
+            .map(f -> String.format("[%s]: %s", f.table(), f.constraint()))
+            .collect(Collectors.joining("<br>"));
+
+    Notifications.Bus.notify(
+        new Notification(
+            NOTIFICATION_ID.getValue(),
+            "Some CHECK constraints could not be parsed",
+            "The following constraints were skipped during data generation and might be violated:<br><br>"
+                + message,
+            NotificationType.WARNING),
+        project);
+  }
+
+  private record SeedGenerationResult(
+      String sql, List<DataGenerator.FailedConstraint> failedConstraints) {}
 
   private record DialogSelections(
       Map<String, Set<String>> pkUuidOverrides,

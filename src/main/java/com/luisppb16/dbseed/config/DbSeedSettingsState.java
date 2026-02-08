@@ -28,7 +28,11 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final String DEFAULT_SOFT_DELETE_VALUE = "NULL";
   private static final boolean DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT = true;
   private static final String DEFAULT_SOFT_DELETE_COLUMNS = "deleted_at,is_deleted";
+  private static final String DEFAULT_OLLAMA_URL = "http://localhost:11434";
+  private static final String DEFAULT_AI_MODEL = "prem-1b-sql";
 
+  private String ollamaUrl = DEFAULT_OLLAMA_URL;
+  private String aiModel = DEFAULT_AI_MODEL;
   private boolean useLatinDictionary = true;
   private boolean useEnglishDictionary = false;
   private boolean useSpanishDictionary = false;
@@ -73,5 +77,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.softDeleteValue =
         Objects.requireNonNullElse(state.softDeleteValue, DEFAULT_SOFT_DELETE_VALUE);
     this.softDeleteUseSchemaDefault = state.softDeleteUseSchemaDefault;
+
+    this.ollamaUrl = Objects.requireNonNullElse(state.ollamaUrl, DEFAULT_OLLAMA_URL);
+    this.aiModel = Objects.requireNonNullElse(state.aiModel, DEFAULT_AI_MODEL);
   }
 }

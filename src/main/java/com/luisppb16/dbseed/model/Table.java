@@ -18,7 +18,8 @@ public record Table(
     List<String> primaryKey,
     List<ForeignKey> foreignKeys,
     List<String> checks,
-    List<List<String>> uniqueKeys) {
+    List<List<String>> uniqueKeys,
+    String ddl) {
 
   public Table {
     Objects.requireNonNull(name, "Table name cannot be null.");

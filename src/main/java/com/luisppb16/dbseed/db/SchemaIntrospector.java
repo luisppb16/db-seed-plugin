@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
+import com.luisppb16.dbseed.model.SqlType;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -64,6 +65,7 @@ public class SchemaIntrospector {
         loadAllUniqueKeys(meta, schema, rawTables);
     final Map<TableKey, List<ForeignKey>> allFks =
         loadAllForeignKeys(meta, schema, rawTables, allUniqueKeys);
+    final Map<TableKey, String> allDdls = loadAllDdls(conn, meta, schema, rawTables);
 
     for (final TableRawData tableData : rawTables) {
       final String tableName = tableData.name();
@@ -79,8 +81,9 @@ public class SchemaIntrospector {
       final List<List<String>> uniqueKeys =
           allUniqueKeys.getOrDefault(key, Collections.emptyList());
       final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
+      final String ddl = allDdls.getOrDefault(key, "");
 
-      tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
+      tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys, ddl));
     }
     return tables;
   }
@@ -151,12 +154,10 @@ public class SchemaIntrospector {
       columns.add(
           new Column(
               raw.name(),
-              raw.type(),
+              SqlType.fromJdbc(raw.type(), raw.typeName(), raw.length(), raw.scale()),
               raw.nullable(),
               pkSet.contains(raw.name()),
               isUuid,
-              raw.length(),
-              raw.scale(),
               minValue,
               maxValue,
               allowedValues));
@@ -526,6 +527,93 @@ public class SchemaIntrospector {
         }
       }
     }
+  }
+
+  private static Map<TableKey, String> loadAllDdls(
+      final Connection conn,
+      final DatabaseMetaData meta,
+      final String schema,
+      final List<TableRawData> tables)
+      throws SQLException {
+    final Map<TableKey, String> ddls = new HashMap<>();
+    final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
+
+    for (final TableRawData table : tables) {
+      final TableKey key = new TableKey(table.schema(), table.name());
+      String ddl = "";
+      try {
+        if (product.contains("mysql") || product.contains("mariadb")) {
+          ddl = fetchMySqlDdl(conn, table.name());
+        } else if (product.contains("postgresql")) {
+          ddl = fetchPostgreSqlDdl(conn, table.name(), table.schema());
+        } else if (product.contains("sqlite")) {
+          ddl = fetchSqliteDdl(conn, table.name());
+        } else if (product.contains("h2")) {
+          ddl = fetchH2Ddl(conn, table.name());
+        }
+      } catch (final SQLException e) {
+        log.warn("Failed to fetch DDL for table {}: {}", table.name(), e.getMessage());
+      }
+      ddls.put(key, ddl);
+    }
+    return ddls;
+  }
+
+  private static String fetchMySqlDdl(final Connection conn, final String tableName)
+      throws SQLException {
+    try (final PreparedStatement ps = conn.prepareStatement("SHOW CREATE TABLE `" + tableName + "`");
+        final ResultSet rs = ps.executeQuery()) {
+      if (rs.next()) {
+        return rs.getString(2);
+      }
+    }
+    return "";
+  }
+
+  private static String fetchPostgreSqlDdl(
+      final Connection conn, final String tableName, final String schema) throws SQLException {
+    final String sql = "SELECT 'CREATE TABLE ' || quote_ident(?) || '.' || quote_ident(?) || ' (' || " +
+                       "string_agg(quote_ident(column_name) || ' ' || data_type || " +
+                       "CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END, ', ') || ');' " +
+                       "FROM information_schema.columns WHERE table_schema = ? AND table_name = ?";
+    try (final PreparedStatement ps = conn.prepareStatement(sql)) {
+      ps.setString(1, schema);
+      ps.setString(2, tableName);
+      ps.setString(3, schema);
+      ps.setString(4, tableName);
+      try (final ResultSet rs = ps.executeQuery()) {
+        if (rs.next()) {
+          return rs.getString(1);
+        }
+      }
+    }
+    return "";
+  }
+
+  private static String fetchSqliteDdl(final Connection conn, final String tableName)
+      throws SQLException {
+    try (final PreparedStatement ps =
+        conn.prepareStatement("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")) {
+      ps.setString(1, tableName);
+      try (final ResultSet rs = ps.executeQuery()) {
+        if (rs.next()) {
+          return rs.getString(1);
+        }
+      }
+    }
+    return "";
+  }
+
+  private static String fetchH2Ddl(final Connection conn, final String tableName)
+      throws SQLException {
+    try (final PreparedStatement ps = conn.prepareStatement("SHOW CREATE TABLE " + tableName);
+        final ResultSet rs = ps.executeQuery()) {
+      if (rs.next()) {
+        return rs.getString(1);
+      }
+    } catch (final SQLException e) {
+    }
+    return "";
   }
 
   private static void extractChecksFromText(final String text, final List<String> out) {

@@ -149,7 +149,7 @@ public final class SchemaDesigner extends AnAction {
       final JProgressBar progressBar = new JProgressBar();
       progressBar.setIndeterminate(true);
       progressDialog.add(BorderLayout.CENTER, progressBar);
-      progressDialog.add(BorderLayout.NORTH, new JPanel()); // Margin
+      progressDialog.add(BorderLayout.NORTH, new JPanel());
       progressDialog.setSize(300, 75);
       progressDialog.setLocationRelativeTo(this);
 
@@ -210,11 +210,11 @@ public final class SchemaDesigner extends AnAction {
       if (x != -1 && y != -1) {
         setLocation(x, y);
       } else {
-        // Center and move up
+
         setLocationRelativeTo(null);
         final Point location = getLocation();
         final int screenHeight = Toolkit.getDefaultToolkit().getScreenSize().height;
-        final int newY = (int) (screenHeight * 0.2); // Move to 20% from top
+        final int newY = (int) (screenHeight * 0.2);
         setLocation(location.x, newY);
       }
     }
@@ -224,7 +224,7 @@ public final class SchemaDesigner extends AnAction {
     public UiTable {
       Objects.requireNonNull(name, "Table name cannot be null.");
       Objects.requireNonNull(columns, "Column list cannot be null.");
-      columns = List.copyOf(columns); // Ensure immutability
+      columns = List.copyOf(columns);
     }
 
     @Override

@@ -32,7 +32,7 @@ public class DbSeedSettingsComponent {
   private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English dictionary");
   private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish dictionary");
 
-  // Soft Delete Components
+
   private final JBTextField mySoftDeleteColumns = new JBTextField();
   private final JBCheckBox mySoftDeleteUseSchemaDefault =
       new JBCheckBox("Use schema default value");
@@ -46,7 +46,7 @@ public class DbSeedSettingsComponent {
     myUseEnglishDictionary.setSelected(settings.isUseEnglishDictionary());
     myUseSpanishDictionary.setSelected(settings.isUseSpanishDictionary());
 
-    // Soft Delete Init
+
     mySoftDeleteColumns.setText(settings.getSoftDeleteColumns());
     mySoftDeleteUseSchemaDefault.setSelected(settings.isSoftDeleteUseSchemaDefault());
     mySoftDeleteValue.setText(settings.getSoftDeleteValue());
@@ -145,7 +145,7 @@ public class DbSeedSettingsComponent {
     myUseSpanishDictionary.setSelected(use);
   }
 
-  // Soft Delete Getters/Setters
+
   public String getSoftDeleteColumns() {
     return mySoftDeleteColumns.getText();
   }

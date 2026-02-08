@@ -149,7 +149,7 @@ public class DriverSelectionDialog extends DialogWrapper {
           "Please enter a ProjectId for Google BigQuery.",
           "Google BigQuery ProjectId",
           JOptionPane.WARNING_MESSAGE);
-      return null; // Return null to indicate configuration failure
+      return null;
     }
     final String url = selectedDriver.urlTemplate().replace("%your_project_id%", currentProjectId);
     log.info("Generated BigQuery URL: {}", url);

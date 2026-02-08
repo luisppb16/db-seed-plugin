@@ -36,7 +36,7 @@ public class SchemaDsl {
 
   public static Column pk(final String name, final SqlType type) {
     return new Column(
-        name, type, true, true, null, true); // Primary keys are always not null and unique
+        name, type, true, true, null, true);
   }
 
   @SuppressWarnings("unused")

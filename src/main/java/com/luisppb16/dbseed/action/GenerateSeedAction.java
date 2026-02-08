@@ -77,7 +77,7 @@ public final class GenerateSeedAction extends AnAction {
       final GenerationConfig config = seedDialog.getConfiguration();
       final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
-      // Step 1: Introspect Schema (Background)
+
       final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
 
       ProgressManager.getInstance()
@@ -103,8 +103,8 @@ public final class GenerateSeedAction extends AnAction {
         return;
       }
 
-      // Step 2: Show PkUuidSelectionDialog (EDT)
-      // Pass the config from Step 2 to Step 3 so it can be updated with Soft Delete settings
+
+
       final PkUuidSelectionDialog pkDialog = new PkUuidSelectionDialog(tables, config);
       if (!pkDialog.showAndGet()) {
         return;
@@ -117,19 +117,19 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getRepetitionRules(),
               pkDialog.getExcludedTables());
 
-      // Update config with Soft Delete settings from Step 3
+
       final GenerationConfig finalConfig =
           config.toBuilder()
               .softDeleteColumns(pkDialog.getSoftDeleteColumns())
               .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
               .softDeleteValue(pkDialog.getSoftDeleteValue())
-              .numericScale(pkDialog.getNumericScale()) // Get scale from Step 3
+              .numericScale(pkDialog.getNumericScale())
               .build();
 
-      // Persist the updated configuration including Soft Delete settings
+
       ConnectionConfigPersistence.save(project, finalConfig);
 
-      // Step 3: Generate Data (Background)
+
       ProgressManager.getInstance()
           .run(
               new Task.Backgroundable(project, APP_NAME.getValue(), false) {
@@ -204,7 +204,7 @@ public final class GenerateSeedAction extends AnAction {
                 .softDeleteColumns(config.softDeleteColumns())
                 .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
                 .softDeleteValue(config.softDeleteValue())
-                .numericScale(config.numericScale()) // Pass scale
+                .numericScale(config.numericScale())
                 .build());
 
     indicator.setText("Building SQL...");
@@ -231,7 +231,7 @@ public final class GenerateSeedAction extends AnAction {
     }
     log.error("Error during seed SQL generation.", ex);
 
-    // Ensure notification is shown on EDT
+
     ApplicationManager.getApplication().invokeLater(() -> notifyError(project, message));
   }
 

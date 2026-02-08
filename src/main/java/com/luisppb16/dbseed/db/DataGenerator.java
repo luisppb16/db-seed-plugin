@@ -203,9 +203,23 @@ public class DataGenerator {
       final Set<String> fkColumnNames = table.fkColumnNames();
       final Predicate<Column> isFkColumn = column -> fkColumnNames.contains(column.name());
       final Set<String> seenPrimaryKeys = Collections.synchronizedSet(new HashSet<>());
-      final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
       final Set<String> excluded = context.excludedColumns().getOrDefault(table.name(), Set.of());
       final AtomicInteger generatedCount = new AtomicInteger(0);
+
+      final Set<String> aiTargetColumns = new HashSet<>();
+      table.columns().forEach(c -> {
+          if (c.hasAllowedValues()) aiTargetColumns.add(c.name());
+      });
+      if (!table.checks().isEmpty()) {
+          table.checks().forEach(check -> {
+              table.columns().forEach(c -> {
+                  if (check.toLowerCase(Locale.ROOT).contains(c.name().toLowerCase(Locale.ROOT))) {
+                      aiTargetColumns.add(c.name());
+                  }
+              });
+          });
+      }
+      final boolean needsAi = !aiTargetColumns.isEmpty();
 
       final TableGenerationContext tableContext = TableGenerationContext.builder()
           .table(table)
@@ -214,8 +228,9 @@ public class DataGenerator {
           .isFkColumn(isFkColumn)
           .excluded(excluded)
           .seenPrimaryKeys(seenPrimaryKeys)
-          .seenUniqueKeyCombinations(seenUniqueKeyCombinations)
           .softDeleteCols(softDeleteCols)
+          .aiTargetColumns(aiTargetColumns)
+          .needsAi(needsAi)
           .build();
 
       processRepetitionRules(context, tableContext);
@@ -278,7 +293,7 @@ public class DataGenerator {
             values.put(col.name(), generateInitialValue(context, tableContext, col));
         }
     }
-    return validateRowWithAi(tableContext.table(), values, tableContext.seenPrimaryKeys());
+    return validateRowWithAi(tableContext, values);
   }
 
   private static Object generateInitialValue(GenerationContext context, TableGenerationContext tableContext, Column col) {
@@ -293,20 +308,22 @@ public class DataGenerator {
                                col.length(), context.dictionaryWords(), context.useLatinDictionary(), context.numericScale());
   }
 
-  private static Optional<Row> validateRowWithAi(Table table, Map<String, Object> values, Set<String> seenPks) {
-    String ddl = table.ddl();
-    if (ddl == null || ddl.isBlank()) {
-        return Optional.of(new Row(values));
+  private static Optional<Row> validateRowWithAi(TableGenerationContext tableContext, Map<String, Object> values) {
+    if (!tableContext.needsAi() || tableContext.table().ddl() == null || tableContext.table().ddl().isBlank()) {
+        return finalizeRow(tableContext, values);
     }
 
     try {
-      String jsonValues = OBJECT_MAPPER.writeValueAsString(values);
+      Map<String, Object> constrainedValues = new LinkedHashMap<>();
+      tableContext.aiTargetColumns().forEach(col -> constrainedValues.put(col, values.get(col)));
+
+      String jsonValues = OBJECT_MAPPER.writeValueAsString(constrainedValues);
       String prompt = String.format(
           "Analyze this SQL DDL:\n%s\n\n" +
-          "And these generated values for one row (in JSON):\n%s\n\n" +
-          "Ensure all domain constraints, checks, and data types are respected. " +
-          "If a value is invalid, fix it. Return ONLY the corrected row in JSON format.",
-          ddl, jsonValues);
+          "And these generated values for the columns involved in constraints (in JSON):\n%s\n\n" +
+          "Ensure all domain constraints and checks are respected. " +
+          "If a value is invalid, fix it. Return ONLY the corrected values in JSON format.",
+          tableContext.table().ddl(), jsonValues);
 
       String response = AI_SERVICE.ask(prompt);
       if (response.contains("```json")) {
@@ -315,17 +332,24 @@ public class DataGenerator {
       }
       Map<String, Object> correctedValues = OBJECT_MAPPER.readValue(response, new TypeReference<Map<String, Object>>() {});
 
-      if (!table.primaryKey().isEmpty()) {
-        String pkKey = table.primaryKey().stream()
-            .map(pk -> Objects.toString(correctedValues.get(pk), "NULL"))
-            .collect(Collectors.joining("|"));
-        if (!seenPks.add(pkKey)) return Optional.empty();
-      }
-      return Optional.of(new Row(correctedValues));
+      Map<String, Object> mergedValues = new LinkedHashMap<>(values);
+      mergedValues.putAll(correctedValues);
+
+      return finalizeRow(tableContext, mergedValues);
     } catch (Exception e) {
-      log.warn("AI validation failed for table {}, using original values: {}", table.name(), e.getMessage());
-      return Optional.of(new Row(values));
+      log.warn("AI validation failed for table {}, using original values: {}", tableContext.table().name(), e.getMessage());
+      return finalizeRow(tableContext, values);
     }
+  }
+
+  private static Optional<Row> finalizeRow(TableGenerationContext tableContext, Map<String, Object> values) {
+    if (!tableContext.table().primaryKey().isEmpty()) {
+        String pkKey = tableContext.table().primaryKey().stream()
+            .map(pk -> Objects.toString(values.get(pk), "NULL"))
+            .collect(Collectors.joining("|"));
+        if (!tableContext.seenPrimaryKeys().add(pkKey)) return Optional.empty();
+    }
+    return Optional.of(new Row(values));
   }
 
   private static Object convertStringValue(final String value, final Column column) {
@@ -518,7 +542,7 @@ public class DataGenerator {
   private record TableGenerationContext(
       Table table, AtomicInteger generatedCount, List<Row> rows,
       Predicate<Column> isFkColumn, Set<String> excluded, Set<String> seenPrimaryKeys,
-      Map<String, Set<String>> seenUniqueKeyCombinations, Set<String> softDeleteCols) {}
+      Set<String> softDeleteCols, Set<String> aiTargetColumns, boolean needsAi) {}
 
   private record ForeignKeyResolutionContext(
       Map<String, Table> tableMap, Map<Table, List<Row>> data, boolean deferred,

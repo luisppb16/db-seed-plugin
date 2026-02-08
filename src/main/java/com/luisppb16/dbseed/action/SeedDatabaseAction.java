@@ -90,7 +90,7 @@ public class SeedDatabaseAction extends AnAction {
       case DialogWrapper.OK_EXIT_CODE ->
           runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
       case SeedDialog.BACK_EXIT_CODE -> {
-        // Re-open driver selection if user goes back
+
         try {
           DriverLoader.selectAndLoadDriver(project)
               .ifPresent(driverInfo -> showSeedDialog(project, driverInfo));
@@ -206,7 +206,7 @@ public class SeedDatabaseAction extends AnAction {
                 .softDeleteValue(pkDialog.getSoftDeleteValue())
                 .build();
 
-        // Persist the updated configuration including Soft Delete settings
+
         ConnectionConfigPersistence.save(project, finalConfig);
 
         ProgressManager.getInstance()

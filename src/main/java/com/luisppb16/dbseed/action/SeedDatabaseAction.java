@@ -27,7 +27,6 @@ import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
-import com.luisppb16.dbseed.db.OllamaService;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
@@ -61,7 +60,6 @@ import org.jetbrains.annotations.NotNull;
 public class SeedDatabaseAction extends AnAction {
 
   private static final long INSERT_THRESHOLD = 10000L;
-  private static final OllamaService OLLAMA_SERVICE = new OllamaService();
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
@@ -71,18 +69,6 @@ public class SeedDatabaseAction extends AnAction {
       return;
     }
 
-    // Provision AI Engine first
-    ApplicationManager.getApplication().executeOnPooledThread(() -> {
-        try {
-            OLLAMA_SERVICE.ensureModelExists();
-            ApplicationManager.getApplication().invokeLater(() -> startDriverSelection(project));
-        } catch (Exception ex) {
-            handleException(project, "AI Engine provisioning failed: ", ex);
-        }
-    });
-  }
-
-  private void startDriverSelection(Project project) {
     try {
       final Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
       if (chosenDriverOpt.isEmpty()) {

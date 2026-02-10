@@ -33,7 +33,7 @@ package com.luisppb16.dbseed.db.dialect;
  * that differentiate it from standard ANSI SQL implementations.
  * </p>
  */
-public class PostgreSqlDialect extends AbstractDialect {
+public final class PostgreSqlDialect extends AbstractDialect {
   public PostgreSqlDialect() {
     super("postgresql.properties");
   }

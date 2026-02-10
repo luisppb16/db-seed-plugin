@@ -31,7 +31,7 @@ package com.luisppb16.dbseed.db.dialect;
  * optimization for particular database vendors.
  * </p>
  */
-public class StandardDialect extends AbstractDialect {
+public final class StandardDialect extends AbstractDialect {
   public StandardDialect() {
     super("standard.properties");
   }

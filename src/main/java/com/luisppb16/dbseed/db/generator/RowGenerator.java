@@ -395,7 +395,22 @@ public final class RowGenerator {
         if (statusValue != null && statusIdValue != null) {
           // Both values exist, check if they're consistent
           final String statusStr = String.valueOf(statusValue);
-          final Integer statusIdInt = (Integer) statusIdValue;
+          
+          // Handle both Integer and String types for statusId
+          final Integer statusIdInt;
+          if (statusIdValue instanceof Integer) {
+            statusIdInt = (Integer) statusIdValue;
+          } else if (statusIdValue instanceof String) {
+            try {
+              statusIdInt = Integer.parseInt((String) statusIdValue);
+            } catch (final NumberFormatException e) {
+              // Invalid format, cannot validate - skip correction
+              return;
+            }
+          } else {
+            // Unsupported type, skip correction
+            return;
+          }
 
           // Always prioritize statusId as the authoritative value and adjust status to match
           final String expectedStatusForId = getIdCorrespondingStatus(statusIdInt);
@@ -414,7 +429,20 @@ public final class RowGenerator {
           }
         } else if (statusValue == null && statusIdValue != null) {
           // Only ID is set, set the corresponding status
-          final Integer statusIdInt = (Integer) statusIdValue;
+          final Integer statusIdInt;
+          if (statusIdValue instanceof Integer) {
+            statusIdInt = (Integer) statusIdValue;
+          } else if (statusIdValue instanceof String) {
+            try {
+              statusIdInt = Integer.parseInt((String) statusIdValue);
+            } catch (final NumberFormatException e) {
+              // Invalid format, skip
+              return;
+            }
+          } else {
+            // Unsupported type, skip
+            return;
+          }
           final String correspondingStatus = getIdCorrespondingStatus(statusIdInt);
           if (correspondingStatus != null) {
             values.put("missionStatus", correspondingStatus);

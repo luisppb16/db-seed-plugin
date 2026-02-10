@@ -37,7 +37,7 @@ import java.util.List;
  * ensures proper value formatting for reliable data insertion.
  * </p>
  */
-public class SqliteDialect extends AbstractDialect {
+public final class SqliteDialect extends AbstractDialect {
   private static final int SQLITE_BATCH_SIZE = 100; // Smaller batch size for SQLite
 
   public SqliteDialect() {

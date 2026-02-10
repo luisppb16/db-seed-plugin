@@ -36,14 +36,7 @@ import java.util.List;
  * unique syntax, reserved words, and operational characteristics of the target database.
  * </p>
  */
-public sealed interface DatabaseDialect permits 
-    AbstractDialect, 
-    SqlServerDialect, 
-    MySQLDialect, 
-    StandardDialect, 
-    SqliteDialect, 
-    PostgreSqlDialect, 
-    OracleDialect {
+public sealed interface DatabaseDialect permits AbstractDialect {
 
   /** Quotes an identifier (table or column name). */
   String quote(String identifier);

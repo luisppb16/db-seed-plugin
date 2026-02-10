@@ -35,7 +35,7 @@ import java.util.Locale;
  * and TO_DATE/TO_TIMESTAMP function usage for temporal values.
  * </p>
  */
-public class OracleDialect extends AbstractDialect {
+public final class OracleDialect extends AbstractDialect {
   public OracleDialect() {
     super("oracle.properties");
   }

@@ -33,7 +33,7 @@ package com.luisppb16.dbseed.db.dialect;
  * that differentiate it from standard ANSI SQL implementations.
  * </p>
  */
-public class SqlServerDialect extends AbstractDialect {
+public final class SqlServerDialect extends AbstractDialect {
   public SqlServerDialect() {
     super("sqlserver.properties");
   }

@@ -33,7 +33,7 @@ package com.luisppb16.dbseed.db.dialect;
  * MySQL's unique handling of identifiers and constraints.
  * </p>
  */
-public class MySQLDialect extends AbstractDialect {
+public final class MySQLDialect extends AbstractDialect {
   public MySQLDialect() {
     super("mysql.properties");
   }

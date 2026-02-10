@@ -5,11 +5,6 @@
 
 package com.luisppb16.dbseed.action;
 
-import static com.luisppb16.dbseed.model.Constant.NOTIFICATION_ID;
-
-import com.intellij.notification.Notification;
-import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -35,6 +30,7 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
+import com.luisppb16.dbseed.util.NotificationHelper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -200,11 +196,17 @@ public class SeedDatabaseAction extends AnAction {
         final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
         final GenerationConfig finalConfig =
-            config.toBuilder()
-                .softDeleteColumns(pkDialog.getSoftDeleteColumns())
-                .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
-                .softDeleteValue(pkDialog.getSoftDeleteValue())
-                .build();
+            new GenerationConfig(
+                config.url(),
+                config.user(),
+                config.password(),
+                config.schema(),
+                config.rowsPerTable(),
+                config.deferred(),
+                pkDialog.getSoftDeleteColumns(),
+                pkDialog.getSoftDeleteUseSchemaDefault(),
+                pkDialog.getSoftDeleteValue(),
+                config.numericScale());
 
         // Persist the updated configuration including Soft Delete settings
         ConnectionConfigPersistence.save(project, finalConfig);
@@ -300,8 +302,6 @@ public class SeedDatabaseAction extends AnAction {
   }
 
   private void notifyError(final Project project, final String message) {
-    Notifications.Bus.notify(
-        new Notification(NOTIFICATION_ID.getValue(), "Error", message, NotificationType.ERROR),
-        project);
+    NotificationHelper.notifyError(project, message);
   }
 }

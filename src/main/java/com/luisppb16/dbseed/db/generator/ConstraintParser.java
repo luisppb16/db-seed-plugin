@@ -22,10 +22,11 @@ public final class ConstraintParser {
   private static final String CAST_REGEX = "(?:\\s*::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)*";
   private static final Pattern COL_EQ_VAL_PATTERN =
       Pattern.compile(
-          "(?i)^"
+          "(?i)"
+              + "^"
               + "[\\s()]*"
-              + "(?:(?:\"?\\w+\"?)\\.)*"
-              + "\"?(\\w+)\"?"
+              + "(?:(?:\"?[\\w\\.$]+\"?)\\.)*"  // Updated to handle schema.table.column format
+              + "\"?([\\w\\.$]+)\"?"  // Updated to allow dots in column names
               + "[\\s()]*"
               + CAST_REGEX
               + "\\s*=\\s*"
@@ -39,6 +40,23 @@ public final class ConstraintParser {
               + CAST_REGEX
               + "[\\s()]*"
               + "$");
+
+  private static final Pattern COL_EQ_VAL_PATTERN_RELAXED =
+      Pattern.compile(
+          "(?i)"
+              + "[\\s()]*"
+              + "\"?([\\w\\.$]+)\"?"  // Updated to allow dots in column names
+              + "[\\s()]*"
+              + "(?:::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)?"
+              + "\\s*=\\s*"
+              + "("
+              + "'[^']*'"
+              + "|"
+              + "\"[^\"]*\""
+              + "|"
+              + "\\d+"
+              + ")"
+              + "[\\s()]*");
 
   private final String columnName;
   private final ColumnPatterns patterns;
@@ -218,21 +236,34 @@ public final class ConstraintParser {
   public static List<MultiColumnConstraint> parseMultiColumnConstraints(final List<String> checks) {
     final List<MultiColumnConstraint> result = new java.util.ArrayList<>();
     for (final String check : checks) {
-      if ((check.toUpperCase(Locale.ROOT).matches(".*\\bOR\\b.*")
-              || check.toUpperCase(Locale.ROOT).matches(".*\\bAND\\b.*"))
-          && check.contains("=")) {
-        final MultiColumnConstraint mcc = parseDnfConstraint(check);
-        if (mcc != null) {
-          result.add(mcc);
-        }
+      if (check == null || check.isBlank()) {
+        continue;
+      }
+      final String checkUpper = check.toUpperCase(Locale.ROOT);
+      if (!checkUpper.contains("=")) {
+        continue;
+      }
+      final boolean hasOr = checkUpper.matches(".*\\bOR\\b.*");
+      final boolean hasAnd = checkUpper.matches(".*\\bAND\\b.*");
+      if (!hasOr && !hasAnd) {
+        continue;
+      }
+      final MultiColumnConstraint mcc = parseDnfConstraint(check);
+      if (mcc != null && !mcc.allowedCombinations().isEmpty()) {
+        result.add(mcc);
       }
     }
     return result;
   }
 
   private static MultiColumnConstraint parseDnfConstraint(final String check) {
-    final String clean = cleanParens(check);
-    final String[] parts = clean.split("(?i)\\s+OR\\s+|(?<=\\))\\s*OR\\s*|\\s*OR\\s*(?=\\()");
+    String clean = cleanParens(check);
+
+    clean = clean.replaceAll("(?i)^CHECK\\s*", "");
+    clean = cleanParens(clean);
+
+    // Handle complex OR conditions by properly identifying the OR boundaries
+    final String[] parts = splitByTopLevelOr(clean);
     final List<java.util.Map<String, String>> combinations =
         Stream.of(parts)
             .map(ConstraintParser::parseAndClause)
@@ -241,7 +272,6 @@ public final class ConstraintParser {
             .toList();
 
     if (combinations.isEmpty()) {
-      // Failed to parse DNF constraint
       return null;
     }
 
@@ -249,6 +279,47 @@ public final class ConstraintParser {
         combinations.stream().flatMap(m -> m.keySet().stream()).collect(java.util.stream.Collectors.toSet());
 
     return new MultiColumnConstraint(allColumns, combinations);
+  }
+
+  // Helper method to split by OR while respecting parentheses
+  private static String[] splitByTopLevelOr(String input) {
+    List<String> parts = new java.util.ArrayList<>();
+    int parenLevel = 0;
+    int lastSplit = 0;
+    
+    for (int i = 0; i < input.length(); i++) {
+      char c = input.charAt(i);
+      
+      if (c == '(') {
+        parenLevel++;
+      } else if (c == ')') {
+        parenLevel--;
+      } else if (parenLevel == 0 && i + 2 < input.length()) {
+        // Check for "OR" at top level (not inside parentheses)
+        if (Character.toLowerCase(input.charAt(i)) == 'o' && 
+            Character.toLowerCase(input.charAt(i + 1)) == 'r' &&
+            (i == 0 || !Character.isLetterOrDigit(input.charAt(i - 1))) &&
+            (i + 2 >= input.length() || !Character.isLetterOrDigit(input.charAt(i + 2)))) {
+          
+          // Skip any leading/trailing whitespace
+          int end = i;
+          int start = i + 2;
+          
+          while (end > lastSplit && Character.isWhitespace(input.charAt(end - 1))) end--;
+          while (start < input.length() && Character.isWhitespace(input.charAt(start))) start++;
+          
+          parts.add(input.substring(lastSplit, end).trim());
+          lastSplit = start;
+          i += 1; // Skip 'R'
+        }
+      }
+    }
+    
+    if (lastSplit < input.length()) {
+      parts.add(input.substring(lastSplit).trim());
+    }
+    
+    return parts.toArray(new String[0]);
   }
 
   private static String cleanParens(final String s) {
@@ -264,14 +335,20 @@ public final class ConstraintParser {
     final String[] conditions = clause.split("(?i)\\s+AND\\s+|(?<=\\))\\s*AND\\s*|\\s*AND\\s*(?=\\()");
     for (final String cond : conditions) {
       final String cleanCond = cleanParens(cond);
-      final Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
+      Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
       if (m.find()) {
         final String col = m.group(1).replace("\"", "");
         final String val = stripQuotes(m.group(2));
         combination.put(col, val);
       } else {
-        // Failed to parse AND clause condition
-        return null;
+        m = COL_EQ_VAL_PATTERN_RELAXED.matcher(cleanCond);
+        if (m.find()) {
+          final String col = m.group(1).replace("\"", "");
+          final String val = stripQuotes(m.group(2));
+          combination.put(col, val);
+        } else {
+          return null;
+        }
       }
     }
     return combination;

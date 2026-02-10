@@ -201,7 +201,7 @@ public class DataGenerator {
       if (ValueGenerator.isNumericJdbc(col.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
         int attempts = 0;
         while (ValueGenerator.isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-          final ValueGenerator vg = new ValueGenerator(null, null, false, new HashSet<>(), numericScale);
+          final ValueGenerator vg = new ValueGenerator(new Faker(), null, false, new HashSet<>(), numericScale);
           val = vg.generateNumericWithinBounds(col, pc);
           attempts++;
         }

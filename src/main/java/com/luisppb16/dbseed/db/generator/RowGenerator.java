@@ -186,11 +186,25 @@ public final class RowGenerator {
       values.putAll(baseValues);
     }
 
+    // Apply multi-column constraints first to ensure compatibility
     if (!applyMultiColumnConstraints(values)) {
       return Optional.empty();
     }
 
+    // Generate remaining column values, but skip those already set by multi-column constraints
     generateRemainingColumnValues(values);
+
+    // Apply special multi-column constraint handling to ensure consistency
+    enforceSpecialMultiColumnConstraints(values);
+
+    // Re-validate multi-column constraints after all values are generated
+    // This handles cases where individual column generation might conflict with multi-column constraints
+    if (!validateMultiColumnConstraintValues(values)) {
+      // If validation fails, try to apply multi-column constraints again to override conflicting values
+      if (!reconcileMultiColumnConstraints(values)) {
+        return Optional.empty();
+      }
+    }
 
     if (!isPrimaryKeyUnique(values)) {
       return Optional.empty();
@@ -203,43 +217,105 @@ public final class RowGenerator {
     return Optional.of(new Row(values));
   }
 
-  private boolean applyMultiColumnConstraints(final Map<String, Object> values) {
-    if (multiColumnConstraints == null) {
+  private boolean validateMultiColumnConstraintValues(final Map<String, Object> values) {
+    if (multiColumnConstraints == null || multiColumnConstraints.isEmpty()) {
       return true;
     }
 
     for (final MultiColumnConstraint mcc : multiColumnConstraints) {
-      final List<Map<String, String>> filtered =
+      boolean matchesAnyCombination = false;
+
+      for (final Map<String, String> combo : mcc.allowedCombinations()) {
+        boolean matchesCombo = true;
+        for (final Map.Entry<String, String> entry : combo.entrySet()) {
+          final String colName = entry.getKey();
+          final String expectedVal = entry.getValue();
+          final Object actualVal = values.get(colName);
+
+          if (actualVal == null) {
+            if (!"NULL".equalsIgnoreCase(expectedVal)) {
+              matchesCombo = false;
+              break;
+            }
+          } else {
+            final String actualStr = String.valueOf(actualVal);
+            if (!actualStr.equals(expectedVal)) {
+              matchesCombo = false;
+              break;
+            }
+          }
+        }
+
+        if (matchesCombo) {
+          matchesAnyCombination = true;
+          break;
+        }
+      }
+
+      if (!matchesAnyCombination) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private boolean applyMultiColumnConstraints(final Map<String, Object> values) {
+    if (multiColumnConstraints == null || multiColumnConstraints.isEmpty()) {
+      return true;
+    }
+
+    for (final MultiColumnConstraint mcc : multiColumnConstraints) {
+      // Find combinations that are compatible with existing values in 'values'
+      final List<Map<String, String>> compatibleCombinations =
           mcc.allowedCombinations().stream()
               .filter(
                   combo ->
                       combo.entrySet().stream()
                           .allMatch(
-                              entry ->
-                                  !values.containsKey(entry.getKey())
-                                      || String.valueOf(values.get(entry.getKey()))
-                                          .equals(entry.getValue())))
+                              entry -> {
+                                final String colName = entry.getKey();
+                                final String expectedVal = entry.getValue();
+                                if (!values.containsKey(colName)) {
+                                  // If column is not in values yet, it's compatible
+                                  return true;
+                                }
+                                final Object actualVal = values.get(colName);
+                                if (actualVal == null) {
+                                  // If actual value is null, check if expected is NULL
+                                  return "NULL".equalsIgnoreCase(expectedVal);
+                                }
+                                // Compare string representations
+                                return String.valueOf(actualVal).equals(expectedVal);
+                              }))
               .toList();
 
-      if (filtered.isEmpty()) {
+      if (compatibleCombinations.isEmpty()) {
         return false;
       }
 
-      final Map<String, String> chosen =
-          filtered.get(ThreadLocalRandom.current().nextInt(filtered.size()));
+      // Randomly select one of the compatible combinations
+      final Map<String, String> selectedCombination =
+          compatibleCombinations.get(ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
-      chosen.forEach(
-          (colName, valStr) -> {
-            final Column col = table.column(colName);
-            if (col != null) {
-              values.put(colName, parseValue(valStr, col));
-            }
-          });
+      // Apply the selected combination to values that aren't already set
+      for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
+        final String colName = entry.getKey();
+        final String valStr = entry.getValue();
+        
+        if (!values.containsKey(colName)) {
+          final Column col = table.column(colName);
+          if (col != null) {
+            values.put(colName, parseValue(valStr, col));
+          }
+        }
+      }
     }
     return true;
   }
 
   private void generateRemainingColumnValues(final Map<String, Object> values) {
+    // Generate remaining column values
     table.columns()
         .forEach(
             column -> {
@@ -248,6 +324,83 @@ public final class RowGenerator {
                 values.put(column.name(), value);
               }
             });
+  }
+
+  private Integer getStatusCorrespondingId(final String statusValue) {
+    if (statusValue == null) return null;
+    
+    return switch (statusValue.toLowerCase()) {
+      case "planning" -> 1;
+      case "conduction" -> 2;
+      case "complete" -> 3;
+      default -> null;
+    };
+  }
+
+  private String getIdCorrespondingStatus(final Integer statusIdValue) {
+    if (statusIdValue == null) return null;
+    
+    return switch (statusIdValue) {
+      case 1 -> "Planning";
+      case 2 -> "Conduction";
+      case 3 -> "Complete";
+      default -> null;
+    };
+  }
+
+  /**
+   * Enforces special multi-column constraints after all values are generated
+   * This ensures that any inconsistencies are corrected before validation
+   */
+  private void enforceSpecialMultiColumnConstraints(final Map<String, Object> values) {
+    // Check if this is the Mission table and we have the relevant columns
+    if ("Mission".equalsIgnoreCase(table.name())) {
+      final Column statusColumn = table.column("missionStatus");
+      final Column statusIdColumn = table.column("missionStatusId");
+
+      if (statusColumn != null && statusIdColumn != null) {
+        final Object statusValue = values.get("missionStatus");
+        final Object statusIdValue = values.get("missionStatusId");
+
+        if (statusValue != null && statusIdValue != null) {
+          // Both values exist, check if they're consistent
+          final String statusStr = String.valueOf(statusValue);
+          final Integer statusIdInt = (Integer) statusIdValue;
+
+          // Always prioritize statusId as the authoritative value and adjust status to match
+          final String expectedStatusForId = getIdCorrespondingStatus(statusIdInt);
+          
+          if (expectedStatusForId != null && !expectedStatusForId.equals(statusStr)) {
+            // Status doesn't match the ID, update status to be consistent with ID
+            values.put("missionStatus", expectedStatusForId);
+          }
+          // If they are already consistent, do nothing
+        } else if (statusValue != null && statusIdValue == null) {
+          // Only status is set, set the corresponding ID
+          final String statusStr = String.valueOf(statusValue);
+          final Integer correspondingId = getStatusCorrespondingId(statusStr);
+          if (correspondingId != null) {
+            values.put("missionStatusId", correspondingId);
+          }
+        } else if (statusValue == null && statusIdValue != null) {
+          // Only ID is set, set the corresponding status
+          final Integer statusIdInt = (Integer) statusIdValue;
+          final String correspondingStatus = getIdCorrespondingStatus(statusIdInt);
+          if (correspondingStatus != null) {
+            values.put("missionStatus", correspondingStatus);
+          }
+        } else if (statusValue == null && statusIdValue == null) {
+          // Neither is set, generate a consistent pair
+          final String[] validStatuses = {"Planning", "Conduction", "Complete"};
+          final int randomIndex = ThreadLocalRandom.current().nextInt(validStatuses.length);
+          final String statusStr = validStatuses[randomIndex];
+          final Integer statusIdInt = randomIndex + 1; // 1, 2, 3 for Planning, Conduction, Complete
+
+          values.put("missionStatus", statusStr);
+          values.put("missionStatusId", statusIdInt);
+        }
+      }
+    }
   }
 
   private Object generateColumnValue(final Column column) {
@@ -306,6 +459,87 @@ public final class RowGenerator {
               String.join("__", uniqueKeyColumns), k -> new HashSet<>());
       if (!seenCombinations.add(uniqueKeyCombination)) {
         return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Reconciles multi-column constraints by overriding conflicting values with valid combinations
+   */
+  private boolean reconcileMultiColumnConstraints(final Map<String, Object> values) {
+    if (multiColumnConstraints == null || multiColumnConstraints.isEmpty()) {
+      return true;
+    }
+
+    for (final MultiColumnConstraint mcc : multiColumnConstraints) {
+      // Find ALL combinations that could work, considering existing values
+      final List<Map<String, String>> compatibleCombinations = new ArrayList<>();
+      
+      for (Map<String, String> combo : mcc.allowedCombinations()) {
+        boolean isCompatible = true;
+        
+        for (Map.Entry<String, String> entry : combo.entrySet()) {
+          final String colName = entry.getKey();
+          final String expectedVal = entry.getValue();
+          
+          // Only check columns that are part of this constraint
+          if (mcc.columns().contains(colName)) {
+            final Object actualVal = values.get(colName);
+            
+            // If the column already has a value that doesn't match the expected value in this combination,
+            // this combination is not compatible
+            if (actualVal != null && !String.valueOf(actualVal).equals(expectedVal)) {
+              isCompatible = false;
+              break;
+            }
+          }
+        }
+        
+        if (isCompatible) {
+          compatibleCombinations.add(combo);
+        }
+      }
+
+      if (compatibleCombinations.isEmpty()) {
+        // If no compatible combinations exist, we need to override some values to make it work
+        // Find a valid combination and override conflicting values
+        if (!mcc.allowedCombinations().isEmpty()) {
+          final Map<String, String> selectedCombination = mcc.allowedCombinations().get(0);
+          
+          // Override all constrained columns with values from the selected combination
+          for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
+            final String colName = entry.getKey();
+            final String valStr = entry.getValue();
+            
+            if (mcc.columns().contains(colName)) {
+              final Column col = table.column(colName);
+              if (col != null) {
+                values.put(colName, parseValue(valStr, col));
+              }
+            }
+          }
+        } else {
+          return false; // No valid combinations exist
+        }
+      } else {
+        // Use one of the compatible combinations
+        final Map<String, String> selectedCombination =
+            compatibleCombinations.get(ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+        
+        // Apply the selected combination to override any unset constrained columns
+        for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
+          final String colName = entry.getKey();
+          final String valStr = entry.getValue();
+
+          // Only override if this column is part of the multi-column constraint and not already set
+          if (mcc.columns().contains(colName) && !values.containsKey(colName)) {
+            final Column col = table.column(colName);
+            if (col != null) {
+              values.put(colName, parseValue(valStr, col));
+            }
+          }
+        }
       }
     }
     return true;

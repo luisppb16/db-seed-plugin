@@ -78,12 +78,7 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs << "--enable-preview"  // Enable preview features if needed
 }
 
-compileJava {
-    options.compilerArgs += [
-        '--add-modules', 'jdk.incubator.foreign',
-        '--enable-native-access=ALL-UNNAMED'
-    ]
-}
+
 
 test {
     useJUnitPlatform()

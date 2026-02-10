@@ -32,10 +32,6 @@ package com.luisppb16.dbseed.db.dialect;
  * for features like sequences, specific date/time functions, and advanced data types
  * that differentiate it from standard ANSI SQL implementations.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class PostgreSqlDialect extends AbstractDialect {
   public PostgreSqlDialect() {

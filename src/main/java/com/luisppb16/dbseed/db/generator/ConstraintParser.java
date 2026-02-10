@@ -46,10 +46,6 @@ import java.util.stream.Stream;
  * tokenization techniques to properly separate AND/OR logical operators while respecting
  * expression grouping.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class ConstraintParser {
 

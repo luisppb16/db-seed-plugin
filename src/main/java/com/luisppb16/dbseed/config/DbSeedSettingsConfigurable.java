@@ -38,10 +38,6 @@ import org.jetbrains.annotations.Nullable;
  * synchronized with the persistent settings state and provides appropriate user
  * feedback when changes are applied or reverted.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class DbSeedSettingsConfigurable implements Configurable {
 

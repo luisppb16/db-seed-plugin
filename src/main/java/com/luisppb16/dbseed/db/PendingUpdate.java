@@ -35,9 +35,6 @@ import java.util.Map;
  * circular dependencies or constraint ordering requirements.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param table The name of the table containing the foreign key columns to be updated
  * @param fkValues A mapping of foreign key column names to their intended values
  * @param pkValues A mapping of primary key column names to their corresponding values that will be referenced

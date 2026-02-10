@@ -59,10 +59,6 @@ import net.datafaker.Faker;
  * It maintains global state for UUID uniqueness and coordinates with the foreign key resolver
  * to handle inter-table dependencies appropriately.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @UtilityClass
 public class DataGenerator {

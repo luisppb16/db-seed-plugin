@@ -32,10 +32,6 @@ package com.luisppb16.dbseed.db.dialect;
  * for features like auto-increment columns, specific date/time functions, and
  * MySQL's unique handling of identifiers and constraints.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class MySQLDialect extends AbstractDialect {
   public MySQLDialect() {

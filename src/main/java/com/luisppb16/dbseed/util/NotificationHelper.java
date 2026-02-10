@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.util;
 
 import com.intellij.notification.Notification;
@@ -32,10 +37,6 @@ import org.jetbrains.annotations.Nullable;
  * as an immutable utility with private constructor to prevent instantiation. All methods
  * are thread-safe and can be called from any context within the IDE.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class NotificationHelper {
 
@@ -48,7 +49,6 @@ public final class NotificationHelper {
   }
 
   private NotificationHelper() {
-    // Utility class
   }
 
   public static void notifyError(@Nullable final Project project, @NotNull final String message) {

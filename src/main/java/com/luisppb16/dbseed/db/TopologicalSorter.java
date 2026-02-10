@@ -50,10 +50,6 @@ import lombok.experimental.UtilityClass;
  * that may require special handling during data generation. The class is designed to be
  * efficient even with large schemas containing numerous tables and complex relationships.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @UtilityClass
 public class TopologicalSorter {

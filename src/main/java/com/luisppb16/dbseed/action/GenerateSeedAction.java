@@ -73,10 +73,6 @@ import org.jetbrains.annotations.NotNull;
  * cleanup during database operations. The action also handles complex schema scenarios including
  * circular foreign key dependencies and deferred constraint processing.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Slf4j
 public final class GenerateSeedAction extends AnAction {

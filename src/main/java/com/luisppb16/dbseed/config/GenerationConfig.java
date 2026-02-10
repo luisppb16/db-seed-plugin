@@ -36,9 +36,6 @@ import lombok.Builder;
  * decimal precision in generated data.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param url The JDBC connection URL for the target database
  * @param user The username for database authentication
  * @param password The password for database authentication
@@ -61,5 +58,4 @@ public record GenerationConfig(
     String softDeleteColumns,
     boolean softDeleteUseSchemaDefault,
     String softDeleteValue,
-    int numericScale // Field for user-defined numeric scale
-    ) {}
+    int numericScale) {}

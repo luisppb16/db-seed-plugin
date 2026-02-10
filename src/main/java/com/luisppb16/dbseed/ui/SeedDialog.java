@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
@@ -64,10 +69,6 @@ import org.jetbrains.annotations.Nullable;
  * The dialog maintains state consistency across sessions and provides intelligent defaults
  * derived from both global settings and project-specific configurations.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class SeedDialog extends DialogWrapper {
 

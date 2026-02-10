@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
@@ -83,10 +88,6 @@ import org.jetbrains.annotations.NotNull;
  * feedback for user actions. Advanced features include search functionality, bulk operations,
  * and real-time validation to enhance the user experience.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class PkUuidSelectionDialog extends DialogWrapper {
 
@@ -102,13 +103,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
   private final RepetitionRulesPanel repetitionRulesPanel;
 
-  // Soft Delete UI Components
   private final JBTextField softDeleteColumnsField = new JBTextField();
   private final JBCheckBox softDeleteUseSchemaDefaultBox =
       new JBCheckBox("Use schema default value");
   private final JBTextField softDeleteValueField = new JBTextField();
 
-  // Numeric Scale UI Component
   private final JSpinner scaleSpinner;
 
   // Maps to hold checkbox references for cross-tab synchronization

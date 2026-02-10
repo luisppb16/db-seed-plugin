@@ -52,10 +52,6 @@ import java.util.stream.Collectors;
  * foreign key dependencies, throwing appropriate exceptions for non-nullable cycles while
  * handling nullable cycles through deferred updates.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class ForeignKeyResolver {
 

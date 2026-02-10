@@ -34,10 +34,6 @@ import java.util.Locale;
  * accommodate Oracle's unique requirements, such as uppercase identifier handling
  * and TO_DATE/TO_TIMESTAMP function usage for temporal values.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class OracleDialect extends AbstractDialect {
   public OracleDialect() {

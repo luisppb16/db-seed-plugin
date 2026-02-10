@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
@@ -68,10 +73,6 @@ import org.jetbrains.annotations.NotNull;
  * It implements proper memory management patterns to prevent memory leaks during dynamic
  * component addition and removal.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class RepetitionRulesPanel extends JPanel {
 

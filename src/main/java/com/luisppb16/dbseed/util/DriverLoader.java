@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.util;
 
 import com.intellij.ide.util.PropertiesComponent;
@@ -50,10 +55,6 @@ import lombok.extern.slf4j.Slf4j;
  * classpath. The system also implements intelligent caching to minimize network traffic
  * and improve performance on subsequent accesses.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Slf4j
 @UtilityClass

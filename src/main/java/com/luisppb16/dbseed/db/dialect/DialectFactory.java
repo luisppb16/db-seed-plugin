@@ -37,10 +37,6 @@ import lombok.experimental.UtilityClass;
  * cases where certain databases share similarities with others (e.g., H2 with PostgreSQL)
  * and provides appropriate fallback mechanisms for unrecognized database systems.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @UtilityClass
 public class DialectFactory {

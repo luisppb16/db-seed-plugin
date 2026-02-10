@@ -37,9 +37,6 @@ import lombok.Builder;
  * need to respect column-specific constraints and properties.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param name The name of the column
  * @param jdbcType The JDBC type identifier for the column
  * @param nullable Whether the column allows null values

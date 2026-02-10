@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.openapi.project.Project;
@@ -49,10 +54,6 @@ import org.jetbrains.annotations.Nullable;
  * such as cloud-based solutions that require additional authentication parameters. The dialog
  * ensures proper validation of required fields before allowing progression in the workflow.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Slf4j
 public class DriverSelectionDialog extends DialogWrapper {

@@ -43,10 +43,6 @@ import java.util.UUID;
  * to override default behaviors for quoting, boolean representation, transaction
  * management, and batch insertion formatting.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public abstract sealed class AbstractDialect implements DatabaseDialect 
 permits SqlServerDialect, MySQLDialect, StandardDialect, SqliteDialect, PostgreSqlDialect, OracleDialect {

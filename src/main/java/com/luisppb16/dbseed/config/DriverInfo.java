@@ -37,9 +37,6 @@ import lombok.Builder;
  * adapting to their specific connection requirements.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param name The human-readable name of the database driver
  * @param mavenGroupId The Maven group ID for the driver artifact
  * @param mavenArtifactId The Maven artifact ID for the driver

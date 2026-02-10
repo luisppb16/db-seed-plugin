@@ -39,9 +39,6 @@ import lombok.Builder;
  * use in collections.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param name The name of the table
  * @param columns The list of columns in the table
  * @param primaryKey The list of primary key column names

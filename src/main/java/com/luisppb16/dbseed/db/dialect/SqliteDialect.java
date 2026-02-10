@@ -36,10 +36,6 @@ import java.util.List;
  * exceeding these limits. It also handles SQLite's flexible type system and
  * ensures proper value formatting for reliable data insertion.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class SqliteDialect extends AbstractDialect {
   private static final int SQLITE_BATCH_SIZE = 100; // Smaller batch size for SQLite

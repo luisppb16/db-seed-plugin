@@ -57,10 +57,6 @@ import net.datafaker.Faker;
  * Special handling is provided for specific table types like the Mission table with
  * custom relationship constraints.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class RowGenerator {
 

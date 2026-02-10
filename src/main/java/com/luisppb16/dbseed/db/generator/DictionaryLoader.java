@@ -41,10 +41,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * The class follows the singleton pattern through static methods and provides immutable
  * list views to prevent external modification of cached dictionary content.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class DictionaryLoader {
 

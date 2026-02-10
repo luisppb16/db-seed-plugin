@@ -40,9 +40,6 @@ import lombok.Builder;
  * algorithms during the data generation process.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param name The name of the foreign key constraint
  * @param pkTable The name of the referenced primary key table
  * @param columnMapping A mapping of referencing columns (in the child table) to referenced columns (in the parent table)

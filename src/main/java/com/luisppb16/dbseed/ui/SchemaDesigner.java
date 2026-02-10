@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.openapi.actionSystem.AnAction;
@@ -60,10 +65,6 @@ import org.jetbrains.annotations.NotNull;
  * The visual design follows IntelliJ's UI guidelines to ensure consistency with the
  * overall development environment.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class SchemaDesigner extends AnAction {
 

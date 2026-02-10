@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.ui.util;
 
 import java.awt.event.KeyEvent;
@@ -33,10 +38,6 @@ import javax.swing.KeyStroke;
  * safely callable from the Event Dispatch Thread and implement proper null-safety checks
  * to prevent runtime exceptions.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class ComponentUtils {
 

@@ -34,9 +34,6 @@ import java.util.Set;
  * sophisticated data pattern control while maintaining consistency across repeated records.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param count The number of times to repeat the data pattern
  * @param fixedValues A mapping of column names to specific values that should remain fixed during repetition
  * @param randomConstantColumns A set of column names that should have randomly generated values that remain constant across repetitions

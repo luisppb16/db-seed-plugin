@@ -30,10 +30,6 @@ package com.luisppb16.dbseed.db.dialect;
  * that work across multiple database systems, though specific dialects may offer better
  * optimization for particular database vendors.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public class StandardDialect extends AbstractDialect {
   public StandardDialect() {

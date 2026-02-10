@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.util;
 
 import java.sql.Connection;
@@ -34,9 +39,6 @@ import java.util.logging.Logger;
  * driver's behavior and capabilities.
  * </p>
  *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  * @param driver The underlying JDBC driver instance to wrap and delegate to
  */
 record DriverShim(Driver driver) implements Driver {

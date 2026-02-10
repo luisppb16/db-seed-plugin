@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.config;
 
 import com.intellij.ide.util.PropertiesComponent;
@@ -24,10 +29,6 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Providing type-safe conversion for stored string values</li>
  * </ul>
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Slf4j
 @UtilityClass

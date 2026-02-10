@@ -37,10 +37,6 @@ import lombok.experimental.UtilityClass;
  * schema integrity. The class also provides SQL generation capabilities to transform
  * schema definitions into executable DDL statements.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @UtilityClass
 public class SchemaDsl {

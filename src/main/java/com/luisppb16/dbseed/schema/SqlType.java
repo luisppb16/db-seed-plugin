@@ -5,6 +5,11 @@
 
 package com.luisppb16.dbseed.schema;
 
+/**
+ * Represents a simplified set of SQL data types for use in the schema DSL.
+ * This enum provides a clean, type-safe way to specify column types when
+ * defining a database schema programmatically.
+ */
 public enum SqlType {
   INT,
   VARCHAR,

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ * All rights reserved.
+ */
+
 package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -35,10 +40,6 @@ import org.jetbrains.annotations.Nullable;
  * to prevent configuration corruption during state transitions. Default values are enforced
  * during the loadState operation to maintain backward compatibility with older configurations.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Getter
 @Setter
@@ -59,7 +60,6 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
   private String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
 
-  // Soft Delete Configuration
   private String softDeleteColumns = DEFAULT_SOFT_DELETE_COLUMNS;
   private boolean softDeleteUseSchemaDefault = DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT;
   private String softDeleteValue = DEFAULT_SOFT_DELETE_VALUE;

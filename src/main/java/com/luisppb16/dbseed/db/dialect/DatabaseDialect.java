@@ -35,10 +35,6 @@ import java.util.List;
  * provides database-specific behavior for SQL generation, taking into account the
  * unique syntax, reserved words, and operational characteristics of the target database.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public sealed interface DatabaseDialect permits 
     AbstractDialect, 

@@ -60,10 +60,6 @@ import lombok.extern.slf4j.Slf4j;
  * intelligent fallback mechanisms when certain metadata access methods fail. The class
  * also implements caching mechanisms for improved performance when processing large schemas.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Slf4j
 @UtilityClass

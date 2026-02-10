@@ -51,10 +51,6 @@ import net.datafaker.Faker;
  * UUID uniqueness and implements retry mechanisms to ensure constraint compliance. It also
  * provides methods for generating values within specific bounds when constraints are present.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 public final class ValueGenerator {
 

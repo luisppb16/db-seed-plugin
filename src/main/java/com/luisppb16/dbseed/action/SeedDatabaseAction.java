@@ -79,10 +79,6 @@ import org.jetbrains.annotations.NotNull;
  * of database resources. The action also handles circular foreign key detection and
  * implements appropriate resolution strategies.
  * </p>
- *
- * @author Luis Pepe
- * @version 1.0
- * @since 2024
  */
 @Slf4j
 public class SeedDatabaseAction extends AnAction {

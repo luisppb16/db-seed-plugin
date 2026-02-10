@@ -52,6 +52,38 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Comprehensive database seeding workflow orchestrator for the DBSeed plugin ecosystem.
+ * <p>
+ * This IntelliJ action class implements the complete workflow for database seeding operations,
+ * from driver selection through schema introspection, data generation, and SQL output.
+ * It manages complex multi-step processes involving user interaction, database connectivity,
+ * schema analysis, and data generation with sophisticated progress tracking and error handling.
+ * The action coordinates multiple subsystems to provide a seamless user experience.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Initiating the database seeding workflow with driver selection</li>
+ *   <li>Managing multi-step dialog sequences for configuration gathering</li>
+ *   <li>Performing schema introspection and dependency analysis</li>
+ *   <li>Coordinating data generation with user-defined constraints and preferences</li>
+ *   <li>Generating and saving SQL scripts with proper foreign key ordering</li>
+ *   <li>Handling large dataset warnings and user confirmations</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses IntelliJ's progress management system for long-running operations
+ * and implements proper exception handling with user notifications. It manages complex
+ * state transitions between different configuration dialogs and ensures proper cleanup
+ * of database resources. The action also handles circular foreign key detection and
+ * implements appropriate resolution strategies.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @Slf4j
 public class SeedDatabaseAction extends AnAction {
 

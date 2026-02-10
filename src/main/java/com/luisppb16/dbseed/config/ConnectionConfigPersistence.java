@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.config;
 
 import com.intellij.ide.util.PropertiesComponent;
@@ -11,6 +6,29 @@ import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Persistence utility for managing database connection configurations in IntelliJ projects.
+ * <p>
+ * This utility class handles the storage and retrieval of database connection parameters
+ * using IntelliJ's PropertiesComponent mechanism. It provides methods to persist connection
+ * settings across IDE sessions, allowing users to maintain their preferred database
+ * configurations between restarts. The class follows a key-value approach where each
+ * configuration parameter is stored with a unique identifier in the project's property store.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Persisting connection parameters (URL, credentials, schema, etc.)</li>
+ *   <li>Loading previously saved configurations with fallback defaults</li>
+ *   <li>Managing advanced options like soft-delete columns and numeric precision</li>
+ *   <li>Providing type-safe conversion for stored string values</li>
+ * </ul>
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @Slf4j
 @UtilityClass
 public class ConnectionConfigPersistence {

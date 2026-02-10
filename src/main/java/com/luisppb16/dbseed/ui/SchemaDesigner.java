@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.openapi.actionSystem.AnAction;
@@ -37,6 +32,39 @@ import javax.swing.JTextArea;
 import javax.swing.SwingWorker;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Visual database schema designer integration for the DBSeed plugin ecosystem.
+ * <p>
+ * This IntelliJ action provides a comprehensive visual interface for database schema design,
+ * enabling users to create and modify database structures through an intuitive graphical
+ * interface. The component bridges the gap between visual schema design and programmatic
+ * SQL generation, allowing developers to rapidly prototype database structures and instantly
+ * generate corresponding DDL statements. The implementation follows modern UI/UX principles
+ * with persistent window positioning and responsive design patterns.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Providing an intuitive visual interface for database schema creation and modification</li>
+ *   <li>Generating syntactically correct SQL DDL statements from visual schema representations</li>
+ *   <li>Managing persistent window state and user preferences for optimal workflow continuity</li>
+ *   <li>Implementing asynchronous SQL generation to maintain UI responsiveness</li>
+ *   <li>Integrating seamlessly with IntelliJ's action system for consistent user experience</li>
+ *   <li>Ensuring data integrity through immutable model representations and validation</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation utilizes SwingWorker for non-blocking SQL generation and implements
+ * proper resource management patterns. The component stores window position preferences
+ * using Java's Preferences API to maintain user-customized layouts across IDE sessions.
+ * The visual design follows IntelliJ's UI guidelines to ensure consistency with the
+ * overall development environment.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class SchemaDesigner extends AnAction {
 
   private static final String PREF_NODE = "com/luisppb16/dbseed/ui";

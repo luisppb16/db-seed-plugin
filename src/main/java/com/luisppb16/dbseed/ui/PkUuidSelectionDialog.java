@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
@@ -61,6 +56,38 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Advanced configuration dialog for fine-tuning primary key UUID handling and data generation exclusions.
+ * <p>
+ * This comprehensive UI component provides users with granular control over the data generation
+ * process, specifically focusing on UUID primary key management and selective exclusion of tables
+ * and columns from the seeding operation. The dialog implements a multi-tab interface that
+ * facilitates complex configuration scenarios while maintaining usability across different
+ * configuration domains.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Managing primary key UUID identification and configuration across multiple tables</li>
+ *   <li>Providing intuitive interfaces for excluding specific tables or columns from generation</li>
+ *   <li>Offering advanced configuration options for soft-delete columns and numeric precision</li>
+ *   <li>Implementing sophisticated cross-tab synchronization to prevent conflicting selections</li>
+ *   <li>Providing real-time filtering and bulk selection capabilities for enhanced UX</li>
+ *   <li>Integrating repetition rules configuration for complex data relationships</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows IntelliJ's UI guidelines and leverages the platform's component
+ * toolkit to ensure consistency with the IDE's visual design language. The dialog maintains
+ * state synchronization between related configuration elements and provides immediate visual
+ * feedback for user actions. Advanced features include search functionality, bulk operations,
+ * and real-time validation to enhance the user experience.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;

@@ -31,6 +31,39 @@ import lombok.Builder;
 import lombok.experimental.UtilityClass;
 import net.datafaker.Faker;
 
+/**
+ * Centralized data generation orchestration engine for the DBSeed plugin ecosystem.
+ * <p>
+ * This utility class serves as the primary orchestrator for the entire data generation process,
+ * coordinating multiple subsystems including row generation, constraint validation, foreign key
+ * resolution, and dictionary-based value generation. It implements sophisticated algorithms
+ * for handling complex database relationships, constraint satisfaction, and data consistency
+ * across interconnected tables. The class manages the complete lifecycle of data generation
+ * from schema analysis to final output preparation.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Coordinating the multi-phase data generation pipeline across all tables</li>
+ *   <li>Managing primary key UUID overrides and custom generation patterns</li>
+ *   <li>Resolving foreign key dependencies with support for deferred constraint processing</li>
+ *   <li>Applying repetition rules and custom data generation configurations</li>
+ *   <li>Validating generated data against parsed database constraints</li>
+ *   <li>Integrating with dictionary systems for realistic data generation</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows a layered architecture where each aspect of data generation
+ * is handled by specialized components. The class ensures proper ordering of table processing
+ * to respect foreign key dependencies and implements retry mechanisms for constraint resolution.
+ * It maintains global state for UUID uniqueness and coordinates with the foreign key resolver
+ * to handle inter-table dependencies appropriately.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @UtilityClass
 public class DataGenerator {
 

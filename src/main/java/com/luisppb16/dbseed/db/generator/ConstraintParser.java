@@ -17,6 +17,40 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Advanced SQL constraint parser for database schema introspection in the DBSeed plugin.
+ * <p>
+ * This class implements sophisticated parsing algorithms to extract and interpret database
+ * constraints from SQL CHECK expressions and multi-column constraint definitions. It handles
+ * complex constraint patterns including range validations, equality constraints, IN lists,
+ * length restrictions, and multi-column dependencies expressed in disjunctive normal form.
+ * The parser accommodates various SQL dialects and handles complex nested expressions with
+ * proper operator precedence and parenthesis grouping.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Parsing single-column constraints from CHECK expressions (ranges, equality, lists)</li>
+ *   <li>Extracting multi-column constraint relationships from complex logical expressions</li>
+ *   <li>Handling different SQL syntax patterns and dialect variations</li>
+ *   <li>Processing disjunctive normal form (DNF) expressions with AND/OR combinations</li>
+ *   <li>Resolving column references in schema.table.column format</li>
+ *   <li>Normalizing constraint expressions for consistent interpretation</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses efficient regular expression patterns with caching mechanisms
+ * for improved performance when processing repetitive constraint patterns. The parser
+ * correctly handles SQL literals with various quoting mechanisms, cast operators, and
+ * complex nested parentheses structures. Multi-column constraint parsing employs advanced
+ * tokenization techniques to properly separate AND/OR logical operators while respecting
+ * expression grouping.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class ConstraintParser {
 
   private static final String CAST_REGEX = "(?:\\s*::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)*";

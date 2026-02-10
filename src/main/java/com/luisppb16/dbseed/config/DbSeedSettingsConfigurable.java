@@ -11,6 +11,38 @@ import javax.swing.JComponent;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * IntelliJ settings configurable implementation for the DBSeed plugin configuration interface.
+ * <p>
+ * This class provides the integration point between the DBSeed plugin's configuration
+ * component and IntelliJ's settings framework. It implements the Configurable interface
+ * to provide a standardized way for users to access and modify the plugin's global
+ * settings through IntelliJ's settings dialog. The class manages the lifecycle of
+ * the settings UI component and handles the application and validation of user changes.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Integrating the DBSeed settings component with IntelliJ's settings framework</li>
+ *   <li>Managing the lifecycle of the settings UI component</li>
+ *   <li>Handling the application of user changes to persistent settings</li>
+ *   <li>Providing validation to determine if settings have been modified</li>
+ *   <li>Implementing reset functionality to restore current settings</li>
+ *   <li>Properly disposing of UI resources when the settings dialog is closed</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows IntelliJ's conventions for settings configuration,
+ * providing proper integration with the IDE's settings validation and persistence
+ * mechanisms. It ensures that changes made in the settings dialog are properly
+ * synchronized with the persistent settings state and provides appropriate user
+ * feedback when changes are applied or reverted.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public class DbSeedSettingsConfigurable implements Configurable {
 
   private DbSeedSettingsComponent mySettingsComponent;

@@ -10,6 +10,38 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import lombok.experimental.UtilityClass;
 
+/**
+ * Domain-specific language for defining database schemas programmatically in the DBSeed plugin.
+ * <p>
+ * This utility class provides a fluent API for constructing database schema definitions using
+ * a domain-specific language approach. It enables programmatic creation of database schemas
+ * with tables, columns, primary keys, foreign keys, constraints, and other structural elements.
+ * The DSL abstracts away raw SQL syntax while maintaining expressiveness for complex schema
+ * definitions. It serves as both a schema definition mechanism and a SQL generation utility.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Providing a fluent API for programmatic schema definition</li>
+ *   <li>Generating SQL DDL statements from schema object models</li>
+ *   <li>Managing schema element relationships (primary keys, foreign keys)</li>
+ *   <li>Supporting various column constraints (NOT NULL, UNIQUE, DEFAULT)</li>
+ *   <li>Ensuring schema object immutability and thread safety</li>
+ *   <li>Validating schema structure and element relationships</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses immutable record types to represent schema elements, ensuring
+ * thread safety and preventing unintended modifications. The DSL follows builder patterns
+ * to enable readable schema definitions and includes comprehensive validation to ensure
+ * schema integrity. The class also provides SQL generation capabilities to transform
+ * schema definitions into executable DDL statements.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @UtilityClass
 public class SchemaDsl {
 

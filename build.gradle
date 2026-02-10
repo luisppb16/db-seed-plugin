@@ -66,11 +66,23 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
     }
+    withSourcesJar()
+    withJavadocJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.release = 21  // Ensures compatibility with Java 21 features
     options.compilerArgs << "-Xlint:deprecation"
+    options.compilerArgs << "-Xlint:unchecked"
+    options.compilerArgs << "--enable-preview"  // Enable preview features if needed
+}
+
+compileJava {
+    options.compilerArgs += [
+        '--add-modules', 'jdk.incubator.foreign',
+        '--enable-native-access=ALL-UNNAMED'
+    ]
 }
 
 test {

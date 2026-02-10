@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.application.ApplicationManager;
@@ -16,6 +11,35 @@ import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * Persistent state component for managing global configuration settings of the DBSeed plugin.
+ * <p>
+ * This class implements IntelliJ's PersistentStateComponent interface to provide persistent
+ * storage of user preferences across IDE sessions. It manages various configuration aspects
+ * including dictionary selection, output directory paths, and soft-delete column settings.
+ * The state is serialized to an XML file named "DbSeedPlugin.xml" and follows IntelliJ's
+ * recommended practices for plugin state persistence.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Maintaining user preferences for dictionary languages (Latin, English, Spanish)</li>
+ *   <li>Storing configurable output directory paths for generated seed files</li>
+ *   <li>Managing soft-delete column configurations with default values and validation</li>
+ *   <li>Providing singleton access pattern through getInstance() method</li>
+ *   <li>Ensuring data integrity during state serialization/deserialization</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The class implements proper null-safety mechanisms and defensive programming practices
+ * to prevent configuration corruption during state transitions. Default values are enforced
+ * during the loadState operation to maintain backward compatibility with older configurations.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @Getter
 @Setter
 @State(

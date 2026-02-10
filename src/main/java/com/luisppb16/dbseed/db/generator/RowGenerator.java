@@ -28,6 +28,40 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import net.datafaker.Faker;
 
+/**
+ * Sophisticated row generation engine for database seeding operations in the DBSeed plugin.
+ * <p>
+ * This class implements a comprehensive row generation algorithm that creates realistic
+ * database records while respecting complex database constraints, relationships, and business
+ * rules. The generator handles primary key uniqueness, foreign key relationships, check
+ * constraints, unique constraints, and custom repetition rules. It incorporates advanced
+ * data generation techniques using the Faker library and custom dictionary sources to
+ * produce meaningful sample data.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Generating rows that satisfy primary key uniqueness requirements</li>
+ *   <li>Resolving multi-column constraints and check expressions</li>
+ *   <li>Applying custom repetition rules for specific data patterns</li>
+ *   <li>Handling soft-delete column configurations appropriately</li>
+ *   <li>Managing foreign key relationships and referential integrity</li>
+ *   <li>Implementing sophisticated constraint resolution algorithms</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses a multi-phase approach to row generation, first applying
+ * multi-column constraints, then generating remaining values while validating against
+ * all applicable constraints. The generator includes retry mechanisms to handle
+ * constraint conflicts and implements efficient duplicate detection for unique keys.
+ * Special handling is provided for specific table types like the Mission table with
+ * custom relationship constraints.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class RowGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;

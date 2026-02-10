@@ -45,6 +45,39 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Alternative seed generation workflow action for the DBSeed plugin ecosystem.
+ * <p>
+ * This IntelliJ action provides an alternative pathway for generating database seed scripts,
+ * implementing a streamlined workflow that combines schema introspection, data generation,
+ * and SQL output in a cohesive process. Unlike the primary seeding action, this implementation
+ * focuses on a more direct approach to seed generation with integrated configuration management
+ * and optimized progress tracking. The action manages database connectivity, handles complex
+ * schema dependencies, and generates comprehensive SQL scripts with proper foreign key ordering.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Initiating the alternative seed generation workflow with driver selection</li>
+ *   <li>Performing schema introspection in background threads for responsive UI</li>
+ *   <li>Coordinating user configuration through multiple dialog interfaces</li>
+ *   <li>Generating data with respect to user-defined constraints and preferences</li>
+ *   <li>Producing properly ordered SQL scripts accounting for foreign key dependencies</li>
+ *   <li>Managing configuration persistence and user preferences</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows IntelliJ's threading model by performing long-running operations
+ * on background threads while updating UI elements on the Event Dispatch Thread. It implements
+ * sophisticated error handling with appropriate user notifications and ensures proper resource
+ * cleanup during database operations. The action also handles complex schema scenarios including
+ * circular foreign key dependencies and deferred constraint processing.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @Slf4j
 public final class GenerateSeedAction extends AnAction {
 

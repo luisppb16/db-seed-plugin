@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.util;
 
 import com.intellij.ide.util.PropertiesComponent;
@@ -28,6 +23,38 @@ import java.util.Optional;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Comprehensive JDBC driver management system for the DBSeed plugin ecosystem.
+ * <p>
+ * This utility class orchestrates the complete lifecycle of JDBC drivers required by the DBSeed
+ * plugin, from user selection through download, loading, and registration. It addresses the
+ * complex challenge of dynamically acquiring database drivers at runtime, which is essential
+ * for supporting diverse database systems without bundling all possible drivers with the plugin.
+ * The class implements sophisticated caching mechanisms and integrates seamlessly with IntelliJ's
+ * project management system to provide optimal user experience.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Managing user-driven driver selection through intuitive dialog interfaces</li>
+ *   <li>Automated download and caching of JDBC drivers from Maven repositories</li>
+ *   <li>Dynamic loading of drivers using isolated class loaders to prevent conflicts</li>
+ *   <li>Registration of loaded drivers with the JDBC DriverManager via DriverShim wrapper</li>
+ *   <li>Maintaining user preferences for driver selection across IDE sessions</li>
+ *   <li>Implementing robust error handling and recovery mechanisms for network operations</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows security-conscious practices by isolating dynamically loaded
+ * drivers in separate class loaders, preventing potential conflicts with the IDE's existing
+ * classpath. The system also implements intelligent caching to minimize network traffic
+ * and improve performance on subsequent accesses.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @Slf4j
 @UtilityClass
 public class DriverLoader {

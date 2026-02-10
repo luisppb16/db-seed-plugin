@@ -17,7 +17,39 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
 
-public abstract class AbstractDialect implements DatabaseDialect {
+/**
+ * Abstract foundation for database dialect implementations in the DBSeed plugin ecosystem.
+ * <p>
+ * This sealed abstract class provides the foundational implementation for database-specific
+ * SQL dialects used in the DBSeed plugin. It implements common SQL formatting and generation
+ * patterns while allowing specific database implementations to customize behavior through
+ * configuration properties. The class follows the sealed class pattern to restrict inheritance
+ * to known dialect implementations, ensuring type safety and maintainability.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Providing base SQL formatting functionality for various data types</li>
+ *   <li>Implementing configurable dialect-specific behaviors through property files</li>
+ *   <li>Managing SQL value escaping and quoting mechanisms for different databases</li>
+ *   <li>Defining standardized transaction and constraint management patterns</li>
+ *   <li>Implementing batch insertion logic with customizable formatting options</li>
+ *   <li>Handling special data types like UUIDs, dates, timestamps, and decimals</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses resource-based configuration to allow dialect customization
+ * without code changes. Each dialect implementation can provide its own property file
+ * to override default behaviors for quoting, boolean representation, transaction
+ * management, and batch insertion formatting.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
+public abstract sealed class AbstractDialect implements DatabaseDialect 
+permits SqlServerDialect, MySQLDialect, StandardDialect, SqliteDialect, PostgreSqlDialect, OracleDialect {
 
   private static final String NULL_STR = "NULL";
   protected final Properties props = new Properties();

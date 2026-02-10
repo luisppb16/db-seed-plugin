@@ -9,6 +9,38 @@ import com.luisppb16.dbseed.db.Row;
 
 import java.util.List;
 
+/**
+ * SQLite-specific SQL dialect implementation for the DBSeed plugin ecosystem.
+ * <p>
+ * This class provides SQLite-specific SQL generation and formatting capabilities,
+ * addressing the unique characteristics and limitations of the SQLite database
+ * management system. It handles SQLite's specific syntax requirements, parameter
+ * limitations, and behavioral differences compared to other database systems.
+ * The implementation optimizes batch operations for SQLite's constraints and
+ * ensures compatibility with SQLite's type affinity system.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Implementing SQLite-specific SQL formatting and quoting mechanisms</li>
+ *   <li>Managing SQLite's parameter limit constraints through optimized batching</li>
+ *   <li>Handling SQLite's type affinity and data type peculiarities</li>
+ *   <li>Providing SQLite-appropriate transaction and constraint management</li>
+ *   <li>Optimizing batch insertion operations for SQLite's performance characteristics</li>
+ *   <li>Addressing SQLite-specific boolean and literal value representations</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation takes into account SQLite's limitations on the number of
+ * parameters in a single statement, implementing smaller batch sizes to avoid
+ * exceeding these limits. It also handles SQLite's flexible type system and
+ * ensures proper value formatting for reliable data insertion.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public class SqliteDialect extends AbstractDialect {
   private static final int SQLITE_BATCH_SIZE = 100; // Smaller batch size for SQLite
 

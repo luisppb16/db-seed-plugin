@@ -20,6 +20,39 @@ import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.SpinnerNumberModel;
 
+/**
+ * UI component for configuring global settings of the DBSeed plugin in IntelliJ.
+ * <p>
+ * This class provides a comprehensive user interface for managing the global configuration
+ * settings of the DBSeed plugin. It includes controls for dictionary preferences, output
+ * directory configuration, UI behavior settings, and advanced features like soft-delete
+ * column handling. The component integrates seamlessly with IntelliJ's settings framework
+ * and provides intuitive controls for users to customize the plugin's behavior according
+ * to their specific needs and preferences.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Providing UI controls for dictionary selection (Latin, English, Spanish)</li>
+ *   <li>Managing default output directory configuration with file browser integration</li>
+ *   <li>Configuring UI behavior parameters like spinner step increments</li>
+ *   <li>Handling soft-delete column configuration and value settings</li>
+ *   <li>Implementing proper data binding between UI components and settings state</li>
+ *   <li>Ensuring proper validation and error handling for user inputs</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows IntelliJ's UI guidelines and uses standard components
+ * from the IntelliJ platform UI toolkit. It provides proper accessibility support
+ * and integrates with the IDE's look and feel. The component handles file system
+ * interactions through IntelliJ's VFS layer and provides appropriate error handling
+ * for file operations.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public class DbSeedSettingsComponent {
 
   private final JPanel myMainPanel;

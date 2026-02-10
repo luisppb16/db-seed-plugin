@@ -25,6 +25,38 @@ import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
+/**
+ * Sophisticated foreign key resolution engine for database seeding operations in the DBSeed plugin.
+ * <p>
+ * This class implements advanced algorithms for resolving foreign key relationships during
+ * the data generation process. It handles complex scenarios including nullable vs non-nullable
+ * foreign keys, unique foreign key constraints, and circular dependency detection. The resolver
+ * manages both immediate foreign key value assignment and deferred updates for tables that
+ * haven't been processed yet, ensuring referential integrity across the entire database schema.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Resolving foreign key relationships between generated table data</li>
+ *   <li>Handling nullable and non-nullable foreign key constraints appropriately</li>
+ *   <li>Detecting and managing circular foreign key dependencies</li>
+ *   <li>Managing unique foreign key constraints and 1:1 relationships</li>
+ *   <li>Generating pending updates for deferred foreign key assignments</li>
+ *   <li>Ensuring referential integrity across the entire database schema</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses sophisticated algorithms to handle unique foreign key constraints
+ * by maintaining queues of available parent rows and ensuring proper distribution. It also
+ * implements cycle detection mechanisms to prevent infinite loops when dealing with circular
+ * foreign key dependencies, throwing appropriate exceptions for non-nullable cycles while
+ * handling nullable cycles through deferred updates.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class ForeignKeyResolver {
 
   private final Map<String, Table> tableMap;

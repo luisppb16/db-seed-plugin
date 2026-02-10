@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
@@ -45,6 +40,39 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import org.jetbrains.annotations.NotNull;
 
+/**
+ * Advanced configuration panel for defining data repetition patterns in the database seeding process.
+ * <p>
+ * This sophisticated UI component enables users to define complex repetition rules that govern
+ * how data patterns are duplicated during the seeding operation. The panel provides granular
+ * control over repetition counts and allows for column-specific overrides, enabling precise
+ * control over data generation patterns. The interface supports hierarchical organization
+ * of rules by table and column, with intuitive visual indicators and responsive interaction
+ * patterns.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Managing hierarchical organization of repetition rules by table and column</li>
+ *   <li>Providing intuitive interfaces for defining repetition counts and patterns</li>
+ *   <li>Allowing column-specific overrides with different value assignment strategies</li>
+ *   <li>Implementing dynamic UI updates for real-time rule modification</li>
+ *   <li>Ensuring data integrity through validation of repetition parameters</li>
+ *   <li>Providing visual feedback for complex rule hierarchies</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows modern UI design principles with card-based layouts for rule
+ * organization and responsive component interactions. The panel maintains internal state
+ * consistency and provides conversion mechanisms between UI representation and domain models.
+ * It implements proper memory management patterns to prevent memory leaks during dynamic
+ * component addition and removal.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public class RepetitionRulesPanel extends JPanel {
 
   private static final String STRATEGY_CONSTANT_RANDOM = "Constant (Random)";

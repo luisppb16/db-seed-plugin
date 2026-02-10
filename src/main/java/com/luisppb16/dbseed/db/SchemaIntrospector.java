@@ -31,6 +31,40 @@ import java.util.regex.Pattern;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Advanced database schema introspection engine for the DBSeed plugin ecosystem.
+ * <p>
+ * This utility class provides comprehensive database schema analysis capabilities,
+ * extracting detailed metadata about tables, columns, constraints, and relationships
+ * from live database connections. It implements sophisticated algorithms for
+ * discovering primary keys, foreign keys, check constraints, unique constraints,
+ * and other structural elements across multiple database systems. The introspector
+ * handles database-specific variations in metadata access patterns and provides
+ * unified access to schema information regardless of the underlying database system.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Discovering and analyzing database tables and their structural properties</li>
+ *   <li>Extracting column metadata including data types, nullability, and constraints</li>
+ *   <li>Identifying primary key and foreign key relationships between tables</li>
+ *   <li>Extracting check constraints and inferring value bounds and allowed values</li>
+ *   <li>Handling database-specific metadata access patterns and variations</li>
+ *   <li>Building comprehensive Table objects with complete structural information</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation includes database-specific handling for PostgreSQL, H2, and generic
+ * JDBC databases, with optimized queries for each system. It uses regex pattern matching
+ * to extract constraint information from database-specific representations and provides
+ * intelligent fallback mechanisms when certain metadata access methods fail. The class
+ * also implements caching mechanisms for improved performance when processing large schemas.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @Slf4j
 @UtilityClass
 public class SchemaIntrospector {

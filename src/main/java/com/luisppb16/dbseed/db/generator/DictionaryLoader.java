@@ -14,6 +14,38 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * Efficient dictionary loading and caching system for multilingual word resources in the DBSeed plugin.
+ * <p>
+ * This utility class provides optimized loading and caching mechanisms for multilingual dictionary
+ * resources used in data generation. It implements thread-safe lazy loading with atomic reference
+ * caching to ensure efficient access to dictionary resources across multiple concurrent operations.
+ * The class handles multiple language dictionaries and provides configurable loading based on
+ * user preferences for English and/or Spanish word sets.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Lazy loading of dictionary resources from embedded resource files</li>
+ *   <li>Thread-safe caching of dictionary content to avoid redundant file operations</li>
+ *   <li>Efficient parsing and normalization of dictionary word lists</li>
+ *   <li>Conditional loading based on user language preferences</li>
+ *   <li>Error handling for missing or corrupted dictionary resources</li>
+ *   <li>Memory-efficient storage and retrieval of word collections</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses atomic references and synchronized blocks to ensure thread safety
+ * during cache initialization. It employs efficient stream operations for parsing dictionary
+ * files and implements proper resource management through try-with-resources patterns.
+ * The class follows the singleton pattern through static methods and provides immutable
+ * list views to prevent external modification of cached dictionary content.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class DictionaryLoader {
 
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";

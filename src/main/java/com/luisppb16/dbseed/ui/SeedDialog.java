@@ -1,8 +1,3 @@
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
@@ -42,6 +37,38 @@ import javax.swing.border.CompoundBorder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+/**
+ * Interactive database connection configuration wizard for the DBSeed plugin.
+ * <p>
+ * This sophisticated UI component guides users through the critical process of establishing
+ * database connections for the seeding operation. The dialog provides an intuitive interface
+ * for specifying connection parameters, authentication credentials, and generation options
+ * while intelligently handling database-specific URL formats and default values. It integrates
+ * seamlessly with IntelliJ's project management system to provide context-aware configuration
+ * persistence and intelligent defaults based on previous usage patterns.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Managing database-specific connection parameter inputs (URL, credentials, schema)</li>
+ *   <li>Providing intelligent URL parsing and construction for different database systems</li>
+ *   <li>Implementing secure password handling with optional visibility toggling</li>
+ *   <li>Integrating with the configuration persistence system for automatic value recall</li>
+ *   <li>Validating connection parameters and providing user feedback</li>
+ *   <li>Coordinating with the multi-step seeding workflow process</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows security best practices by properly handling sensitive credential
+ * information and implements adaptive UI behaviors based on the selected database driver type.
+ * The dialog maintains state consistency across sessions and provides intelligent defaults
+ * derived from both global settings and project-specific configurations.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class SeedDialog extends DialogWrapper {
 
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;

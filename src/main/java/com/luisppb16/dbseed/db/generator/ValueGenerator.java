@@ -25,6 +25,37 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import net.datafaker.Faker;
 
+/**
+ * Advanced value generation engine for database seeding operations in the DBSeed plugin.
+ * <p>
+ * This class implements sophisticated algorithms for generating realistic and constraint-compliant
+ * data values across various SQL data types. It combines multiple data sources including Faker
+ * library, custom dictionaries, and user-defined allowed values to produce meaningful sample
+ * data. The generator handles complex scenarios such as UUID uniqueness, numeric range
+ * constraints, string length limitations, and database-specific type requirements.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Generating type-appropriate values for all major SQL data types</li>
+ *   <li>Respecting column constraints including min/max values and allowed value sets</li>
+ *   <li>Managing UUID uniqueness across the entire generation process</li>
+ *   <li>Applying parsed constraint information to guide value generation</li>
+ *   <li>Handling soft-delete value configurations appropriately</li>
+ *   <li>Implementing sophisticated numeric value generation with precision control</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation includes specialized algorithms for different data types, with particular
+ * attention to numeric precision and scale handling. The class maintains global state for
+ * UUID uniqueness and implements retry mechanisms to ensure constraint compliance. It also
+ * provides methods for generating values within specific bounds when constraints are present.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 public final class ValueGenerator {
 
   private static final int UUID_GENERATION_LIMIT = 1_000_000;

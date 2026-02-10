@@ -10,6 +10,38 @@ import java.util.Locale;
 import java.util.Objects;
 import lombok.experimental.UtilityClass;
 
+/**
+ * Factory for creating database-specific SQL dialect implementations in the DBSeed plugin ecosystem.
+ * <p>
+ * This utility class provides a centralized mechanism for resolving and instantiating the
+ * appropriate SQL dialect implementation based on driver information. It analyzes driver
+ * class names and connection URL templates to determine the most suitable dialect for
+ * a given database system. The factory ensures that the correct SQL generation patterns
+ * are used for each supported database vendor, optimizing for their specific syntax
+ * and behavioral requirements.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Identifying database vendors from driver class names and URL patterns</li>
+ *   <li>Instantiating appropriate dialect implementations for each database system</li>
+ *   <li>Providing fallback to standard dialect for unrecognized database systems</li>
+ *   <li>Centralizing dialect selection logic for consistent behavior across the application</li>
+ *   <li>Supporting multiple database vendors including MySQL, PostgreSQL, Oracle, SQL Server, and SQLite</li>
+ *   <li>Handling edge cases and providing sensible defaults for unknown databases</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation uses string pattern matching to identify database vendors from
+ * driver information and follows a priority-based matching approach. It handles special
+ * cases where certain databases share similarities with others (e.g., H2 with PostgreSQL)
+ * and provides appropriate fallback mechanisms for unrecognized database systems.
+ * </p>
+ *
+ * @author Luis Pepe
+ * @version 1.0
+ * @since 2024
+ */
 @UtilityClass
 public class DialectFactory {
 

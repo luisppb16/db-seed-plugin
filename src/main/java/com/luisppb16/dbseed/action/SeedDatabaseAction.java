@@ -234,7 +234,7 @@ public class SeedDatabaseAction extends AnAction {
                 pkDialog.getSoftDeleteColumns(),
                 pkDialog.getSoftDeleteUseSchemaDefault(),
                 pkDialog.getSoftDeleteValue(),
-                config.numericScale());
+                pkDialog.getNumericScale());
 
         // Persist the updated configuration including Soft Delete settings
         ConnectionConfigPersistence.save(project, finalConfig);

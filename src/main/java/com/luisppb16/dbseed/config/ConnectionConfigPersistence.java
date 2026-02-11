@@ -107,7 +107,7 @@ public class ConnectionConfigPersistence {
             .numericScale(numericScale)
             .build();
 
-    log.debug("Configuration loaded: {}", config);
+    log.debug("Configuration loaded for URL: {}", config.url());
 
     return config;
   }

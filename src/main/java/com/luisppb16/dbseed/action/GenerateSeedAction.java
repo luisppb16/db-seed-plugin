@@ -113,7 +113,10 @@ public final class GenerateSeedAction extends AnAction {
                 public void run(@NotNull ProgressIndicator indicator) {
                   indicator.setIndeterminate(true);
                   try (Connection conn =
-                      DriverManager.getConnection(config.url(), config.user(), config.password())) {
+                      DriverManager.getConnection(
+                          config.url(),
+                          Objects.requireNonNullElse(config.user(), ""),
+                          Objects.requireNonNullElse(config.password(), ""))) {
                     List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
                     tablesRef.set(tables);
                   } catch (Exception ex) {

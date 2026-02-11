@@ -200,7 +200,7 @@ public class SchemaIntrospector {
     final Map<TableKey, List<String>> map = new LinkedHashMap<>();
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
 
-    if (product.contains("h2")) {
+    if (product.contains("h2") || product.contains("sqlite")) {
       for (final TableRawData table : rawTables) {
         try (final ResultSet rs = meta.getPrimaryKeys(null, schema, table.name())) {
           collectPrimaryKeys(rs, map);
@@ -242,7 +242,7 @@ public class SchemaIntrospector {
     final Map<TableKey, Map<String, String>> fkToPkTable = new HashMap<>();
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
 
-    if (product.contains("h2")) {
+    if (product.contains("h2") || product.contains("sqlite")) {
       for (final TableRawData table : rawTables) {
         try (final ResultSet rs = meta.getImportedKeys(null, schema, table.name())) {
           collectImportedKeys(rs, groupedMappings, fkToPkTable);

@@ -9,7 +9,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": false
+    "requiresSchema": false,
+    "dialect": "mysql"
   },
   {
     "name": "Amazon Redshift",
@@ -21,7 +22,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "redshift"
   },
   {
     "name": "Apache Derby",
@@ -33,7 +35,8 @@
     "requiresDatabaseName": false,
     "requiresUser": false,
     "requiresPassword": false,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "derby"
   },
   {
     "name": "Apache Hive",
@@ -45,7 +48,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": false,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "hive"
   },
   {
     "name": "Azure SQL Database",
@@ -57,7 +61,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "sqlserver"
   },
   {
     "name": "CockroachDB",
@@ -69,7 +74,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "cockroachdb"
   },
   {
     "name": "Google BigQuery",
@@ -81,7 +87,8 @@
     "requiresDatabaseName": false,
     "requiresUser": false,
     "requiresPassword": false,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "bigquery"
   },
   {
     "name": "H2",
@@ -93,7 +100,8 @@
     "requiresDatabaseName": false,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "h2"
   },
   {
     "name": "HSQLDB",
@@ -105,7 +113,8 @@
     "requiresDatabaseName": false,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "hsqldb"
   },
   {
     "name": "IBM Db2",
@@ -117,7 +126,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "db2"
   },
   {
     "name": "MariaDB",
@@ -129,7 +139,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": false
+    "requiresSchema": false,
+    "dialect": "mariadb"
   },
   {
     "name": "MySQL",
@@ -141,7 +152,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": false
+    "requiresSchema": false,
+    "dialect": "mysql"
   },
   {
     "name": "Oracle",
@@ -153,7 +165,8 @@
     "requiresDatabaseName": false,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "oracle"
   },
   {
     "name": "PostgreSQL",
@@ -165,7 +178,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "postgresql"
   },
   {
     "name": "SQL Server",
@@ -177,7 +191,8 @@
     "requiresDatabaseName": true,
     "requiresUser": true,
     "requiresPassword": true,
-    "requiresSchema": true
+    "requiresSchema": true,
+    "dialect": "sqlserver"
   },
   {
     "name": "SQLite",
@@ -185,10 +200,11 @@
     "mavenArtifactId": "sqlite-jdbc",
     "version": "3.45.2.0",
     "driverClass": "org.sqlite.JDBC",
-    "urlTemplate": "jdbc:sqlite:sample.db",
+    "urlTemplate": "jdbc:sqlite:/path/to/test.db",
     "requiresDatabaseName": false,
     "requiresUser": false,
     "requiresPassword": false,
-    "requiresSchema": false
+    "requiresSchema": false,
+    "dialect": "sqlite"
   }
 ]

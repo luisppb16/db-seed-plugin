@@ -190,7 +190,8 @@ public class DriverSelectionDialog extends DialogWrapper {
         selectedDriver.requiresDatabaseName(),
         selectedDriver.requiresUser(),
         selectedDriver.requiresPassword(),
-        selectedDriver.requiresSchema());
+        selectedDriver.requiresSchema(),
+        selectedDriver.dialect());
   }
 
   private void updateProjectIdVisibility(final String selected) {

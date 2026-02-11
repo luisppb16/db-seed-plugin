@@ -13,39 +13,35 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
 
 /**
- * Abstract foundation for database dialect implementations in the DBSeed plugin ecosystem.
+ * Property-driven foundation for database dialect implementations.
  * <p>
- * This sealed abstract class provides the foundational implementation for database-specific
- * SQL dialects used in the DBSeed plugin. It implements common SQL formatting and generation
- * patterns while allowing specific database implementations to customize behavior through
- * configuration properties. The class follows the sealed class pattern to restrict inheritance
- * to known dialect implementations, ensuring type safety and maintainability.
+ * All SQL dialect behavior is configured via {@code .properties} files loaded from
+ * the classpath ({@code /dialects/<name>.properties}). This eliminates the need for
+ * separate Java classes per database — each database's syntax is fully described by
+ * its properties file.
  * </p>
  * <p>
- * Key responsibilities include:
+ * Supported properties:
  * <ul>
- *   <li>Providing base SQL formatting functionality for various data types</li>
- *   <li>Implementing configurable dialect-specific behaviors through property files</li>
- *   <li>Managing SQL value escaping and quoting mechanisms for different databases</li>
- *   <li>Defining standardized transaction and constraint management patterns</li>
- *   <li>Implementing batch insertion logic with customizable formatting options</li>
- *   <li>Handling special data types like UUIDs, dates, timestamps, and decimals</li>
+ *   <li>{@code quoteChar} / {@code quoteEscape} — identifier quoting</li>
+ *   <li>{@code uppercaseIdentifiers} — whether to uppercase identifiers before quoting (e.g. Oracle)</li>
+ *   <li>{@code booleanTrue} / {@code booleanFalse} — boolean literals</li>
+ *   <li>{@code beginTransaction} / {@code commitTransaction} — transaction control</li>
+ *   <li>{@code disableConstraints} / {@code enableConstraints} — FK constraint management</li>
+ *   <li>{@code dateFormat} / {@code timestampFormat} / {@code uuidFormat} — type-specific formatting</li>
+ *   <li>{@code batchHeader} / {@code batchRowPrefix} / {@code batchRowSuffix} / {@code batchRowSeparator} / {@code batchFooter} — INSERT batch templates</li>
+ *   <li>{@code maxBatchSize} — maximum rows per batch INSERT (default 1000)</li>
+ *   <li>{@code supportsMultiRowInsert} — whether multi-row VALUES is supported (default true)</li>
  * </ul>
  * </p>
- * <p>
- * The implementation uses resource-based configuration to allow dialect customization
- * without code changes. Each dialect implementation can provide its own property file
- * to override default behaviors for quoting, boolean representation, transaction
- * management, and batch insertion formatting.
- * </p>
  */
-public abstract sealed class AbstractDialect implements DatabaseDialect 
-permits SqlServerDialect, MySQLDialect, StandardDialect, SqliteDialect, PostgreSqlDialect, OracleDialect {
+public class AbstractDialect implements DatabaseDialect {
 
   private static final String NULL_STR = "NULL";
   protected final Properties props = new Properties();
@@ -65,7 +61,10 @@ permits SqlServerDialect, MySQLDialect, StandardDialect, SqliteDialect, PostgreS
   public String quote(String identifier) {
     String quoteChar = props.getProperty("quoteChar", "\"");
     String quoteEscape = props.getProperty("quoteEscape", "\"\"");
-    return quoteChar + identifier.replace(quoteChar, quoteEscape) + quoteChar;
+    boolean uppercase =
+        Boolean.parseBoolean(props.getProperty("uppercaseIdentifiers", "false"));
+    String id = uppercase ? identifier.toUpperCase(Locale.ROOT) : identifier;
+    return quoteChar + id.replace(quoteChar, quoteEscape) + quoteChar;
   }
 
   @Override
@@ -102,18 +101,33 @@ permits SqlServerDialect, MySQLDialect, StandardDialect, SqliteDialect, PostgreS
     } else {
       switch (value) {
         case SqlKeyword k -> sb.append(k.name());
+        case Boolean b -> sb.append(formatBoolean(b));
+        case Date d -> formatDate(d, sb);
+        case Timestamp t -> formatTimestamp(t, sb);
+        case UUID u -> formatUuid(u, sb);
         case String s -> sb.append("'").append(escapeSql(s)).append("'");
         case Character c -> sb.append("'").append(escapeSql(c.toString())).append("'");
-        case UUID u -> sb.append("'").append(u).append("'");
-        case Date d -> sb.append("'").append(d).append("'");
-        case Timestamp t -> sb.append("'").append(t).append("'");
-        case Boolean b -> sb.append(formatBoolean(b));
         case BigDecimal bd -> sb.append(bd.toPlainString());
         case Double d -> sb.append(formatDouble(d));
         case Float f -> sb.append(formatDouble(f.doubleValue()));
         default -> sb.append(Objects.toString(value, NULL_STR));
       }
     }
+  }
+
+  protected void formatDate(Date d, StringBuilder sb) {
+    String fmt = props.getProperty("dateFormat", "'${value}'");
+    sb.append(fmt.replace("${value}", d.toString()));
+  }
+
+  protected void formatTimestamp(Timestamp t, StringBuilder sb) {
+    String fmt = props.getProperty("timestampFormat", "'${value}'");
+    sb.append(fmt.replace("${value}", t.toString()));
+  }
+
+  protected void formatUuid(UUID u, StringBuilder sb) {
+    String fmt = props.getProperty("uuidFormat", "'${value}'");
+    sb.append(fmt.replace("${value}", u.toString()));
   }
 
   protected String formatDouble(double d) {
@@ -134,23 +148,57 @@ permits SqlServerDialect, MySQLDialect, StandardDialect, SqliteDialect, PostgreS
       String columnList,
       List<Row> rows,
       List<String> columnOrder) {
+
+    int maxBatch = Integer.parseInt(props.getProperty("maxBatchSize", "1000"));
+    boolean multiRow =
+        Boolean.parseBoolean(props.getProperty("supportsMultiRowInsert", "true"));
+
     String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
     String prefix = props.getProperty("batchRowPrefix", "(");
     String suffix = props.getProperty("batchRowSuffix", ")");
     String separator = props.getProperty("batchRowSeparator", ",\n");
     String footer = props.getProperty("batchFooter", ";\n");
 
-    sb.append(header.replace("${table}", tableName).replace("${columns}", columnList));
-
-    for (int i = 0; i < rows.size(); i++) {
-      sb.append(prefix.replace("${table}", tableName).replace("${columns}", columnList));
-      appendRowValues(sb, rows.get(i), columnOrder);
-      sb.append(suffix);
-      if (i < rows.size() - 1) {
-        sb.append(separator);
-      }
+    if (!multiRow) {
+      appendSingleRowInserts(sb, tableName, columnList, rows, columnOrder);
+      return;
     }
-    sb.append(footer);
+
+    for (int i = 0; i < rows.size(); i += maxBatch) {
+      List<Row> batch = rows.subList(i, Math.min(i + maxBatch, rows.size()));
+
+      sb.append(header.replace("${table}", tableName).replace("${columns}", columnList));
+
+      for (int j = 0; j < batch.size(); j++) {
+        sb.append(prefix.replace("${table}", tableName).replace("${columns}", columnList));
+        appendRowValues(sb, batch.get(j), columnOrder);
+        sb.append(suffix);
+        if (j < batch.size() - 1) {
+          sb.append(separator);
+        }
+      }
+      sb.append(footer);
+    }
+  }
+
+  private void appendSingleRowInserts(
+      StringBuilder sb,
+      String tableName,
+      String columnList,
+      List<Row> rows,
+      List<String> columnOrder) {
+
+    String stmtSep = props.getProperty("statementSeparator", ";\n");
+
+    for (Row row : rows) {
+      sb.append("INSERT INTO ")
+          .append(tableName)
+          .append(" (")
+          .append(columnList)
+          .append(") VALUES (");
+      appendRowValues(sb, row, columnOrder);
+      sb.append(")").append(stmtSep);
+    }
   }
 
   protected void appendRowValues(StringBuilder sb, Row row, List<String> columnOrder) {

@@ -47,6 +47,7 @@ import lombok.Builder;
  * @param requiresUser Whether this driver requires a username parameter
  * @param requiresPassword Whether this driver requires a password parameter
  * @param requiresSchema Whether this driver requires a schema parameter
+ * @param dialect The name of the dialect properties file (without extension) for SQL generation
  */
 @Builder
 public record DriverInfo(
@@ -59,4 +60,5 @@ public record DriverInfo(
     boolean requiresDatabaseName,
     boolean requiresUser,
     boolean requiresPassword,
-    boolean requiresSchema) {}
+    boolean requiresSchema,
+    String dialect) {}

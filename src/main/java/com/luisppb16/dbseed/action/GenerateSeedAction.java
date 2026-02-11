@@ -104,6 +104,7 @@ public final class GenerateSeedAction extends AnAction {
       final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
       final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
+      final AtomicReference<Exception> errorRef = new AtomicReference<>();
 
       ProgressManager.getInstance()
           .run(
@@ -119,15 +120,19 @@ public final class GenerateSeedAction extends AnAction {
                     List<Table> tables = SchemaIntrospector.introspect(conn, config.schema());
                     tablesRef.set(tables);
                   } catch (Exception ex) {
-                    ApplicationManager.getApplication()
-                        .invokeLater(() -> handleException(project, ex));
+                    errorRef.set(ex);
                   }
                 }
               });
 
+      if (errorRef.get() != null) {
+        handleException(project, errorRef.get());
+        return;
+      }
+
       final List<Table> tables = tablesRef.get();
       if (tables == null || tables.isEmpty()) {
-        if (tables != null) notifyError(project, "No tables found in schema " + config.schema());
+        notifyError(project, "No tables found in schema: " + config.schema());
         return;
       }
 

@@ -103,6 +103,7 @@ public class DriverLoader {
       return Optional.of(chosenDriver);
     } catch (final Exception ex) {
       log.error("Error selecting/loading driver", ex);
+      NotificationHelper.notifyError(project, "Error loading driver: " + ex.getMessage());
       return Optional.empty();
     }
   }

@@ -128,6 +128,7 @@ public class SeedDatabaseAction extends AnAction {
   private void runSeedGeneration(
       final Project project, final GenerationConfig config, final DriverInfo chosenDriver) {
     final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
+    final AtomicReference<Exception> errorRef = new AtomicReference<>();
 
     ProgressManager.getInstance()
         .run(
@@ -142,20 +143,26 @@ public class SeedDatabaseAction extends AnAction {
                         Objects.requireNonNullElse(config.password(), ""))) {
                   tablesRef.set(SchemaIntrospector.introspect(conn, config.schema()));
                   log.info("Schema introspection successful for schema: {}", config.schema());
-                } catch (final SQLException ex) {
-                  handleException(project, "Error introspecting schema: ", ex);
+                } catch (final Exception ex) {
+                  errorRef.set(ex);
                 }
               }
 
               @Override
               public void onSuccess() {
-                Optional.ofNullable(tablesRef.get())
-                    .ifPresent(
-                        tables ->
-                            ApplicationManager.getApplication()
-                                .invokeLater(
-                                    () ->
-                                        continueGeneration(project, config, tables, chosenDriver)));
+                if (errorRef.get() != null) {
+                  handleException(project, "Error introspecting schema: ", errorRef.get());
+                  return;
+                }
+                final List<Table> tables = tablesRef.get();
+                if (tables == null || tables.isEmpty()) {
+                  notifyError(
+                      project, "No tables found in schema: " + config.schema());
+                  return;
+                }
+                ApplicationManager.getApplication()
+                    .invokeLater(
+                        () -> continueGeneration(project, config, tables, chosenDriver));
               }
             });
   }

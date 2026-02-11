@@ -91,7 +91,7 @@ public class DriverSelectionDialog extends DialogWrapper {
 
   private JComboBox<String> createDriverComboBox(
       final List<DriverInfo> drivers, @Nullable final String lastDriverName) {
-    final var box =
+    final ComboBox<String> box =
         new ComboBox<>(
             new DefaultComboBoxModel<>(
                 drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
@@ -110,7 +110,7 @@ public class DriverSelectionDialog extends DialogWrapper {
   }
 
   private JTextField createProjectIdField() {
-    final var field = new JTextField(getTitle().length());
+    final JTextField field = new JTextField(getTitle().length());
     field
         .getDocument()
         .addDocumentListener(
@@ -134,7 +134,7 @@ public class DriverSelectionDialog extends DialogWrapper {
   }
 
   private JPanel createBigQueryPanel(final JTextField projectIdField) {
-    final var panel = new JPanel();
+    final JPanel panel = new JPanel();
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
     panel.setBorder(new TitledBorder("Google BigQuery ProjectId"));
     panel.add(projectIdField);
@@ -143,7 +143,7 @@ public class DriverSelectionDialog extends DialogWrapper {
   }
 
   private JPanel createMainPanel(final JComboBox<String> comboBox, final JPanel bigQueryPanel) {
-    final var panel = new JPanel();
+    final JPanel panel = new JPanel();
     panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
     panel.add(comboBox);
     panel.add(Box.createVerticalStrut(10));
@@ -161,7 +161,7 @@ public class DriverSelectionDialog extends DialogWrapper {
       return Optional.empty();
     }
 
-    var selected = drivers.get(comboBox.getSelectedIndex());
+    DriverInfo selected = drivers.get(comboBox.getSelectedIndex());
 
     return Optional.of(selected)
         .filter(driver -> "Google BigQuery".equalsIgnoreCase(driver.name()))

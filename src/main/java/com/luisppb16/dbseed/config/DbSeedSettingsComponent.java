@@ -15,6 +15,7 @@ import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
+import com.intellij.openapi.vfs.VirtualFile;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
@@ -88,7 +89,7 @@ public class DbSeedSettingsComponent {
     myDefaultOutputDirectory.addActionListener(
         e -> {
           final String currentPath = myDefaultOutputDirectory.getText();
-          final var currentFile =
+          final VirtualFile currentFile =
               currentPath.isEmpty()
                   ? null
                   : LocalFileSystem.getInstance().findFileByPath(currentPath);

@@ -12,6 +12,7 @@ import javax.swing.JComponent;
 import javax.swing.JFormattedTextField;
 import javax.swing.JSpinner;
 import javax.swing.KeyStroke;
+import lombok.experimental.UtilityClass;
 
 /**
  * Comprehensive utility suite for configuring and enhancing UI component behavior in the DBSeed plugin.
@@ -39,9 +40,8 @@ import javax.swing.KeyStroke;
  * to prevent runtime exceptions.
  * </p>
  */
-public final class ComponentUtils {
-
-  private ComponentUtils() {}
+@UtilityClass
+public class ComponentUtils {
 
   public static void configureSpinnerArrowKeyControls(final JSpinner spinner) {
     final JComponent editor = spinner.getEditor();

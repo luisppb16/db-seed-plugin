@@ -78,7 +78,6 @@ public class DataGenerator {
     final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints = new HashMap<>();
     final Set<String> softDeleteCols = parseSoftDeleteColumns(params.softDeleteColumns());
 
-    // Convert excluded columns from List to Set
     final Map<String, Set<String>> excludedColumnsSet = params.excludedColumns().entrySet().stream()
         .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 

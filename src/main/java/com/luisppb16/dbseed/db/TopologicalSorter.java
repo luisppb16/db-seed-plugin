@@ -56,7 +56,6 @@ public class TopologicalSorter {
 
   public static SortResult sort(List<Table> tables) {
 
-    // Build a directed graph: dependency → tables that depend on it.
     Map<String, Set<String>> graph = new LinkedHashMap<>();
     tables.forEach(t -> graph.put(t.name(), new LinkedHashSet<>()));
 
@@ -70,15 +69,12 @@ public class TopologicalSorter {
                       }
                     }));
 
-    // Detect strongly connected components (SCCs) with Tarjan.
     Tarjan tarjan = new Tarjan(graph);
     List<Set<String>> sccs = tarjan.run();
 
-    // Index: table → index of its SCC.
     Map<String, Integer> idx = new HashMap<>();
     IntStream.range(0, sccs.size()).forEach(i -> sccs.get(i).forEach(n -> idx.put(n, i)));
 
-    // Reduced graph between SCCs.
     Map<Integer, Set<Integer>> sccGraph = new HashMap<>();
     graph.forEach(
         (fromNode, targets) -> {
@@ -92,12 +88,10 @@ public class TopologicalSorter {
               });
         });
 
-    // Calculate in-degrees for Kahn's algorithm.
     Map<Integer, Integer> inDegree = new HashMap<>();
-    IntStream.range(0, sccs.size()).forEach(i -> inDegree.put(i, 0)); // Initialize all to 0
+    IntStream.range(0, sccs.size()).forEach(i -> inDegree.put(i, 0));
     sccGraph.values().forEach(edges -> edges.forEach(v -> inDegree.merge(v, 1, Integer::sum)));
 
-    // Topological sort of the SCCs.
     Deque<Integer> queue =
         inDegree.entrySet().stream()
             .filter(e -> e.getValue() == 0)
@@ -109,7 +103,7 @@ public class TopologicalSorter {
       int scc = queue.remove();
       orderScc.add(scc);
       sccGraph
-          .getOrDefault(scc, Collections.emptySet()) // Use Collections.emptySet() for clarity
+          .getOrDefault(scc, Collections.emptySet())
           .forEach(
               v -> {
                 int deg = inDegree.merge(v, -1, Integer::sum);
@@ -117,7 +111,6 @@ public class TopologicalSorter {
               });
     }
 
-    // Build the final order of tables.
     List<String> ordered = new ArrayList<>();
     orderScc.forEach(
         id -> {
@@ -126,7 +119,6 @@ public class TopologicalSorter {
           ordered.addAll(group);
         });
 
-    // Detect cycles (SCCs with more than one node or with a self-loop).
     List<Set<String>> cycles =
         sccs.stream()
             .filter(
@@ -135,12 +127,12 @@ public class TopologicalSorter {
                         || graph
                             .getOrDefault(
                                 g.iterator().next(),
-                                Collections.emptySet()) // Use Collections.emptySet()
+                                Collections.emptySet())
                             .contains(g.iterator().next()))
             .map(Collections::unmodifiableSet)
             .toList();
 
-    return new SortResult(ordered, cycles); // Removed redundant List.copyOf
+    return new SortResult(ordered, cycles);
   }
 
   public static boolean requiresDeferredDueToNonNullableCycles(
@@ -177,7 +169,7 @@ public class TopologicalSorter {
 
     Tarjan(Map<String, Set<String>> graph) {
       this.graph =
-          Objects.requireNonNull(graph, "Graph cannot be null"); // Added null check message
+          Objects.requireNonNull(graph, "Graph cannot be null");
     }
 
     List<Set<String>> run() {
@@ -187,7 +179,7 @@ public class TopologicalSorter {
               v -> {
                 if (!indexMap.containsKey(v)) strongConnect(v);
               });
-      return result; // Removed redundant List.copyOf
+      return result;
     }
 
     private void strongConnect(String v) {
@@ -198,7 +190,7 @@ public class TopologicalSorter {
       onStack.add(v);
 
       graph
-          .getOrDefault(v, Collections.emptySet()) // Use Collections.emptySet()
+          .getOrDefault(v, Collections.emptySet())
           .forEach(
               w -> {
                 if (!indexMap.containsKey(w)) {
@@ -217,7 +209,7 @@ public class TopologicalSorter {
           onStack.remove(w);
           scc.add(w);
         } while (!w.equals(v));
-        result.add(Collections.unmodifiableSet(scc)); // Make SCCs unmodifiable
+        result.add(Collections.unmodifiableSet(scc));
       }
     }
   }

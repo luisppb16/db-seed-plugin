@@ -145,7 +145,6 @@ public final class SeedDialog extends DialogWrapper {
     try {
       rowsSpinner.commitEdit();
     } catch (ParseException e) {
-      // Invalid number typed, spinner will retain last valid value.
     }
     super.doOKAction();
     saveConfiguration();
@@ -370,7 +369,6 @@ public final class SeedDialog extends DialogWrapper {
     String url = urlField.getText().trim();
     final String database = databaseField.getText().trim();
 
-    // Only append database if the driver requires it
     if (driverInfo.requiresDatabaseName()) {
       if (url.startsWith("jdbc:sqlserver")) {
         url = url.replaceAll("databaseName=[^;]+;?", "");

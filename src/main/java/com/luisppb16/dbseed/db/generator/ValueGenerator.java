@@ -134,7 +134,6 @@ public final class ValueGenerator {
         final UUID u = UUID.fromString(s.trim());
         if (usedUuids.add(u)) return u;
       } catch (final IllegalArgumentException e) {
-        // Invalid UUID string - skip
       }
     }
     return null;

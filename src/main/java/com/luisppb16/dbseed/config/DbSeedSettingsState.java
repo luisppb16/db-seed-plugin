@@ -80,18 +80,15 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   public void loadState(@NotNull final DbSeedSettingsState state) {
     XmlSerializerUtil.copyBean(state, this);
 
-    // Ensure resilience against null or invalid values from a deserialized state
     this.defaultOutputDirectory =
         Objects.requireNonNullElse(this.defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
     if (this.columnSpinnerStep <= 0) {
       this.columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
     }
-    // Restore explicit assignment for language settings
     this.useLatinDictionary = state.useLatinDictionary;
     this.useEnglishDictionary = state.useEnglishDictionary;
     this.useSpanishDictionary = state.useSpanishDictionary;
 
-    // Soft Delete defaults
     this.softDeleteColumns =
         Objects.requireNonNullElse(state.softDeleteColumns, DEFAULT_SOFT_DELETE_COLUMNS);
     this.softDeleteValue =

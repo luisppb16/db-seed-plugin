@@ -55,8 +55,8 @@ public final class ConstraintParser {
           "(?i)"
               + "^"
               + "[\\s()]*"
-              + "(?:(?:\"?[\\w\\.$]+\"?)\\.)*"  // Updated to handle schema.table.column format
-              + "\"?([\\w\\.$]+)\"?"  // Updated to allow dots in column names
+              + "(?:(?:\"?[\\w\\.$]+\"?)\\.)*"
+              + "\"?([\\w\\.$]+)\"?"
               + "[\\s()]*"
               + CAST_REGEX
               + "\\s*=\\s*"
@@ -75,7 +75,7 @@ public final class ConstraintParser {
       Pattern.compile(
           "(?i)"
               + "[\\s()]*"
-              + "\"?([\\w\\.$]+)\"?"  // Updated to allow dots in column names
+              + "\"?([\\w\\.$]+)\"?"
               + "[\\s()]*"
               + "(?:::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)?"
               + "\\s*=\\s*"
@@ -155,7 +155,6 @@ public final class ConstraintParser {
         newLower = (newLower == null) ? lo : Math.max(newLower, lo);
         newUpper = (newUpper == null) ? hi : Math.min(newUpper, hi);
       } catch (final NumberFormatException e) {
-        // Failed to parse BETWEEN bounds - skip this constraint
       }
     }
     return new BetweenParseResult(newLower, newUpper);
@@ -179,7 +178,6 @@ public final class ConstraintParser {
         newLower = updateLowerBound(op, val, newLower);
         newUpper = updateUpperBound(op, val, newUpper);
       } catch (final NumberFormatException e) {
-        // Failed to parse numeric range - skip this constraint
       }
     }
     return new RangeParseResult(newLower, newUpper);
@@ -238,7 +236,6 @@ public final class ConstraintParser {
           newMaxLen = (newMaxLen == null) ? v : Math.min(newMaxLen, v);
         }
       } catch (final NumberFormatException e) {
-        // Failed to parse length constraint - skip this constraint
       }
     }
     return newMaxLen;
@@ -292,7 +289,6 @@ public final class ConstraintParser {
     clean = clean.replaceAll("(?i)^CHECK\\s*", "");
     clean = cleanParens(clean);
 
-    // Handle complex OR conditions by properly identifying the OR boundaries
     final String[] parts = splitByTopLevelOr(clean);
     final List<java.util.Map<String, String>> combinations =
         Stream.of(parts)
@@ -311,7 +307,6 @@ public final class ConstraintParser {
     return new MultiColumnConstraint(allColumns, combinations);
   }
 
-  // Helper method to split by OR while respecting parentheses
   private static String[] splitByTopLevelOr(String input) {
     List<String> parts = new java.util.ArrayList<>();
     int parenLevel = 0;
@@ -325,13 +320,11 @@ public final class ConstraintParser {
       } else if (c == ')') {
         parenLevel--;
       } else if (parenLevel == 0 && i + 2 < input.length()) {
-        // Check for "OR" at top level (not inside parentheses)
         if (Character.toLowerCase(input.charAt(i)) == 'o' && 
             Character.toLowerCase(input.charAt(i + 1)) == 'r' &&
             (i == 0 || !Character.isLetterOrDigit(input.charAt(i - 1))) &&
             (i + 2 >= input.length() || !Character.isLetterOrDigit(input.charAt(i + 2)))) {
           
-          // Skip any leading/trailing whitespace
           int end = i;
           int start = i + 2;
           
@@ -340,7 +333,7 @@ public final class ConstraintParser {
           
           parts.add(input.substring(lastSplit, end).trim());
           lastSplit = start;
-          i += 1; // Skip 'R'
+          i += 1;
         }
       }
     }

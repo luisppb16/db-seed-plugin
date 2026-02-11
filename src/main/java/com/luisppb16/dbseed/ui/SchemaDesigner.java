@@ -253,7 +253,7 @@ public final class SchemaDesigner extends AnAction {
     public UiTable {
       Objects.requireNonNull(name, "Table name cannot be null.");
       Objects.requireNonNull(columns, "Column list cannot be null.");
-      columns = List.copyOf(columns); // Ensure immutability
+      columns = List.copyOf(columns);
     }
 
     @Override

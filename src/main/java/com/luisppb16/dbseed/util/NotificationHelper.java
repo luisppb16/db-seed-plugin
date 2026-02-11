@@ -11,6 +11,7 @@ import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
+import lombok.experimental.UtilityClass;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -38,7 +39,8 @@ import org.jetbrains.annotations.Nullable;
  * are thread-safe and can be called from any context within the IDE.
  * </p>
  */
-public final class NotificationHelper {
+@UtilityClass
+public class NotificationHelper {
 
   private static final String NOTIFICATION_GROUP_ID = "DBSeed4SQL";
   private static final NotificationGroup NOTIFICATION_GROUP;
@@ -46,9 +48,6 @@ public final class NotificationHelper {
   static {
     NOTIFICATION_GROUP = NotificationGroupManager.getInstance()
         .getNotificationGroup(NOTIFICATION_GROUP_ID);
-  }
-
-  private NotificationHelper() {
   }
 
   public static void notifyError(@Nullable final Project project, @NotNull final String message) {

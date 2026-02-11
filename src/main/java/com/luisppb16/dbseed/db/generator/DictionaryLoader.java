@@ -54,7 +54,6 @@ public final class DictionaryLoader {
   private static final Object DICTIONARY_LOCK = new Object();
 
   private DictionaryLoader() {
-    // Utility class
   }
 
   public static List<String> loadWords(

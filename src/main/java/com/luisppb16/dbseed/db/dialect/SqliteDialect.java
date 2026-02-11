@@ -38,7 +38,7 @@ import java.util.List;
  * </p>
  */
 public final class SqliteDialect extends AbstractDialect {
-  private static final int SQLITE_BATCH_SIZE = 100; // Smaller batch size for SQLite
+  private static final int SQLITE_BATCH_SIZE = 100;
 
   public SqliteDialect() {
     super("sqlite.properties");
@@ -52,7 +52,6 @@ public final class SqliteDialect extends AbstractDialect {
       List<Row> rows,
       List<String> columnOrder) {
     
-    // Use smaller batch size for SQLite to avoid parameter limits
     String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
     String prefix = props.getProperty("batchRowPrefix", "(");
     String suffix = props.getProperty("batchRowSuffix", ")");

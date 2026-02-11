@@ -110,7 +110,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private final JSpinner scaleSpinner;
 
-  // Maps to hold checkbox references for cross-tab synchronization
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
 
@@ -121,7 +120,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     this.initialConfig = Objects.requireNonNull(initialConfig, "Initial config cannot be null.");
     this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
 
-    // Initialize scale spinner with value from config or default
     final int initialScale = initialConfig.numericScale() >= 0 ? initialConfig.numericScale() : 2;
     this.scaleSpinner = new JSpinner(new SpinnerNumberModel(initialScale, 0, 10, 1));
     ComponentUtils.configureSpinnerArrowKeyControls(this.scaleSpinner);
@@ -153,7 +151,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           uuidValuesByTable.put(table.name(), uuidValues);
         });
 
-    // Initialize Soft Delete fields from passed config or global defaults
     String cols = initialConfig.softDeleteColumns();
     if (cols == null) {
       cols = DbSeedSettingsState.getInstance().getSoftDeleteColumns();
@@ -196,7 +193,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
     tabbedPane.addTab("More Settings", createMoreSettingsPanel());
 
-    // Initial synchronization of states
     synchronizeInitialStates();
 
     final JPanel content = new JPanel(new BorderLayout());
@@ -416,7 +412,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private List<JCheckBox> findColumnBoxesForTable(JCheckBox tableBox) {
-    // Helper to find sibling checkboxes in the UI hierarchy
     List<JCheckBox> boxes = new ArrayList<>();
     Component parent = tableBox.getParent(); // tablePanel
     if (parent instanceof JPanel panel) {
@@ -453,7 +448,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       currentSelectionMap.get(tableName).remove(colName);
     }
 
-    // Sync with other tab
     final JCheckBox otherBox =
         otherCheckBoxesMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
     if (otherBox != null) {

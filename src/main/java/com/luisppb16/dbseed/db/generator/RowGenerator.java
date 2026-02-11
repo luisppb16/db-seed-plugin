@@ -252,7 +252,7 @@ public final class RowGenerator {
       for (final Map<String, String> combo : mcc.allowedCombinations()) {
         boolean matchesCombo = true;
         for (final Map.Entry<String, String> entry : combo.entrySet()) {
-          final String colName = entry.getKey();
+          final String colName = resolveColumnName(entry.getKey());
           final String expectedVal = entry.getValue();
           final Object actualVal = values.get(colName);
 
@@ -297,7 +297,7 @@ public final class RowGenerator {
                       combo.entrySet().stream()
                           .allMatch(
                               entry -> {
-                                final String colName = entry.getKey();
+                                final String colName = resolveColumnName(entry.getKey());
                                 final String expectedVal = entry.getValue();
                                 if (!values.containsKey(colName)) {
                                   return true;
@@ -318,9 +318,9 @@ public final class RowGenerator {
           compatibleCombinations.get(ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
       for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
-        final String colName = entry.getKey();
+        final String colName = resolveColumnName(entry.getKey());
         final String valStr = entry.getValue();
-        
+
         if (!values.containsKey(colName)) {
           final Column col = table.column(colName);
           if (col != null) {
@@ -454,6 +454,11 @@ public final class RowGenerator {
     return valueGenerator.generateValue(column, constraints.get(column.name()), generatedCount.get());
   }
 
+  private String resolveColumnName(final String constraintColName) {
+    final Column col = table.column(constraintColName);
+    return col != null ? col.name() : constraintColName;
+  }
+
   private Object parseValue(final String value, final Column column) {
     if (value == null || "NULL".equalsIgnoreCase(value)) return null;
     try {
@@ -507,26 +512,32 @@ public final class RowGenerator {
       return true;
     }
 
+    final Set<String> resolvedColumns = new HashSet<>();
     for (final MultiColumnConstraint mcc : multiColumnConstraints) {
+      resolvedColumns.clear();
+      for (final String c : mcc.columns()) {
+        resolvedColumns.add(resolveColumnName(c));
+      }
+
       final List<Map<String, String>> compatibleCombinations = new ArrayList<>();
-      
+
       for (Map<String, String> combo : mcc.allowedCombinations()) {
         boolean isCompatible = true;
-        
+
         for (Map.Entry<String, String> entry : combo.entrySet()) {
-          final String colName = entry.getKey();
+          final String colName = resolveColumnName(entry.getKey());
           final String expectedVal = entry.getValue();
-          
-          if (mcc.columns().contains(colName)) {
+
+          if (resolvedColumns.contains(colName)) {
             final Object actualVal = values.get(colName);
-            
+
             if (actualVal != null && !String.valueOf(actualVal).equals(expectedVal)) {
               isCompatible = false;
               break;
             }
           }
         }
-        
+
         if (isCompatible) {
           compatibleCombinations.add(combo);
         }
@@ -535,12 +546,12 @@ public final class RowGenerator {
       if (compatibleCombinations.isEmpty()) {
         if (!mcc.allowedCombinations().isEmpty()) {
           final Map<String, String> selectedCombination = mcc.allowedCombinations().get(0);
-          
+
           for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
-            final String colName = entry.getKey();
+            final String colName = resolveColumnName(entry.getKey());
             final String valStr = entry.getValue();
-            
-            if (mcc.columns().contains(colName)) {
+
+            if (resolvedColumns.contains(colName)) {
               final Column col = table.column(colName);
               if (col != null) {
                 values.put(colName, parseValue(valStr, col));
@@ -553,12 +564,12 @@ public final class RowGenerator {
       } else {
         final Map<String, String> selectedCombination =
             compatibleCombinations.get(ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
-        
+
         for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
-          final String colName = entry.getKey();
+          final String colName = resolveColumnName(entry.getKey());
           final String valStr = entry.getValue();
 
-          if (mcc.columns().contains(colName) && !values.containsKey(colName)) {
+          if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
             final Column col = table.column(colName);
             if (col != null) {
               values.put(colName, parseValue(valStr, col));

@@ -227,6 +227,10 @@ public class DataGenerator {
       final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
       if (ValueGenerator.isNumericJdbc(col.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
+        if (val != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()
+            && pc.allowedValues().contains(String.valueOf(val))) {
+          continue;
+        }
         int attempts = 0;
         while (ValueGenerator.isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
           final ValueGenerator vg = new ValueGenerator(new Faker(), null, false, new HashSet<>(), numericScale);

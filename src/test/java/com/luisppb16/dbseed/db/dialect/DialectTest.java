@@ -86,7 +86,7 @@ class DialectTest {
 
   @Nested
   class MySQLDialectTests {
-    final MySQLDialect d = new MySQLDialect();
+    final DatabaseDialect d = new StandardDialect("mysql.properties");
 
     @Test void quote_backtick() { assertThat(d.quote("user")).isEqualTo("`user`"); }
     @Test void boolean_1_0() {
@@ -104,7 +104,7 @@ class DialectTest {
 
   @Nested
   class PostgreSqlDialectTests {
-    final PostgreSqlDialect d = new PostgreSqlDialect();
+    final DatabaseDialect d = new StandardDialect("postgresql.properties");
 
     @Test void quote_doubleQuote() { assertThat(d.quote("col")).isEqualTo("\"col\""); }
     @Test void beginTransaction() { assertThat(d.beginTransaction()).isEqualTo("BEGIN;\n"); }
@@ -114,7 +114,7 @@ class DialectTest {
 
   @Nested
   class SqlServerDialectTests {
-    final SqlServerDialect d = new SqlServerDialect();
+    final DatabaseDialect d = new StandardDialect("sqlserver.properties");
 
     @Test void quote_squareBrackets() { assertThat(d.quote("order")).startsWith("[").contains("order"); }
     @Test void boolean_1_0() {
@@ -129,7 +129,7 @@ class DialectTest {
 
   @Nested
   class OracleDialectTests {
-    final OracleDialect d = new OracleDialect();
+    final DatabaseDialect d = new StandardDialect("oracle.properties");
 
     @Test void quote_uppercase() { assertThat(d.quote("myCol")).isEqualTo("\"MYCOL\""); }
 
@@ -153,7 +153,7 @@ class DialectTest {
 
   @Nested
   class SqliteDialectTests {
-    final SqliteDialect d = new SqliteDialect();
+    final DatabaseDialect d = new StandardDialect("sqlite.properties");
 
     @Test void batchSplittingAt100Rows() {
       List<Row> rows = new ArrayList<>();

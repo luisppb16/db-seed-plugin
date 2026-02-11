@@ -5,6 +5,7 @@
 
 package com.luisppb16.dbseed.db;
 
+import com.luisppb16.dbseed.db.dialect.DatabaseDialect;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
@@ -70,7 +71,7 @@ public class SchemaIntrospector {
 
   private static final String CAST_PATTERN = "(?:\\s*::[a-zA-Z0-9 ]+)*";
 
-  private static final Pattern POSTGRES_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
+  private static final Pattern CHECK_WRAPPER_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
   private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
 
   private static final Map<String, Pattern> IN_PATTERNS = new ConcurrentHashMap<>();
@@ -79,16 +80,17 @@ public class SchemaIntrospector {
   private static final Map<String, Pattern> BETWEEN_PATTERNS = new ConcurrentHashMap<>();
   private static final Map<String, Pattern> GTE_LTE_PATTERNS = new ConcurrentHashMap<>();
 
-  public static List<Table> introspect(final Connection conn, final String schema)
-      throws SQLException {
+  public static List<Table> introspect(final Connection conn, final String schema,
+      final DatabaseDialect dialect) throws SQLException {
     Objects.requireNonNull(conn, "Connection cannot be null");
+    Objects.requireNonNull(dialect, "Dialect cannot be null");
     final DatabaseMetaData meta = conn.getMetaData();
     final List<Table> tables = new ArrayList<>();
 
     final List<TableRawData> rawTables = loadAllTables(meta, schema);
     final Map<TableKey, List<ColumnRawData>> rawColumns = loadAllColumns(meta, schema);
     final Map<TableKey, List<String>> allChecks =
-        loadAllCheckConstraints(conn, meta, schema, rawTables, rawColumns);
+        loadAllCheckConstraints(conn, schema, rawTables, rawColumns, dialect);
     final Map<TableKey, List<String>> allPks = loadAllPrimaryKeys(meta, schema, rawTables);
     final Map<TableKey, List<List<String>>> allUniqueKeys =
         loadAllUniqueKeys(meta, schema, rawTables);
@@ -171,6 +173,7 @@ public class SchemaIntrospector {
       }
 
       final Set<String> allowedValues = inferAllowedValuesFromChecks(checkConstraints, raw.name());
+      final boolean isPk = pkSet.contains(raw.name());
       final boolean isUuid =
           raw.name().toLowerCase(Locale.ROOT).endsWith("guid")
               || raw.name().toLowerCase(Locale.ROOT).endsWith("uuid")
@@ -182,8 +185,8 @@ public class SchemaIntrospector {
           new Column(
               raw.name(),
               raw.type(),
-              raw.nullable(),
-              pkSet.contains(raw.name()),
+              isPk ? false : raw.nullable(),
+              isPk,
               isUuid,
               raw.length(),
               raw.scale(),
@@ -444,26 +447,24 @@ public class SchemaIntrospector {
 
   private static Map<TableKey, List<String>> loadAllCheckConstraints(
       final Connection conn,
-      final DatabaseMetaData meta,
       final String schema,
       final List<TableRawData> tables,
-      final Map<TableKey, List<ColumnRawData>> columns)
+      final Map<TableKey, List<ColumnRawData>> columns,
+      final DatabaseDialect dialect)
       throws SQLException {
 
     final Map<TableKey, List<String>> checks = new HashMap<>();
-    final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
+    final String query = dialect.getProperty("checkConstraint.query", "");
 
-    if (product.contains("postgres")) {
-      loadAllPostgresCheckConstraints(conn, schema, checks);
-    } else if (product.contains("h2")) {
-      loadAllH2CheckConstraints(conn, schema, checks);
+    if (query.isEmpty()) {
+      loadRemarksCheckConstraints(tables, columns, checks);
     } else {
-      loadGenericCheckConstraints(tables, columns, checks);
+      loadQueryCheckConstraints(conn, schema, checks, dialect, query);
     }
     return checks;
   }
 
-  private static void loadGenericCheckConstraints(
+  private static void loadRemarksCheckConstraints(
       final List<TableRawData> tables,
       final Map<TableKey, List<ColumnRawData>> columns,
       final Map<TableKey, List<String>> checks) {
@@ -484,77 +485,73 @@ public class SchemaIntrospector {
     }
   }
 
-  private static void loadAllH2CheckConstraints(
-      final Connection conn, final String schema, final Map<TableKey, List<String>> checks)
+  private static void loadQueryCheckConstraints(
+      final Connection conn,
+      final String schema,
+      final Map<TableKey, List<String>> checks,
+      final DatabaseDialect dialect,
+      final String baseQuery)
       throws SQLException {
-    final StringBuilder sql =
-        new StringBuilder(
-            "SELECT tc.TABLE_SCHEMA, tc.TABLE_NAME, CHECK_CLAUSE "
-                + "FROM INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc "
-                + "JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME "
-                + "WHERE tc.CONSTRAINT_TYPE = 'CHECK'");
 
-    if (schema != null) {
-      sql.append(" AND tc.TABLE_SCHEMA = ?");
+    final String schemaFilter = dialect.getProperty("checkConstraint.schemaFilter", "");
+    final String schemaCol = dialect.getProperty("checkConstraint.schemaColumn", "TABLE_SCHEMA");
+    final String tableCol = dialect.getProperty("checkConstraint.tableColumn", TABLE_NAME);
+    final String clauseCol = dialect.getProperty("checkConstraint.clauseColumn", "CHECK_CLAUSE");
+    final boolean uppercaseSchema =
+        Boolean.parseBoolean(dialect.getProperty("checkConstraint.uppercaseSchemaParam", "false"));
+    final boolean fallbackToCatalog =
+        Boolean.parseBoolean(dialect.getProperty("checkConstraint.schemaFallbackToCatalog", "false"));
+    final boolean useNullSchemaKey =
+        Boolean.parseBoolean(dialect.getProperty("checkConstraint.useNullSchemaKey", "false"));
+    final boolean stripCheckWrapper =
+        Boolean.parseBoolean(dialect.getProperty("checkConstraint.stripCheckWrapper", "false"));
+    final boolean stripQuoteChar =
+        Boolean.parseBoolean(dialect.getProperty("checkConstraint.stripQuoteChar", "false"));
+    final String quoteChar = stripQuoteChar ? dialect.getProperty("quoteChar", "") : "";
+
+    String effectiveSchema = schema;
+    if (effectiveSchema == null && fallbackToCatalog) {
+      try {
+        effectiveSchema = conn.getCatalog();
+      } catch (final SQLException e) {
+        log.warn("Failed to get catalog for schema fallback", e);
+      }
+    }
+
+    final StringBuilder sql = new StringBuilder(baseQuery);
+    if (effectiveSchema != null && !schemaFilter.isEmpty()) {
+      sql.append(schemaFilter);
     }
 
     try (final PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-      if (schema != null) {
-        ps.setString(1, schema.toUpperCase(Locale.ROOT));
+      if (effectiveSchema != null && !schemaFilter.isEmpty()) {
+        final String param = uppercaseSchema
+            ? effectiveSchema.toUpperCase(Locale.ROOT) : effectiveSchema;
+        ps.setString(1, param);
       }
       try (final ResultSet rs = ps.executeQuery()) {
         while (rs.next()) {
-          final String tableSchema = rs.getString("TABLE_SCHEMA");
-          final String tableName = rs.getString(TABLE_NAME);
-          final String clause = rs.getString("CHECK_CLAUSE");
-          if (clause != null && !clause.isBlank()) {
-            final TableKey key = new TableKey(tableSchema, tableName);
-            checks.computeIfAbsent(key, k -> new ArrayList<>()).add(clause);
-          }
-        }
-      }
-    } catch (SQLException e) {
-      log.warn("Failed to load H2 check constraints for schema {}", schema, e);
-      throw e;
-    }
-  }
+          final String resultSchema = useNullSchemaKey ? null : rs.getString(schemaCol);
+          final String tableName = rs.getString(tableCol);
+          String clause = rs.getString(clauseCol);
+          if (clause == null || clause.isBlank()) continue;
 
-  private static void loadAllPostgresCheckConstraints(
-      final Connection conn, final String schema, final Map<TableKey, List<String>> checks)
-      throws SQLException {
-    final StringBuilder sql =
-        new StringBuilder(
-            "SELECT nsp.nspname, rel.relname, pg_get_constraintdef(con.oid) as condef "
-                + "FROM pg_constraint con "
-                + "JOIN pg_class rel ON rel.oid = con.conrelid "
-                + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
-                + "WHERE con.contype = 'c'");
-
-    if (schema != null) {
-      sql.append(" AND nsp.nspname = ?");
-    }
-
-    try (final PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-      if (schema != null) {
-        ps.setString(1, schema);
-      }
-      try (final ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) {
-          final String tableSchema = rs.getString("nspname");
-          final String tableName = rs.getString("relname");
-          final String def = rs.getString("condef");
-          if (def != null && !def.isBlank()) {
-            final TableKey key = new TableKey(tableSchema, tableName);
-            final List<String> list = checks.computeIfAbsent(key, k -> new ArrayList<>());
-            final Matcher m = POSTGRES_CHECK_PATTERN.matcher(def);
+          if (stripCheckWrapper) {
+            final Matcher m = CHECK_WRAPPER_PATTERN.matcher(clause);
             if (m.find()) {
-              list.add(m.group(1));
-            } else {
-              list.add(def);
+              clause = m.group(1);
             }
           }
+          if (!quoteChar.isEmpty()) {
+            clause = clause.replace(quoteChar, "");
+          }
+
+          final TableKey key = new TableKey(resultSchema, tableName);
+          checks.computeIfAbsent(key, k -> new ArrayList<>()).add(clause);
         }
       }
+    } catch (final SQLException e) {
+      log.warn("Failed to load check constraints via query, constraints may be incomplete", e);
     }
   }
 

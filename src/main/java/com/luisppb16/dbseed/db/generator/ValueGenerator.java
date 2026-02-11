@@ -79,7 +79,7 @@ public final class ValueGenerator {
   }
 
   public Object generateValue(final Column column, final ParsedConstraint constraint, final int rowIndex) {
-    if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
+    if (column.nullable() && !column.primaryKey() && ThreadLocalRandom.current().nextDouble() < 0.3) {
       return null;
     }
 

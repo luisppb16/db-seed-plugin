@@ -137,25 +137,37 @@ public class OllamaClient {
       if (effectiveWordCount == 1) {
         prompt =
             String.format(
-                "%sTable: %s | Column: %s (Type: %s)\n"
-                    + "Generate exactly ONE short, realistic value for this database column.\n"
+                "%sYou are a database seed data generator. "
+                    + "Generate a single realistic value for a database column.\n"
+                    + "Table: %s | Column: %s | Type: %s\n"
+                    + "The column name hints at what data it holds "
+                    + "(e.g. product_name = a product name, email = an email, "
+                    + "status = a status label, description = descriptive text).\n"
                     + "Rules:\n"
-                    + "- Return ONLY the raw value, nothing else\n"
-                    + "- No quotes, no explanations, no lists, no bullet points\n"
-                    + "- Maximum 50 characters\n"
+                    + "- Output ONLY the raw value itself\n"
+                    + "- Do NOT repeat the column name\n"
+                    + "- No quotes, labels, prefixes, explanations or commentary\n"
                     + "- Single line only\n"
+                    + "Example: if column is product_name, output something like: Wireless Bluetooth Headphones\n"
                     + "Value:",
                 contextLine, tableName, columnName, sqlType);
         numPredict = 30;
       } else {
         prompt =
             String.format(
-                "%sTable: %s | Column: %s (Type: %s)\n"
-                    + "Generate a realistic value of approximately %d words for this database column.\n"
+                "%sYou are a database seed data generator. "
+                    + "Generate a realistic value for a database column.\n"
+                    + "Table: %s | Column: %s | Type: %s | Max words: %d\n"
+                    + "The column name hints at what data it holds "
+                    + "(e.g. product_name = a product name, description = descriptive text).\n"
                     + "Rules:\n"
-                    + "- Return ONLY the raw value, nothing else\n"
-                    + "- No quotes, no explanations, no lists, no bullet points\n"
-                    + "- Approximately %d words\n"
+                    + "- Output ONLY the raw value itself\n"
+                    + "- Do NOT repeat the column name\n"
+                    + "- No quotes, labels, prefixes, explanations or commentary\n"
+                    + "- Adapt length to the column: short columns (name, email, status) = "
+                    + "few words; long columns (description, bio, notes) = up to %d words\n"
+                    + "Example: if column is description, output something like: "
+                    + "High-quality wireless headphones with noise cancellation and 30-hour battery life\n"
                     + "Value:",
                 contextLine, tableName, columnName, sqlType,
                 effectiveWordCount, effectiveWordCount);
@@ -183,13 +195,13 @@ public class OllamaClient {
             }
             return response.body();
           })
-          .thenApply(this::parseResponse);
+          .thenApply(body -> parseResponse(body, columnName));
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
   }
 
-  private String parseResponse(String responseBody) {
+  private String parseResponse(String responseBody, String columnName) {
     try {
       int responseKeyIndex = responseBody.indexOf("\"response\":\"");
       if (responseKeyIndex == -1) {
@@ -201,7 +213,7 @@ public class OllamaClient {
         throw new IOException("Invalid response from Ollama: " + responseBody);
       }
       String raw = unescapeJson(responseBody.substring(startIndex, endIndex));
-      return sanitizeAiOutput(raw);
+      return sanitizeAiOutput(raw, columnName);
     } catch (Exception e) {
       LOG.warn("Failed to parse Ollama response", e);
       return null;
@@ -221,16 +233,62 @@ public class OllamaClient {
   }
 
   private static String sanitizeAiOutput(String value) {
+    return sanitizeAiOutput(value, null);
+  }
+
+  private static String sanitizeAiOutput(String value, String columnName) {
     if (value == null) return null;
     String cleaned = value.lines().findFirst().orElse("").trim();
+
+    // Strip surrounding quotes
     if (cleaned.length() >= 2
         && ((cleaned.startsWith("\"") && cleaned.endsWith("\""))
             || (cleaned.startsWith("'") && cleaned.endsWith("'")))) {
       cleaned = cleaned.substring(1, cleaned.length() - 1).trim();
     }
+
+    // Strip bullet point prefix
     if (cleaned.startsWith("- ")) {
       cleaned = cleaned.substring(2).trim();
     }
+
+    // Reject AI refusal / meta-commentary responses
+    String lower = cleaned.toLowerCase();
+    if (lower.startsWith("i cannot")
+        || lower.startsWith("i can't")
+        || lower.startsWith("i'm sorry")
+        || lower.startsWith("i am sorry")
+        || lower.startsWith("sorry,")
+        || lower.startsWith("as an ai")
+        || lower.startsWith("i'm not able")
+        || lower.startsWith("i am not able")) {
+      return null;
+    }
+
+    // Strip column name prefix if echoed by the model (e.g. "product_name = ..." or "product_name: ...")
+    if (columnName != null && !columnName.isEmpty()) {
+      if (lower.startsWith(columnName.toLowerCase())) {
+        String rest = cleaned.substring(columnName.length()).trim();
+        if (rest.startsWith("=") || rest.startsWith(":")) {
+          rest = rest.substring(1).trim();
+        }
+        // Strip quotes again after removing prefix
+        if (rest.length() >= 2
+            && ((rest.startsWith("\"") && rest.endsWith("\""))
+                || (rest.startsWith("'") && rest.endsWith("'")))) {
+          rest = rest.substring(1, rest.length() - 1).trim();
+        }
+        if (!rest.isEmpty()) {
+          cleaned = rest;
+        }
+      }
+    }
+
+    // If the value is exactly the column name, reject it
+    if (columnName != null && cleaned.equalsIgnoreCase(columnName)) {
+      return null;
+    }
+
     return cleaned;
   }
 

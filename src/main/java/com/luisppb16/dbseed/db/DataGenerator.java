@@ -57,11 +57,15 @@ public class DataGenerator {
         params.excludedColumns().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
-    final String ollamaUrl = DbSeedSettingsState.getInstance().getOllamaUrl();
-    final String ollamaModel = DbSeedSettingsState.getInstance().getOllamaModel();
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     final OllamaClient ollamaClient =
-        (params.applicationContext() != null && !params.applicationContext().isBlank())
-            ? new OllamaClient(ollamaUrl, ollamaModel)
+        settings.isUseAiGeneration()
+                && settings.getOllamaUrl() != null
+                && !settings.getOllamaUrl().isBlank()
+            ? new OllamaClient(
+                settings.getOllamaUrl(),
+                settings.getOllamaModel(),
+                settings.getAiRequestTimeoutSeconds())
             : null;
 
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -85,7 +89,7 @@ public class DataGenerator {
           params.numericScale(),
           aiColumns,
           ollamaClient,
-          params.applicationContext(),
+          params.applicationContext() != null ? params.applicationContext() : "",
           executor,
           params.indicator());
     }
@@ -171,19 +175,19 @@ public class DataGenerator {
       final ExecutorService executor,
       final ProgressIndicator indicator) {
 
-    int currentTable = 0;
-    for (final Table table : orderedTables) {
-      currentTable++;
+    final int totalTables = orderedTables.size();
+    for (int i = 0; i < totalTables; i++) {
+      final Table table = orderedTables.get(i);
       if (indicator != null) {
         indicator.setText(
             "Generating data for table: "
                 + table.name()
                 + " ("
-                + currentTable
+                + (i + 1)
                 + "/"
-                + orderedTables.size()
+                + totalTables
                 + ")");
-        indicator.setFraction((double) currentTable / orderedTables.size());
+        indicator.setFraction((double) i / totalTables);
       }
 
       if (table.columns().isEmpty()) {
@@ -216,6 +220,10 @@ public class DataGenerator {
       final List<Row> rows = rowGenerator.generate();
       data.put(table, rows);
       tableConstraints.put(table.name(), rowGenerator.getConstraints());
+
+      if (indicator != null) {
+        indicator.setFraction((double) (i + 1) / totalTables);
+      }
     }
   }
 

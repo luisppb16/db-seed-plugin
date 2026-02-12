@@ -61,7 +61,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
             mySettingsComponent.getAiApplicationContext(), settings.getAiApplicationContext())
         || !Objects.equals(mySettingsComponent.getOllamaUrl(), settings.getOllamaUrl())
         || !Objects.equals(mySettingsComponent.getOllamaModel(), settings.getOllamaModel())
-        || mySettingsComponent.getAiWordCount() != settings.getAiWordCount();
+        || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
+        || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds();
   }
 
   @Override
@@ -77,7 +78,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
       AtomicReference<Exception> pingError = new AtomicReference<>();
       ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
         try {
-          new OllamaClient(url.trim(), "").ping().get(3, TimeUnit.SECONDS);
+          new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
         } catch (Exception e) {
           pingError.set(e);
         }
@@ -111,6 +112,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setOllamaUrl(mySettingsComponent.getOllamaUrl());
     settings.setOllamaModel(mySettingsComponent.getOllamaModel());
     settings.setAiWordCount(mySettingsComponent.getAiWordCount());
+    settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
   }
 
   @Override
@@ -131,6 +133,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setOllamaUrl(settings.getOllamaUrl());
     mySettingsComponent.setOllamaModel(settings.getOllamaModel());
     mySettingsComponent.setAiWordCount(settings.getAiWordCount());
+    mySettingsComponent.setAiRequestTimeout(settings.getAiRequestTimeoutSeconds());
   }
 
   @Override

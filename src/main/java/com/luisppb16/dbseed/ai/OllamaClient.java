@@ -28,15 +28,20 @@ public class OllamaClient {
   private static final HttpClient HTTP_CLIENT =
       HttpClient.newBuilder()
           .version(HttpClient.Version.HTTP_1_1)
-          .connectTimeout(Duration.ofSeconds(5))
+          .connectTimeout(Duration.ofSeconds(10))
           .build();
 
   private final String ollamaUrl;
   private final String modelName;
+  private final int requestTimeoutSeconds;
 
-  public OllamaClient(@NotNull final String ollamaUrl, @NotNull final String modelName) {
+  public OllamaClient(
+      @NotNull final String ollamaUrl,
+      @NotNull final String modelName,
+      final int requestTimeoutSeconds) {
     this.ollamaUrl = ollamaUrl;
     this.modelName = modelName;
+    this.requestTimeoutSeconds = Math.max(10, requestTimeoutSeconds);
   }
 
   private static String normalizeUrl(String url) {
@@ -120,6 +125,10 @@ public class OllamaClient {
 
     String url = normalizeUrl(ollamaUrl);
     final int effectiveWordCount = Math.max(1, wordCount);
+    final String contextLine =
+        (applicationContext != null && !applicationContext.isBlank())
+            ? "Application context: " + applicationContext + "\n"
+            : "";
 
     try {
       String prompt;
@@ -128,8 +137,7 @@ public class OllamaClient {
       if (effectiveWordCount == 1) {
         prompt =
             String.format(
-                "Application context: %s\n"
-                    + "Table: %s | Column: %s (Type: %s)\n"
+                "%sTable: %s | Column: %s (Type: %s)\n"
                     + "Generate exactly ONE short, realistic value for this database column.\n"
                     + "Rules:\n"
                     + "- Return ONLY the raw value, nothing else\n"
@@ -137,20 +145,19 @@ public class OllamaClient {
                     + "- Maximum 50 characters\n"
                     + "- Single line only\n"
                     + "Value:",
-                applicationContext, tableName, columnName, sqlType);
+                contextLine, tableName, columnName, sqlType);
         numPredict = 30;
       } else {
         prompt =
             String.format(
-                "Application context: %s\n"
-                    + "Table: %s | Column: %s (Type: %s)\n"
+                "%sTable: %s | Column: %s (Type: %s)\n"
                     + "Generate a realistic value of approximately %d words for this database column.\n"
                     + "Rules:\n"
                     + "- Return ONLY the raw value, nothing else\n"
                     + "- No quotes, no explanations, no lists, no bullet points\n"
                     + "- Approximately %d words\n"
                     + "Value:",
-                applicationContext, tableName, columnName, sqlType,
+                contextLine, tableName, columnName, sqlType,
                 effectiveWordCount, effectiveWordCount);
         numPredict = Math.max(30, effectiveWordCount * 3);
       }
@@ -164,7 +171,7 @@ public class OllamaClient {
           HttpRequest.newBuilder()
               .uri(URI.create(url + "/api/generate"))
               .header("Content-Type", "application/json")
-              .timeout(Duration.ofSeconds(30))
+              .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
               .build();
 

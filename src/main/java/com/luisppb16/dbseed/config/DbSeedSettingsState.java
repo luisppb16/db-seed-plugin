@@ -48,6 +48,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private boolean useAiGeneration = false;
   private String aiApplicationContext = "";
   private int aiWordCount = 1;
+  private int aiRequestTimeoutSeconds = 120;
 
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
@@ -86,5 +87,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.useAiGeneration = state.useAiGeneration;
     this.aiApplicationContext = Objects.requireNonNullElse(state.aiApplicationContext, "");
     this.aiWordCount = state.aiWordCount > 0 ? state.aiWordCount : 1;
+    this.aiRequestTimeoutSeconds =
+        state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
   }
 }

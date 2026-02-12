@@ -201,6 +201,24 @@ public class SeedDatabaseAction extends AnAction {
 
         final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
+        if (settings.isUseAiGeneration()
+            && (settings.getAiApplicationContext() == null
+                || settings.getAiApplicationContext().isBlank())) {
+          final int aiResult =
+              Messages.showYesNoDialog(
+                  project,
+                  "AI generation is enabled but the application context is empty.\n"
+                      + "Without context, the AI model may produce less relevant data.\n\n"
+                      + "Continue without application context?",
+                  "Empty AI Application Context",
+                  "Continue",
+                  "Cancel",
+                  Messages.getWarningIcon());
+          if (aiResult != Messages.YES) {
+            return;
+          }
+        }
+
         final GenerationConfig finalConfig =
             new GenerationConfig(
                 config.url(),

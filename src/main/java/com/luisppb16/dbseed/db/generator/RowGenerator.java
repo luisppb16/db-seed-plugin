@@ -5,6 +5,7 @@
 
 package com.luisppb16.dbseed.db.generator;
 
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.db.Row;
@@ -36,6 +37,7 @@ import net.datafaker.Faker;
 /** Sophisticated row generation engine for database seeding operations in the DBSeed plugin. */
 public final class RowGenerator {
 
+  private static final Logger LOG = Logger.getInstance(RowGenerator.class);
   private static final int MAX_GENERATE_ATTEMPTS = 100;
 
   private final Table table;
@@ -379,7 +381,17 @@ public final class RowGenerator {
                                 }
                               },
                               executor)
-                          .exceptionally(ex -> null);
+                          .exceptionally(
+                              ex -> {
+                                LOG.warn(
+                                    "AI generation failed for "
+                                        + table.name()
+                                        + "."
+                                        + column.name()
+                                        + ": "
+                                        + ex.getMessage());
+                                return null;
+                              });
                   aiTasks.add(task);
                 }
               }

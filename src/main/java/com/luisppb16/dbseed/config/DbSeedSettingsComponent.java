@@ -59,6 +59,8 @@ public class DbSeedSettingsComponent {
   private final JBCheckBox myUseAiGeneration = new JBCheckBox("Enable AI-based data generation");
   private final JBTextArea myAiApplicationContext = new JBTextArea(3, 20);
   private final JSpinner myAiWordCount = new JSpinner(new SpinnerNumberModel(1, 1, 500, 1));
+  private final JSpinner myAiRequestTimeout =
+      new JSpinner(new SpinnerNumberModel(120, 10, 600, 10));
   private final JBTextField myOllamaUrl = new JBTextField();
   private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
   private final JButton myRefreshModelsButton = new JButton("Get models");
@@ -80,6 +82,7 @@ public class DbSeedSettingsComponent {
     myUseAiGeneration.setSelected(settings.isUseAiGeneration());
     myAiApplicationContext.setText(settings.getAiApplicationContext());
     myAiWordCount.setValue(settings.getAiWordCount());
+    myAiRequestTimeout.setValue(settings.getAiRequestTimeoutSeconds());
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
     myOllamaUrl.setText(settings.getOllamaUrl());
@@ -98,8 +101,8 @@ public class DbSeedSettingsComponent {
     configureFolderChooser(myDefaultOutputDirectory, "Select Default Output Directory");
 
     JBLabel aiDescription = new JBLabel(
-        "<html><div style='width:350px;'>AI generation uses an external Ollama instance to generate "
-        + "context-aware data. Ensure Ollama is running and accessible at the specified URL.</div></html>");
+        "<html>AI generation uses an external Ollama instance to generate "
+        + "context-aware data. Ensure Ollama is running and accessible at the specified URL.</html>");
     aiDescription.setForeground(UIUtil.getContextHelpForeground());
     aiDescription.setBorder(JBUI.Borders.emptyBottom(5));
 
@@ -114,6 +117,20 @@ public class DbSeedSettingsComponent {
     JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
     contextScrollPane.setPreferredSize(new Dimension(0, 80));
     contextScrollPane.setMinimumSize(new Dimension(0, 60));
+
+    JBLabel wordCountDescription = new JBLabel(
+        "<html>Number of words the AI model should generate per column value"
+        + " (1 = single word, higher = sentences/paragraphs).</html>");
+    wordCountDescription.setForeground(UIUtil.getContextHelpForeground());
+    wordCountDescription.setFont(JBUI.Fonts.smallFont());
+    wordCountDescription.setBorder(JBUI.Borders.emptyLeft(16));
+
+    JBLabel timeoutDescription = new JBLabel(
+        "<html>Max wait time per AI request. Increase for slow hardware"
+        + " (e.g. Raspberry Pi). If exceeded, the plugin will fill the values instead.</html>");
+    timeoutDescription.setForeground(UIUtil.getContextHelpForeground());
+    timeoutDescription.setFont(JBUI.Fonts.smallFont());
+    timeoutDescription.setBorder(JBUI.Borders.emptyLeft(16));
 
     JPanel formContent =
         FormBuilder.createFormBuilder()
@@ -137,8 +154,9 @@ public class DbSeedSettingsComponent {
             .addComponent(myUseAiGeneration, 1)
             .addLabeledComponent(new JBLabel("Application context:"), contextScrollPane, 1, false)
             .addLabeledComponent(new JBLabel("Words per AI value:"), myAiWordCount, 1, false)
-            .addTooltip("Number of words the AI model should generate per column value" +
-                    "\n (1 = single word, higher = sentences/paragraphs).")
+            .addComponent(wordCountDescription, 0)
+            .addLabeledComponent(new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
+            .addComponent(timeoutDescription, 0)
             .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
             .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
             .addComponentFillVertically(new JPanel(), 0)
@@ -167,7 +185,7 @@ public class DbSeedSettingsComponent {
 
     ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
 
-    OllamaClient client = new OllamaClient(url, "");
+    OllamaClient client = new OllamaClient(url, "", 10);
     client.ping().whenComplete((ignored, pingEx) -> {
         if (pingEx != null) {
             ApplicationManager.getApplication().invokeLater(() -> {
@@ -335,6 +353,14 @@ public class DbSeedSettingsComponent {
 
   public void setAiWordCount(int value) {
     myAiWordCount.setValue(value);
+  }
+
+  public int getAiRequestTimeout() {
+    return (int) myAiRequestTimeout.getValue();
+  }
+
+  public void setAiRequestTimeout(int value) {
+    myAiRequestTimeout.setValue(value);
   }
 
   public String getOllamaUrl() {

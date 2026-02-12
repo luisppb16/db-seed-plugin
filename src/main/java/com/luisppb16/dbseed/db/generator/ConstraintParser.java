@@ -294,7 +294,8 @@ public final class ConstraintParser {
         final double hi = Math.max(a, b);
         newLower = (newLower == null) ? lo : Math.max(newLower, lo);
         newUpper = (newUpper == null) ? hi : Math.min(newUpper, hi);
-      } catch (final NumberFormatException e) {
+      } catch (final NumberFormatException ignored) {
+        // Non-numeric BETWEEN bounds; skip
       }
     }
     return new BetweenParseResult(newLower, newUpper);
@@ -317,7 +318,8 @@ public final class ConstraintParser {
         final double val = Double.parseDouble(num);
         newLower = updateLowerBound(op, val, newLower);
         newUpper = updateUpperBound(op, val, newUpper);
-      } catch (final NumberFormatException e) {
+      } catch (final NumberFormatException ignored) {
+        // Non-numeric range bound; skip
       }
     }
     return new RangeParseResult(newLower, newUpper);
@@ -377,7 +379,8 @@ public final class ConstraintParser {
         if ("<".equals(op) || "<=".equals(op) || "=".equals(op)) {
           newMaxLen = (newMaxLen == null) ? v : Math.min(newMaxLen, v);
         }
-      } catch (final NumberFormatException e) {
+      } catch (final NumberFormatException ignored) {
+        // Non-numeric length constraint; skip
       }
     }
     return newMaxLen;

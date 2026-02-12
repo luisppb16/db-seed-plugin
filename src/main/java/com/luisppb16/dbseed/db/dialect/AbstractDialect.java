@@ -54,6 +54,7 @@ public class AbstractDialect implements DatabaseDialect {
           props.load(is);
         }
       } catch (IOException ignored) {
+        // Properties file couldn't be loaded; defaults will be used
       }
     }
   }

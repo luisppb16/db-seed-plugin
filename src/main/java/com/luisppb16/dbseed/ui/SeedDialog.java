@@ -117,7 +117,8 @@ public final class SeedDialog extends DialogWrapper {
   protected void doOKAction() {
     try {
       rowsSpinner.commitEdit();
-    } catch (ParseException e) {
+    } catch (ParseException ignored) {
+      // Spinner retains last valid value
     }
     super.doOKAction();
     saveConfiguration();

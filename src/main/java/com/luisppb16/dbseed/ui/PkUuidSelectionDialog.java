@@ -182,7 +182,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   protected void doOKAction() {
     try {
       scaleSpinner.commitEdit();
-    } catch (final ParseException e) {
+    } catch (final ParseException ignored) {
       // Invalid number typed, spinner will retain last valid value.
     }
     super.doOKAction();

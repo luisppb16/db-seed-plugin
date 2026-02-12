@@ -18,7 +18,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -27,30 +26,28 @@ import net.datafaker.Faker;
 
 /**
  * Advanced value generation engine for database seeding operations in the DBSeed plugin.
- * <p>
- * This class implements sophisticated algorithms for generating realistic and constraint-compliant
- * data values across various SQL data types. It combines multiple data sources including Faker
- * library, custom dictionaries, and user-defined allowed values to produce meaningful sample
- * data. The generator handles complex scenarios such as UUID uniqueness, numeric range
- * constraints, string length limitations, and database-specific type requirements.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>This class implements sophisticated algorithms for generating realistic and
+ * constraint-compliant data values across various SQL data types. It combines multiple data sources
+ * including Faker library, custom dictionaries, and user-defined allowed values to produce
+ * meaningful sample data. The generator handles complex scenarios such as UUID uniqueness, numeric
+ * range constraints, string length limitations, and database-specific type requirements.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Generating type-appropriate values for all major SQL data types</li>
- *   <li>Respecting column constraints including min/max values and allowed value sets</li>
- *   <li>Managing UUID uniqueness across the entire generation process</li>
- *   <li>Applying parsed constraint information to guide value generation</li>
- *   <li>Handling soft-delete value configurations appropriately</li>
- *   <li>Implementing sophisticated numeric value generation with precision control</li>
+ *   <li>Generating type-appropriate values for all major SQL data types
+ *   <li>Respecting column constraints including min/max values and allowed value sets
+ *   <li>Managing UUID uniqueness across the entire generation process
+ *   <li>Applying parsed constraint information to guide value generation
+ *   <li>Handling soft-delete value configurations appropriately
+ *   <li>Implementing sophisticated numeric value generation with precision control
  * </ul>
- * </p>
- * <p>
- * The implementation includes specialized algorithms for different data types, with particular
- * attention to numeric precision and scale handling. The class maintains global state for
- * UUID uniqueness and implements retry mechanisms to ensure constraint compliance. It also
- * provides methods for generating values within specific bounds when constraints are present.
- * </p>
+ *
+ * <p>The implementation includes specialized algorithms for different data types, with particular
+ * attention to numeric precision and scale handling. The class maintains global state for UUID
+ * uniqueness and implements retry mechanisms to ensure constraint compliance. It also provides
+ * methods for generating values within specific bounds when constraints are present.
  */
 public final class ValueGenerator {
 
@@ -78,7 +75,36 @@ public final class ValueGenerator {
     this.numericScale = numericScale;
   }
 
-  public Object generateValue(final Column column, final ParsedConstraint constraint, final int rowIndex) {
+  public static boolean isNumericJdbc(final int jdbcType) {
+    return switch (jdbcType) {
+      case Types.INTEGER,
+          Types.SMALLINT,
+          Types.TINYINT,
+          Types.BIGINT,
+          Types.DECIMAL,
+          Types.NUMERIC,
+          Types.FLOAT,
+          Types.DOUBLE,
+          Types.REAL ->
+          true;
+      default -> false;
+    };
+  }
+
+  public static boolean isNumericOutsideBounds(final Object value, final ParsedConstraint pc) {
+    if (value == null || pc == null) return false;
+    try {
+      final double v;
+      if (value instanceof Number n) v = n.doubleValue();
+      else v = Double.parseDouble(value.toString());
+      return (pc.min() != null && v < pc.min()) || (pc.max() != null && v > pc.max());
+    } catch (final NumberFormatException e) {
+      return true;
+    }
+  }
+
+  public Object generateValue(
+      final Column column, final ParsedConstraint constraint, final int rowIndex) {
     if (column.nullable() && ThreadLocalRandom.current().nextDouble() < 0.3) {
       return null;
     }
@@ -91,7 +117,9 @@ public final class ValueGenerator {
       return pickRandom(new ArrayList<>(column.allowedValues()), column.jdbcType());
     }
 
-    if (constraint != null && constraint.allowedValues() != null && !constraint.allowedValues().isEmpty()) {
+    if (constraint != null
+        && constraint.allowedValues() != null
+        && !constraint.allowedValues().isEmpty()) {
       return pickRandom(new ArrayList<>(constraint.allowedValues()), column.jdbcType());
     }
 
@@ -107,7 +135,8 @@ public final class ValueGenerator {
     return generateDefaultValue(column, rowIndex, maxLen);
   }
 
-  public Object generateSoftDeleteValue(final Column column, final boolean useSchemaDefault, final String value) {
+  public Object generateSoftDeleteValue(
+      final Column column, final boolean useSchemaDefault, final String value) {
     if (useSchemaDefault) {
       return SqlKeyword.DEFAULT;
     }
@@ -120,7 +149,9 @@ public final class ValueGenerator {
       if (uuid != null) return uuid;
     }
 
-    if (constraint != null && constraint.allowedValues() != null && !constraint.allowedValues().isEmpty()) {
+    if (constraint != null
+        && constraint.allowedValues() != null
+        && !constraint.allowedValues().isEmpty()) {
       final UUID uuid = tryParseUuidFromAllowedValues(constraint.allowedValues());
       if (uuid != null) return uuid;
     }
@@ -149,7 +180,8 @@ public final class ValueGenerator {
         "Unable to generate a unique UUID after " + UUID_GENERATION_LIMIT + " attempts");
   }
 
-  private ParsedConstraint determineEffectiveNumericConstraint(final Column column, final ParsedConstraint pc) {
+  private ParsedConstraint determineEffectiveNumericConstraint(
+      final Column column, final ParsedConstraint pc) {
     final Double pcMin = pc != null ? pc.min() : null;
     final Double pcMax = pc != null ? pc.max() : null;
     final Double cmin = column.minValue() != 0 ? (double) column.minValue() : null;
@@ -422,33 +454,5 @@ public final class ValueGenerator {
 
   private int getEffectiveScale(final Column column) {
     return column.scale() > 0 ? column.scale() : numericScale;
-  }
-
-  public static boolean isNumericJdbc(final int jdbcType) {
-    return switch (jdbcType) {
-      case Types.INTEGER,
-          Types.SMALLINT,
-          Types.TINYINT,
-          Types.BIGINT,
-          Types.DECIMAL,
-          Types.NUMERIC,
-          Types.FLOAT,
-          Types.DOUBLE,
-          Types.REAL ->
-          true;
-      default -> false;
-    };
-  }
-
-  public static boolean isNumericOutsideBounds(final Object value, final ParsedConstraint pc) {
-    if (value == null || pc == null) return false;
-    try {
-      final double v;
-      if (value instanceof Number n) v = n.doubleValue();
-      else v = Double.parseDouble(value.toString());
-      return (pc.min() != null && v < pc.min()) || (pc.max() != null && v > pc.max());
-    } catch (final NumberFormatException e) {
-      return true;
-    }
   }
 }

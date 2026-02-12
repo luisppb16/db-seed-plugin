@@ -23,33 +23,32 @@ import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
 
 /**
- * Advanced topological sorting algorithm for database table dependency resolution in the DBSeed plugin.
- * <p>
- * This utility class implements sophisticated algorithms for determining the correct order
- * in which database tables should be processed during data generation, taking into account
- * foreign key dependencies. It uses Tarjan's algorithm to detect strongly connected components
- * (cycles) and applies topological sorting to determine a valid processing order. The class
- * handles complex scenarios including circular dependencies and provides mechanisms for
- * identifying tables that require deferred constraint processing due to non-nullable foreign keys.
- * </p>
- * <p>
- * Key responsibilities include:
+ * Advanced topological sorting algorithm for database table dependency resolution in the DBSeed
+ * plugin.
+ *
+ * <p>This utility class implements sophisticated algorithms for determining the correct order in
+ * which database tables should be processed during data generation, taking into account foreign key
+ * dependencies. It uses Tarjan's algorithm to detect strongly connected components (cycles) and
+ * applies topological sorting to determine a valid processing order. The class handles complex
+ * scenarios including circular dependencies and provides mechanisms for identifying tables that
+ * require deferred constraint processing due to non-nullable foreign keys.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Computing topological order of tables based on foreign key dependencies</li>
- *   <li>Detecting and identifying cyclic dependencies in the table graph</li>
- *   <li>Determining when deferred constraint processing is required</li>
- *   <li>Providing efficient algorithms for dependency resolution</li>
- *   <li>Returning both ordered tables and detected cycles for further processing</li>
- *   <li>Optimizing for performance with large numbers of tables and complex relationships</li>
+ *   <li>Computing topological order of tables based on foreign key dependencies
+ *   <li>Detecting and identifying cyclic dependencies in the table graph
+ *   <li>Determining when deferred constraint processing is required
+ *   <li>Providing efficient algorithms for dependency resolution
+ *   <li>Returning both ordered tables and detected cycles for further processing
+ *   <li>Optimizing for performance with large numbers of tables and complex relationships
  * </ul>
- * </p>
- * <p>
- * The implementation uses Tarjan's algorithm for strongly connected components detection
- * combined with Kahn's algorithm for topological sorting. It handles complex scenarios
- * where tables have mutual dependencies and provides detailed information about cycles
- * that may require special handling during data generation. The class is designed to be
- * efficient even with large schemas containing numerous tables and complex relationships.
- * </p>
+ *
+ * <p>The implementation uses Tarjan's algorithm for strongly connected components detection
+ * combined with Kahn's algorithm for topological sorting. It handles complex scenarios where tables
+ * have mutual dependencies and provides detailed information about cycles that may require special
+ * handling during data generation. The class is designed to be efficient even with large schemas
+ * containing numerous tables and complex relationships.
  */
 @UtilityClass
 public class TopologicalSorter {
@@ -125,9 +124,7 @@ public class TopologicalSorter {
                 g ->
                     g.size() > 1
                         || graph
-                            .getOrDefault(
-                                g.iterator().next(),
-                                Collections.emptySet())
+                            .getOrDefault(g.iterator().next(), Collections.emptySet())
                             .contains(g.iterator().next()))
             .map(Collections::unmodifiableSet)
             .toList();
@@ -168,8 +165,7 @@ public class TopologicalSorter {
     private int index = 0;
 
     Tarjan(Map<String, Set<String>> graph) {
-      this.graph =
-          Objects.requireNonNull(graph, "Graph cannot be null");
+      this.graph = Objects.requireNonNull(graph, "Graph cannot be null");
     }
 
     List<Set<String>> run() {

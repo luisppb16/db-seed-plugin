@@ -23,8 +23,7 @@ class SchemaDslTest {
 
   @Test
   void schema_nullTables_throwsNPE() {
-    assertThatNullPointerException()
-        .isThrownBy(() -> new SchemaDsl.Schema(null));
+    assertThatNullPointerException().isThrownBy(() -> new SchemaDsl.Schema(null));
   }
 
   @Test
@@ -35,8 +34,7 @@ class SchemaDslTest {
 
   @Test
   void table_nullName_throwsNPE() {
-    assertThatNullPointerException()
-        .isThrownBy(() -> table(null, column("a", SqlType.INT)));
+    assertThatNullPointerException().isThrownBy(() -> table(null, column("a", SqlType.INT)));
   }
 
   @Test
@@ -76,11 +74,7 @@ class SchemaDslTest {
   @Test
   void toSql_fkReferences() {
     Schema s =
-        schema(
-            table(
-                "orders",
-                pk("id", SqlType.INT),
-                fk("user_id", SqlType.INT, "users", "id")));
+        schema(table("orders", pk("id", SqlType.INT), fk("user_id", SqlType.INT, "users", "id")));
     String sql = toSql(s);
     assertThat(sql).contains("REFERENCES users(id)");
   }

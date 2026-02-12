@@ -49,7 +49,9 @@ class SchemaIntrospectorTest {
 
   private Column findColumn(Table table, String name) {
     return table.columns().stream()
-        .filter(c -> c.name().equalsIgnoreCase(name)).findFirst().orElse(null);
+        .filter(c -> c.name().equalsIgnoreCase(name))
+        .findFirst()
+        .orElse(null);
   }
 
   // ── Basic ──
@@ -172,7 +174,8 @@ class SchemaIntrospectorTest {
   @Test
   void compositeFk() throws SQLException {
     exec("CREATE TABLE parent (a INT, b INT, PRIMARY KEY (a, b))");
-    exec("CREATE TABLE child (id INT PRIMARY KEY, fa INT, fb INT, FOREIGN KEY (fa, fb) REFERENCES parent(a, b))");
+    exec(
+        "CREATE TABLE child (id INT PRIMARY KEY, fa INT, fb INT, FOREIGN KEY (fa, fb) REFERENCES parent(a, b))");
     Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC"), "CHILD");
     ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.columnMapping()).hasSize(2);
@@ -236,8 +239,7 @@ class SchemaIntrospectorTest {
   void compositeUnique() throws SQLException {
     exec("CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, UNIQUE(a, b))");
     Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC"), "T");
-    assertThat(t.uniqueKeys().stream()
-        .anyMatch(uk -> uk.containsAll(List.of("A", "B")))).isTrue();
+    assertThat(t.uniqueKeys().stream().anyMatch(uk -> uk.containsAll(List.of("A", "B")))).isTrue();
   }
 
   // ── Schema filter ──

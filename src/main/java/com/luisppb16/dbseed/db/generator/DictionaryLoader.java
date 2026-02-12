@@ -15,32 +15,31 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Efficient dictionary loading and caching system for multilingual word resources in the DBSeed plugin.
- * <p>
- * This utility class provides optimized loading and caching mechanisms for multilingual dictionary
- * resources used in data generation. It implements thread-safe lazy loading with atomic reference
- * caching to ensure efficient access to dictionary resources across multiple concurrent operations.
- * The class handles multiple language dictionaries and provides configurable loading based on
- * user preferences for English and/or Spanish word sets.
- * </p>
- * <p>
- * Key responsibilities include:
+ * Efficient dictionary loading and caching system for multilingual word resources in the DBSeed
+ * plugin.
+ *
+ * <p>This utility class provides optimized loading and caching mechanisms for multilingual
+ * dictionary resources used in data generation. It implements thread-safe lazy loading with atomic
+ * reference caching to ensure efficient access to dictionary resources across multiple concurrent
+ * operations. The class handles multiple language dictionaries and provides configurable loading
+ * based on user preferences for English and/or Spanish word sets.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Lazy loading of dictionary resources from embedded resource files</li>
- *   <li>Thread-safe caching of dictionary content to avoid redundant file operations</li>
- *   <li>Efficient parsing and normalization of dictionary word lists</li>
- *   <li>Conditional loading based on user language preferences</li>
- *   <li>Error handling for missing or corrupted dictionary resources</li>
- *   <li>Memory-efficient storage and retrieval of word collections</li>
+ *   <li>Lazy loading of dictionary resources from embedded resource files
+ *   <li>Thread-safe caching of dictionary content to avoid redundant file operations
+ *   <li>Efficient parsing and normalization of dictionary word lists
+ *   <li>Conditional loading based on user language preferences
+ *   <li>Error handling for missing or corrupted dictionary resources
+ *   <li>Memory-efficient storage and retrieval of word collections
  * </ul>
- * </p>
- * <p>
- * The implementation uses atomic references and synchronized blocks to ensure thread safety
- * during cache initialization. It employs efficient stream operations for parsing dictionary
- * files and implements proper resource management through try-with-resources patterns.
- * The class follows the singleton pattern through static methods and provides immutable
- * list views to prevent external modification of cached dictionary content.
- * </p>
+ *
+ * <p>The implementation uses atomic references and synchronized blocks to ensure thread safety
+ * during cache initialization. It employs efficient stream operations for parsing dictionary files
+ * and implements proper resource management through try-with-resources patterns. The class follows
+ * the singleton pattern through static methods and provides immutable list views to prevent
+ * external modification of cached dictionary content.
  */
 public final class DictionaryLoader {
 
@@ -53,21 +52,20 @@ public final class DictionaryLoader {
       new AtomicReference<>();
   private static final Object DICTIONARY_LOCK = new Object();
 
-  private DictionaryLoader() {
-  }
+  private DictionaryLoader() {}
 
   public static List<String> loadWords(
       final boolean useEnglishDictionary, final boolean useSpanishDictionary) {
     final List<String> words = new ArrayList<>();
-    
+
     if (useEnglishDictionary) {
       words.addAll(getEnglishWords());
     }
-    
+
     if (useSpanishDictionary) {
       words.addAll(getSpanishWords());
     }
-    
+
     return words.isEmpty() ? Collections.emptyList() : words;
   }
 

@@ -5,6 +5,9 @@
 
 package com.luisppb16.dbseed.db;
 
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.generator.ConstraintParser;
 import com.luisppb16.dbseed.db.generator.DictionaryLoader;
 import com.luisppb16.dbseed.db.generator.ForeignKeyResolver;
@@ -13,60 +16,31 @@ import com.luisppb16.dbseed.db.generator.ValueGenerator;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.experimental.UtilityClass;
 import net.datafaker.Faker;
 
-/**
- * Centralized data generation orchestration engine for the DBSeed plugin ecosystem.
- * <p>
- * This utility class serves as the primary orchestrator for the entire data generation process,
- * coordinating multiple subsystems including row generation, constraint validation, foreign key
- * resolution, and dictionary-based value generation. It implements sophisticated algorithms
- * for handling complex database relationships, constraint satisfaction, and data consistency
- * across interconnected tables. The class manages the complete lifecycle of data generation
- * from schema analysis to final output preparation.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Coordinating the multi-phase data generation pipeline across all tables</li>
- *   <li>Managing primary key UUID overrides and custom generation patterns</li>
- *   <li>Resolving foreign key dependencies with support for deferred constraint processing</li>
- *   <li>Applying repetition rules and custom data generation configurations</li>
- *   <li>Validating generated data against parsed database constraints</li>
- *   <li>Integrating with dictionary systems for realistic data generation</li>
- * </ul>
- * </p>
- * <p>
- * The implementation follows a layered architecture where each aspect of data generation
- * is handled by specialized components. The class ensures proper ordering of table processing
- * to respect foreign key dependencies and implements retry mechanisms for constraint resolution.
- * It maintains global state for UUID uniqueness and coordinates with the foreign key resolver
- * to handle inter-table dependencies appropriately.
- * </p>
- */
+/** Centralized data generation orchestration engine for the DBSeed plugin ecosystem. */
 @UtilityClass
 public class DataGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
 
   public static GenerationResult generate(final GenerationParameters params) {
-    final List<Table> orderedTables = applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
+    final List<Table> orderedTables =
+        applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
     final Map<String, Table> tableMap =
         orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
 
@@ -75,32 +49,50 @@ public class DataGenerator {
     final Faker faker = new Faker();
     final Map<Table, List<Row>> data = new LinkedHashMap<>();
     final Set<UUID> usedUuids = new HashSet<>();
-    final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints = new HashMap<>();
+    final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints =
+        new HashMap<>();
     final Set<String> softDeleteCols = parseSoftDeleteColumns(params.softDeleteColumns());
 
-    final Map<String, Set<String>> excludedColumnsSet = params.excludedColumns().entrySet().stream()
-        .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
+    final Map<String, Set<String>> excludedColumnsSet =
+        params.excludedColumns().entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
-    generateTableRows(
-        orderedTables,
-        params.rowsPerTable(),
-        excludedColumnsSet,
-        params.repetitionRules(),
-        faker,
-        usedUuids,
-        tableConstraints,
-        data,
-        dictionaryWords,
-        params.useLatinDictionary(),
-        softDeleteCols,
-        params.softDeleteUseSchemaDefault(),
-        params.softDeleteValue(),
-        params.numericScale());
+    final String ollamaUrl = DbSeedSettingsState.getInstance().getOllamaUrl();
+    final String ollamaModel = DbSeedSettingsState.getInstance().getOllamaModel();
+    final OllamaClient ollamaClient =
+        (params.applicationContext() != null && !params.applicationContext().isBlank())
+            ? new OllamaClient(ollamaUrl, ollamaModel)
+            : null;
+
+    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      final Map<String, Set<String>> aiColumns =
+          params.aiColumns() != null ? params.aiColumns() : Map.of();
+
+      generateTableRows(
+          orderedTables,
+          params.rowsPerTable(),
+          excludedColumnsSet,
+          params.repetitionRules(),
+          faker,
+          usedUuids,
+          tableConstraints,
+          data,
+          dictionaryWords,
+          params.useLatinDictionary(),
+          softDeleteCols,
+          params.softDeleteUseSchemaDefault(),
+          params.softDeleteValue(),
+          params.numericScale(),
+          aiColumns,
+          ollamaClient,
+          params.applicationContext(),
+          executor,
+          params.indicator());
+    }
 
     validateNumericConstraints(orderedTables, tableConstraints, data, params.numericScale());
 
-    final ForeignKeyResolver fkResolver =
-        new ForeignKeyResolver(tableMap, data, params.deferred());
+    final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
     final List<PendingUpdate> updates = fkResolver.resolve();
 
     return new GenerationResult(data, updates);
@@ -123,17 +115,18 @@ public class DataGenerator {
                   c -> {
                     final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
                     if (forceUuid && !c.uuid()) {
-                      newCols.add(new Column(
-                          c.name(),
-                          c.jdbcType(),
-                          c.nullable(),
-                          c.primaryKey(),
-                          true,
-                          c.length(),
-                          c.scale(),
-                          c.minValue(),
-                          c.maxValue(),
-                          c.allowedValues()));
+                      newCols.add(
+                          new Column(
+                              c.name(),
+                              c.jdbcType(),
+                              c.nullable(),
+                              c.primaryKey(),
+                              true,
+                              c.length(),
+                              c.scale(),
+                              c.minValue(),
+                              c.maxValue(),
+                              c.allowedValues()));
                     } else {
                       newCols.add(c);
                     }
@@ -171,9 +164,28 @@ public class DataGenerator {
       final Set<String> softDeleteCols,
       final boolean softDeleteUseSchemaDefault,
       final String softDeleteValue,
-      final int numericScale) {
+      final int numericScale,
+      final Map<String, Set<String>> aiColumns,
+      final OllamaClient ollamaClient,
+      final String applicationContext,
+      final ExecutorService executor,
+      final ProgressIndicator indicator) {
 
+    int currentTable = 0;
     for (final Table table : orderedTables) {
+      currentTable++;
+      if (indicator != null) {
+        indicator.setText(
+            "Generating data for table: "
+                + table.name()
+                + " ("
+                + currentTable
+                + "/"
+                + orderedTables.size()
+                + ")");
+        indicator.setFraction((double) currentTable / orderedTables.size());
+      }
+
       if (table.columns().isEmpty()) {
         data.put(table, Collections.emptyList());
         continue;
@@ -184,7 +196,9 @@ public class DataGenerator {
               table,
               rowsPerTable,
               excludedColumns.getOrDefault(table.name(), Set.of()),
-              repetitionRules != null ? repetitionRules.getOrDefault(table.name(), Collections.emptyList()) : Collections.emptyList(),
+              repetitionRules != null
+                  ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
+                  : Collections.emptyList(),
               faker,
               usedUuids,
               dictionaryWords,
@@ -192,7 +206,12 @@ public class DataGenerator {
               softDeleteCols,
               softDeleteUseSchemaDefault,
               softDeleteValue,
-              numericScale);
+              numericScale,
+              aiColumns.getOrDefault(table.name(), Set.of()),
+              ollamaClient,
+              applicationContext,
+              executor,
+              indicator);
 
       final List<Row> rows = rowGenerator.generate();
       data.put(table, rows);
@@ -222,18 +241,23 @@ public class DataGenerator {
       final Row row,
       final Map<String, ConstraintParser.ParsedConstraint> constraints,
       final int numericScale) {
-    
+
     for (final Column col : table.columns()) {
       final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
-      if (ValueGenerator.isNumericJdbc(col.jdbcType()) && pc != null && (pc.min() != null || pc.max() != null)) {
-        if (val != null && pc.allowedValues() != null && !pc.allowedValues().isEmpty()
+      if (ValueGenerator.isNumericJdbc(col.jdbcType())
+          && pc != null
+          && (pc.min() != null || pc.max() != null)) {
+        if (val != null
+            && pc.allowedValues() != null
+            && !pc.allowedValues().isEmpty()
             && pc.allowedValues().contains(String.valueOf(val))) {
           continue;
         }
         int attempts = 0;
         while (ValueGenerator.isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-          final ValueGenerator vg = new ValueGenerator(new Faker(), null, false, new HashSet<>(), numericScale);
+          final ValueGenerator vg =
+              new ValueGenerator(new Faker(), null, false, new HashSet<>(), numericScale);
           val = vg.generateNumericWithinBounds(col, pc);
           attempts++;
         }
@@ -256,7 +280,10 @@ public class DataGenerator {
       String softDeleteColumns,
       boolean softDeleteUseSchemaDefault,
       String softDeleteValue,
-      int numericScale) {}
+      int numericScale,
+      Map<String, Set<String>> aiColumns,
+      String applicationContext,
+      ProgressIndicator indicator) {}
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

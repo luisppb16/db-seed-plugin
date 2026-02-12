@@ -5,6 +5,8 @@
 
 package com.luisppb16.dbseed.db.generator;
 
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.CheckExpression;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.MultiColumnConstraint;
@@ -12,6 +14,7 @@ import com.luisppb16.dbseed.db.generator.ConstraintParser.ParsedConstraint;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import java.sql.JDBCType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,42 +25,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import net.datafaker.Faker;
 
-/**
- * Sophisticated row generation engine for database seeding operations in the DBSeed plugin.
- * <p>
- * This class implements a comprehensive row generation algorithm that creates realistic
- * database records while respecting complex database constraints, relationships, and business
- * rules. The generator handles primary key uniqueness, foreign key relationships, check
- * constraints, unique constraints, and custom repetition rules. It incorporates advanced
- * data generation techniques using the Faker library and custom dictionary sources to
- * produce meaningful sample data.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Generating rows that satisfy primary key uniqueness requirements</li>
- *   <li>Resolving multi-column constraints and check expressions</li>
- *   <li>Applying custom repetition rules for specific data patterns</li>
- *   <li>Handling soft-delete column configurations appropriately</li>
- *   <li>Managing foreign key relationships and referential integrity</li>
- *   <li>Implementing sophisticated constraint resolution algorithms</li>
- * </ul>
- * </p>
- * <p>
- * The implementation uses a multi-phase approach to row generation, first applying
- * multi-column constraints, then generating remaining values while validating against
- * all applicable constraints. The generator includes retry mechanisms to handle
- * constraint conflicts and implements efficient duplicate detection for unique keys.
- * Special handling is provided for specific table types like the Mission table with
- * custom relationship constraints.
- * </p>
- */
+/** Sophisticated row generation engine for database seeding operations in the DBSeed plugin. */
 public final class RowGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
@@ -74,7 +50,12 @@ public final class RowGenerator {
   private final boolean softDeleteUseSchemaDefault;
   private final String softDeleteValue;
   private final int numericScale;
+  private final Set<String> aiColumns;
   private final ValueGenerator valueGenerator;
+  private final OllamaClient ollamaClient;
+  private final String applicationContext;
+  private final ExecutorService executor;
+  private final ProgressIndicator indicator;
 
   private final Map<String, ParsedConstraint> constraints;
   private final Predicate<Column> isFkColumn;
@@ -85,6 +66,7 @@ public final class RowGenerator {
   private final Set<String> seenPrimaryKeys = new HashSet<>();
   private final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
   private final AtomicInteger generatedCount = new AtomicInteger(0);
+  private final List<CompletableFuture<Void>> aiTasks = new ArrayList<>();
 
   public RowGenerator(
       final Table table,
@@ -98,8 +80,13 @@ public final class RowGenerator {
       final Set<String> softDeleteCols,
       final boolean softDeleteUseSchemaDefault,
       final String softDeleteValue,
-      final int numericScale) {
-    
+      final int numericScale,
+      final Set<String> aiColumns,
+      final OllamaClient ollamaClient,
+      final String applicationContext,
+      final ExecutorService executor,
+      final ProgressIndicator indicator) {
+
     this.table = Objects.requireNonNull(table, "Table cannot be null");
     this.rowsPerTable = rowsPerTable;
     this.excludedColumns = excludedColumns != null ? excludedColumns : Set.of();
@@ -112,7 +99,13 @@ public final class RowGenerator {
     this.softDeleteUseSchemaDefault = softDeleteUseSchemaDefault;
     this.softDeleteValue = softDeleteValue;
     this.numericScale = numericScale;
-    this.valueGenerator = new ValueGenerator(faker, dictionaryWords, useLatinDictionary, usedUuids, numericScale);
+    this.aiColumns = aiColumns != null ? aiColumns : Set.of();
+    this.valueGenerator =
+        new ValueGenerator(faker, dictionaryWords, useLatinDictionary, usedUuids, numericScale);
+    this.ollamaClient = ollamaClient;
+    this.applicationContext = applicationContext;
+    this.executor = executor;
+    this.indicator = indicator;
 
     final List<CheckExpression> checkExpressions =
         table.checks().stream()
@@ -120,7 +113,8 @@ public final class RowGenerator {
             .map(
                 c -> {
                   final String noParens = c.replaceAll("[()]+", " ");
-                  return new CheckExpression(c, noParens, noParens.toLowerCase(java.util.Locale.ROOT));
+                  return new CheckExpression(
+                      c, noParens, noParens.toLowerCase(java.util.Locale.ROOT));
                 })
             .toList();
 
@@ -151,6 +145,10 @@ public final class RowGenerator {
     processRepetitionRules();
     fillRemainingRows();
 
+    if (!aiTasks.isEmpty()) {
+      CompletableFuture.allOf(aiTasks.toArray(new CompletableFuture[0])).join();
+    }
+
     return rows;
   }
 
@@ -168,7 +166,8 @@ public final class RowGenerator {
                 final Column col = table.column(colName);
                 if (col != null) {
                   final Object val =
-                      valueGenerator.generateValue(col, constraints.get(colName), generatedCount.get());
+                      valueGenerator.generateValue(
+                          col, constraints.get(colName), generatedCount.get());
                   baseValues.put(colName, val);
                 }
               });
@@ -191,8 +190,7 @@ public final class RowGenerator {
 
   private void fillRemainingRows() {
     int attempts = 0;
-    while (generatedCount.get() < rowsPerTable
-        && attempts < rowsPerTable * MAX_GENERATE_ATTEMPTS) {
+    while (generatedCount.get() < rowsPerTable && attempts < rowsPerTable * MAX_GENERATE_ATTEMPTS) {
 
       final Optional<Row> generatedRow = generateAndValidateRow();
 
@@ -315,7 +313,8 @@ public final class RowGenerator {
       }
 
       final Map<String, String> selectedCombination =
-          compatibleCombinations.get(ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+          compatibleCombinations.get(
+              ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
       for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
         final String colName = resolveColumnName(entry.getKey());
@@ -333,19 +332,75 @@ public final class RowGenerator {
   }
 
   private void generateRemainingColumnValues(final Map<String, Object> values) {
-    table.columns()
+    table
+        .columns()
         .forEach(
             column -> {
               if (!values.containsKey(column.name())) {
                 final Object value = generateColumnValue(column);
                 values.put(column.name(), value);
+
+                if (ollamaClient != null && isAiCandidate(column)) {
+                  if (indicator != null) {
+                    indicator.setText2("AI processing: " + table.name() + "." + column.name());
+                  }
+                  final int wordCount =
+                      com.luisppb16.dbseed.config.DbSeedSettingsState.getInstance()
+                          .getAiWordCount();
+                  CompletableFuture<Void> task =
+                      ollamaClient
+                          .generateValue(
+                              applicationContext,
+                              table.name(),
+                              column.name(),
+                              getSqlTypeName(column.jdbcType()),
+                              wordCount)
+                          .thenAcceptAsync(
+                              aiValue -> {
+                                if (aiValue != null && !aiValue.isBlank()) {
+                                  String finalValue = aiValue.trim();
+                                  if (wordCount <= 1 && finalValue.contains("\n")) {
+                                    finalValue = finalValue.lines().findFirst().orElse("").trim();
+                                  } else if (finalValue.contains("\n")) {
+                                    finalValue =
+                                        finalValue.lines()
+                                            .map(String::trim)
+                                            .filter(l -> !l.isEmpty())
+                                            .collect(java.util.stream.Collectors.joining(" "));
+                                  }
+                                  if (finalValue.isEmpty()) return;
+                                  if (column.length() > 0
+                                      && finalValue.length() > column.length()) {
+                                    finalValue = finalValue.substring(0, column.length());
+                                  }
+                                  synchronized (values) {
+                                    values.put(column.name(), finalValue);
+                                  }
+                                }
+                              },
+                              executor)
+                          .exceptionally(ex -> null);
+                  aiTasks.add(task);
+                }
               }
             });
   }
 
+  private boolean isAiCandidate(final Column column) {
+    return aiColumns.contains(column.name());
+  }
+
+  private String getSqlTypeName(int jdbcType) {
+    try {
+      return JDBCType.valueOf(jdbcType).getName();
+    } catch (Exception e) {
+      return "UNKNOWN";
+    }
+  }
+
   private Integer getStatusCorrespondingId(final String statusValue) {
     if (statusValue == null) return null;
-    
+
     return switch (statusValue.toLowerCase()) {
       case "planning" -> 1;
       case "conduction" -> 2;
@@ -356,7 +411,7 @@ public final class RowGenerator {
 
   private String getIdCorrespondingStatus(final Integer statusIdValue) {
     if (statusIdValue == null) return null;
-    
+
     return switch (statusIdValue) {
       case 1 -> "Planning";
       case 2 -> "Conduction";
@@ -365,12 +420,7 @@ public final class RowGenerator {
     };
   }
 
-  /**
-   * Enforces special multi-column constraints after all values are generated
-   * This ensures that any inconsistencies are corrected before validation
-   */
   private void enforceSpecialMultiColumnConstraints(final Map<String, Object> values) {
-    // Check if this is the Mission table and we have the relevant columns
     if ("Mission".equalsIgnoreCase(table.name())) {
       final Column statusColumn = table.column("missionStatus");
       final Column statusIdColumn = table.column("missionStatusId");
@@ -380,9 +430,8 @@ public final class RowGenerator {
         final Object statusIdValue = values.get("missionStatusId");
 
         if (statusValue != null && statusIdValue != null) {
-          // Both values exist, check if they're consistent
           final String statusStr = String.valueOf(statusValue);
-          
+
           final Integer statusIdInt;
           if (statusIdValue instanceof Integer) {
             statusIdInt = (Integer) statusIdValue;
@@ -396,9 +445,8 @@ public final class RowGenerator {
             return;
           }
 
-
           final String expectedStatusForId = getIdCorrespondingStatus(statusIdInt);
-          
+
           if (expectedStatusForId != null && !expectedStatusForId.equals(statusStr)) {
             values.put("missionStatus", expectedStatusForId);
           }
@@ -429,7 +477,7 @@ public final class RowGenerator {
           final String[] validStatuses = {"Planning", "Conduction", "Complete"};
           final int randomIndex = ThreadLocalRandom.current().nextInt(validStatuses.length);
           final String statusStr = validStatuses[randomIndex];
-          final Integer statusIdInt = randomIndex + 1; // 1, 2, 3 for Planning, Conduction, Complete
+          final Integer statusIdInt = randomIndex + 1;
 
           values.put("missionStatus", statusStr);
           values.put("missionStatusId", statusIdInt);
@@ -451,7 +499,8 @@ public final class RowGenerator {
           column, softDeleteUseSchemaDefault, softDeleteValue);
     }
 
-    return valueGenerator.generateValue(column, constraints.get(column.name()), generatedCount.get());
+    return valueGenerator.generateValue(
+        column, constraints.get(column.name()), generatedCount.get());
   }
 
   private String resolveColumnName(final String constraintColName) {
@@ -504,9 +553,6 @@ public final class RowGenerator {
     return true;
   }
 
-  /**
-   * Reconciles multi-column constraints by overriding conflicting values with valid combinations
-   */
   private boolean reconcileMultiColumnConstraints(final Map<String, Object> values) {
     if (multiColumnConstraints == null || multiColumnConstraints.isEmpty()) {
       return true;
@@ -563,7 +609,8 @@ public final class RowGenerator {
         }
       } else {
         final Map<String, String> selectedCombination =
-            compatibleCombinations.get(ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+            compatibleCombinations.get(
+                ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
         for (Map.Entry<String, String> entry : selectedCombination.entrySet()) {
           final String colName = resolveColumnName(entry.getKey());

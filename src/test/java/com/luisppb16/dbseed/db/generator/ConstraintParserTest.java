@@ -194,20 +194,21 @@ class ConstraintParserTest {
 
   @Test
   void multiColumn_noEqualsNoAndOr_skipped() {
-    List<MultiColumnConstraint> result = ConstraintParser.parseMultiColumnConstraints(List.of("x > 5"));
+    List<MultiColumnConstraint> result =
+        ConstraintParser.parseMultiColumnConstraints(List.of("x > 5"));
     assertThat(result).isEmpty();
   }
 
   @Test
   void multiColumn_nullAndBlank_skipped() {
-    List<MultiColumnConstraint> result = ConstraintParser.parseMultiColumnConstraints(java.util.Arrays.asList(null, "", "  "));
+    List<MultiColumnConstraint> result =
+        ConstraintParser.parseMultiColumnConstraints(java.util.Arrays.asList(null, "", "  "));
     assertThat(result).isEmpty();
   }
 
   @Test
   void multiColumn_nestedParens() {
-    List<String> checks =
-        List.of("((a = 1 AND b = 2) OR (a = 3 AND b = 4))");
+    List<String> checks = List.of("((a = 1 AND b = 2) OR (a = 3 AND b = 4))");
     List<MultiColumnConstraint> result = ConstraintParser.parseMultiColumnConstraints(checks);
     assertThat(result).hasSize(1);
     assertThat(result.get(0).allowedCombinations()).hasSize(2);
@@ -221,8 +222,9 @@ class ConstraintParserTest {
             List.of("x = 1 OR something_unparsable > 5 AND y"));
     // Should either be empty or have partial results - not crash
     assertThatCode(
-            () -> ConstraintParser.parseMultiColumnConstraints(
-                List.of("x = 1 OR something_unparsable > 5 AND y")))
+            () ->
+                ConstraintParser.parseMultiColumnConstraints(
+                    List.of("x = 1 OR something_unparsable > 5 AND y")))
         .doesNotThrowAnyException();
   }
 }

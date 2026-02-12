@@ -8,6 +8,7 @@ package com.luisppb16.dbseed.action;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -30,7 +31,6 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
-import com.luisppb16.dbseed.util.NotificationHelper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -38,7 +38,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -52,34 +51,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
-/**
- * Comprehensive database seeding workflow orchestrator for the DBSeed plugin ecosystem.
- * <p>
- * This IntelliJ action class implements the complete workflow for database seeding operations,
- * from driver selection through schema introspection, data generation, and SQL output.
- * It manages complex multi-step processes involving user interaction, database connectivity,
- * schema analysis, and data generation with sophisticated progress tracking and error handling.
- * The action coordinates multiple subsystems to provide a seamless user experience.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Initiating the database seeding workflow with driver selection</li>
- *   <li>Managing multi-step dialog sequences for configuration gathering</li>
- *   <li>Performing schema introspection and dependency analysis</li>
- *   <li>Coordinating data generation with user-defined constraints and preferences</li>
- *   <li>Generating and saving SQL scripts with proper foreign key ordering</li>
- *   <li>Handling large dataset warnings and user confirmations</li>
- * </ul>
- * </p>
- * <p>
- * The implementation uses IntelliJ's progress management system for long-running operations
- * and implements proper exception handling with user notifications. It manages complex
- * state transitions between different configuration dialogs and ensures proper cleanup
- * of database resources. The action also handles circular foreign key detection and
- * implements appropriate resolution strategies.
- * </p>
- */
+/** Comprehensive database seeding workflow orchestrator for the DBSeed plugin ecosystem. */
 @Slf4j
 public class SeedDatabaseAction extends AnAction {
 
@@ -156,13 +128,12 @@ public class SeedDatabaseAction extends AnAction {
                 }
                 final List<Table> tables = tablesRef.get();
                 if (tables == null || tables.isEmpty()) {
-                  notifyError(
-                      project, "No tables found in schema: " + config.schema());
+                  Messages.showErrorDialog(
+                      project, "No tables found in schema: " + config.schema(), "DBSeed Error");
                   return;
                 }
                 ApplicationManager.getApplication()
-                    .invokeLater(
-                        () -> continueGeneration(project, config, tables, chosenDriver));
+                    .invokeLater(() -> continueGeneration(project, config, tables, chosenDriver));
               }
             });
   }
@@ -177,17 +148,17 @@ public class SeedDatabaseAction extends AnAction {
       final String message =
           String.format(
               "This operation will generate approximately %,d rows."
-                  + " The plugin can handle them, but your database may take some time to insert them.%n%n"
-                  + "Do you still want to continue?",
+                  + " El plugin puede manejarlos, pero su base de datos puede tardar un tiempo en insertarlos.%n%n"
+                  + "¿Aún desea continuar?",
               totalRows);
 
       final int result =
           Messages.showOkCancelDialog(
               project,
               message,
-              "Large Data Seeding Operation",
-              "Continue",
-              "Cancel",
+              "Operación de siembra de datos masiva",
+              "Continuar",
+              "Cancelar",
               Messages.getWarningIcon());
 
       if (result == Messages.CANCEL) {
@@ -212,6 +183,7 @@ public class SeedDatabaseAction extends AnAction {
         final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
         final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
         final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
+        final Map<String, Set<String>> aiColumns = pkDialog.getAiColumnsByTable();
 
         final Map<String, Map<String, String>> pkUuidOverrides =
             selectedPkUuidColumns.entrySet().stream()
@@ -252,7 +224,6 @@ public class SeedDatabaseAction extends AnAction {
                     try {
                       indicator.setIndeterminate(false);
                       indicator.setText("Generating data...");
-                      indicator.setFraction(0.3);
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
@@ -276,20 +247,24 @@ public class SeedDatabaseAction extends AnAction {
                                   .softDeleteUseSchemaDefault(
                                       finalConfig.softDeleteUseSchemaDefault())
                                   .softDeleteValue(finalConfig.softDeleteValue())
+                                  .aiColumns(aiColumns)
+                                  .applicationContext(
+                                      settings.isUseAiGeneration()
+                                          ? settings.getAiApplicationContext()
+                                          : null)
+                                  .indicator(indicator)
                                   .build());
                       log.info(
                           "Data generation completed for {} rows per table.",
                           finalConfig.rowsPerTable());
 
                       indicator.setText("Building SQL...");
-                      indicator.setFraction(0.8);
+                      indicator.setText2("");
                       final String sql =
                           SqlGenerator.generate(
                               gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
                       log.info("SQL script built successfully.");
 
-                      indicator.setText("Opening editor...");
-                      indicator.setFraction(1.0);
                       ApplicationManager.getApplication()
                           .invokeLater(() -> saveAndOpenSqlFile(project, sql));
                     } catch (final Exception ex) {
@@ -322,7 +297,7 @@ public class SeedDatabaseAction extends AnAction {
         log.info("File {} saved and opened in the editor.", fileName);
       } else {
         log.warn("Could not find VirtualFile for path: {}", path);
-        notifyError(project, "Could not open generated SQL file.");
+        Messages.showErrorDialog(project, "Could not open generated SQL file.", "DBSeed Error");
       }
     } catch (final IOException e) {
       handleException(project, "Error saving SQL file: ", e);
@@ -331,10 +306,10 @@ public class SeedDatabaseAction extends AnAction {
 
   private void handleException(final Project project, final String message, final Exception ex) {
     log.error(message, ex);
-    notifyError(project, message + ex.getMessage());
-  }
-
-  private void notifyError(final Project project, final String message) {
-    NotificationHelper.notifyError(project, message);
+    final String fullMessage = message + ex.getMessage();
+    ApplicationManager.getApplication()
+        .invokeLater(
+            () -> Messages.showErrorDialog(project, fullMessage, "DBSeed Error"),
+            ModalityState.defaultModalityState());
   }
 }

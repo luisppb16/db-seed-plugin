@@ -27,31 +27,29 @@ import java.util.stream.Collectors;
 
 /**
  * Sophisticated foreign key resolution engine for database seeding operations in the DBSeed plugin.
- * <p>
- * This class implements advanced algorithms for resolving foreign key relationships during
- * the data generation process. It handles complex scenarios including nullable vs non-nullable
- * foreign keys, unique foreign key constraints, and circular dependency detection. The resolver
- * manages both immediate foreign key value assignment and deferred updates for tables that
- * haven't been processed yet, ensuring referential integrity across the entire database schema.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>This class implements advanced algorithms for resolving foreign key relationships during the
+ * data generation process. It handles complex scenarios including nullable vs non-nullable foreign
+ * keys, unique foreign key constraints, and circular dependency detection. The resolver manages
+ * both immediate foreign key value assignment and deferred updates for tables that haven't been
+ * processed yet, ensuring referential integrity across the entire database schema.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Resolving foreign key relationships between generated table data</li>
- *   <li>Handling nullable and non-nullable foreign key constraints appropriately</li>
- *   <li>Detecting and managing circular foreign key dependencies</li>
- *   <li>Managing unique foreign key constraints and 1:1 relationships</li>
- *   <li>Generating pending updates for deferred foreign key assignments</li>
- *   <li>Ensuring referential integrity across the entire database schema</li>
+ *   <li>Resolving foreign key relationships between generated table data
+ *   <li>Handling nullable and non-nullable foreign key constraints appropriately
+ *   <li>Detecting and managing circular foreign key dependencies
+ *   <li>Managing unique foreign key constraints and 1:1 relationships
+ *   <li>Generating pending updates for deferred foreign key assignments
+ *   <li>Ensuring referential integrity across the entire database schema
  * </ul>
- * </p>
- * <p>
- * The implementation uses sophisticated algorithms to handle unique foreign key constraints
- * by maintaining queues of available parent rows and ensuring proper distribution. It also
- * implements cycle detection mechanisms to prevent infinite loops when dealing with circular
- * foreign key dependencies, throwing appropriate exceptions for non-nullable cycles while
- * handling nullable cycles through deferred updates.
- * </p>
+ *
+ * <p>The implementation uses sophisticated algorithms to handle unique foreign key constraints by
+ * maintaining queues of available parent rows and ensuring proper distribution. It also implements
+ * cycle detection mechanisms to prevent infinite loops when dealing with circular foreign key
+ * dependencies, throwing appropriate exceptions for non-nullable cycles while handling nullable
+ * cycles through deferred updates.
  */
 public final class ForeignKeyResolver {
 
@@ -63,9 +61,7 @@ public final class ForeignKeyResolver {
   private final Map<String, Deque<Row>> uniqueFkParentQueues;
 
   public ForeignKeyResolver(
-      final Map<String, Table> tableMap,
-      final Map<Table, List<Row>> data,
-      final boolean deferred) {
+      final Map<String, Table> tableMap, final Map<Table, List<Row>> data, final boolean deferred) {
     this.tableMap = Objects.requireNonNull(tableMap, "Table map cannot be null");
     this.data = Objects.requireNonNull(data, "Data map cannot be null");
     this.deferred = deferred;
@@ -80,7 +76,8 @@ public final class ForeignKeyResolver {
   }
 
   private void resolveForeignKeysForTable(final Table table) {
-    final List<Row> rows = Objects.requireNonNull(data.get(table), "No data for table: " + table.name());
+    final List<Row> rows =
+        Objects.requireNonNull(data.get(table), "No data for table: " + table.name());
 
     final Map<ForeignKey, Boolean> fkNullableCache =
         table.foreignKeys().stream()
@@ -171,8 +168,7 @@ public final class ForeignKeyResolver {
 
       if (parent != null && parentRows != null && !parentRows.isEmpty()) {
         final Row parentRow =
-            getParentRowForForeignKey(
-                fk, parentRows, table.name(), parent.name(), false);
+            getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), false);
         if (parentRow != null) {
           fk.columnMapping()
               .forEach(
@@ -213,10 +209,7 @@ public final class ForeignKeyResolver {
   }
 
   private void resolveSingleForeignKey(
-      final ForeignKey fk,
-      final Table table,
-      final Row row,
-      final boolean fkNullable) {
+      final ForeignKey fk, final Table table, final Row row, final boolean fkNullable) {
 
     final Table parent = tableMap.get(fk.pkTable());
     if (parent == null) {
@@ -228,8 +221,7 @@ public final class ForeignKeyResolver {
     final boolean parentInserted = inserted.contains(parent.name());
 
     final Row parentRow =
-        getParentRowForForeignKey(
-            fk, parentRows, table.name(), parent.name(), fkNullable);
+        getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), fkNullable);
 
     if (parentRow == null) {
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));

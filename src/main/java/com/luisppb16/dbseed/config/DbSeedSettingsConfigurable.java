@@ -69,7 +69,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
   public void apply() throws ConfigurationException {
     if (mySettingsComponent.getUseAiGeneration()) {
       String url = mySettingsComponent.getOllamaUrl();
-      if (url == null || url.trim().isEmpty()) {
+      if (Objects.isNull(url) || url.trim().isEmpty()) {
         throw new ConfigurationException(
             "Please enter a valid Ollama URL when AI generation is enabled.",
             "Invalid Ollama Configuration");
@@ -84,8 +84,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
         }
       }, "Checking Ollama Server...", false, null);
 
-      if (pingError.get() != null) {
-        Throwable cause = pingError.get().getCause() != null
+      if (Objects.nonNull(pingError.get())) {
+        Throwable cause = Objects.nonNull(pingError.get().getCause())
             ? pingError.get().getCause() : pingError.get();
         throw new ConfigurationException(
             "No Ollama server found at " + url.trim() + ".\n"

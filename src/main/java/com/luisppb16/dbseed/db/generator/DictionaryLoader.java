@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.db.generator;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Objects;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -70,9 +71,9 @@ public final class DictionaryLoader {
   }
 
   private static List<String> getEnglishWords() {
-    if (englishDictionaryCache.get() == null) {
+    if (Objects.isNull(englishDictionaryCache.get())) {
       synchronized (DICTIONARY_LOCK) {
-        if (englishDictionaryCache.get() == null) {
+        if (Objects.isNull(englishDictionaryCache.get())) {
           englishDictionaryCache.set(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
         }
       }
@@ -81,9 +82,9 @@ public final class DictionaryLoader {
   }
 
   private static List<String> getSpanishWords() {
-    if (spanishDictionaryCache.get() == null) {
+    if (Objects.isNull(spanishDictionaryCache.get())) {
       synchronized (DICTIONARY_LOCK) {
-        if (spanishDictionaryCache.get() == null) {
+        if (Objects.isNull(spanishDictionaryCache.get())) {
           spanishDictionaryCache.set(readWordsFromFile(SPANISH_DICTIONARY_PATH));
         }
       }
@@ -93,7 +94,7 @@ public final class DictionaryLoader {
 
   private static List<String> readWordsFromFile(final String filePath) {
     try (final InputStream is = DictionaryLoader.class.getResourceAsStream(filePath)) {
-      if (is == null) {
+      if (Objects.isNull(is)) {
         return Collections.emptyList();
       }
       return Arrays.stream(new String(is.readAllBytes(), StandardCharsets.UTF_8).split("\\s+"))

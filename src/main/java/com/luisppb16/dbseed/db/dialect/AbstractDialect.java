@@ -48,13 +48,12 @@ public class AbstractDialect implements DatabaseDialect {
   protected final Properties props = new Properties();
 
   protected AbstractDialect(String resourceName) {
-    if (resourceName != null) {
+    if (Objects.nonNull(resourceName)) {
       try (InputStream is = getClass().getResourceAsStream("/dialects/" + resourceName)) {
-        if (is != null) {
+        if (Objects.nonNull(is)) {
           props.load(is);
         }
       } catch (IOException ignored) {
-        // Properties file couldn't be loaded; defaults will be used
       }
     }
   }
@@ -97,7 +96,7 @@ public class AbstractDialect implements DatabaseDialect {
 
   @Override
   public void formatValue(Object value, StringBuilder sb) {
-    if (value == null) {
+    if (Objects.isNull(value)) {
       sb.append(NULL_STR);
     } else {
       switch (value) {

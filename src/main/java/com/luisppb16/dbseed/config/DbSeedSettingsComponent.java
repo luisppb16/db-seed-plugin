@@ -27,6 +27,7 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import java.awt.BorderLayout;
+import java.util.Objects;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import javax.swing.JButton;
@@ -87,7 +88,7 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setWrapStyleWord(true);
     myOllamaUrl.setText(settings.getOllamaUrl());
     
-    if (settings.getOllamaModel() != null && !settings.getOllamaModel().isEmpty()) {
+    if (Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isEmpty()) {
         myOllamaModelDropdown.addItem(settings.getOllamaModel());
         myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
     }
@@ -187,9 +188,9 @@ public class DbSeedSettingsComponent {
 
     OllamaClient client = new OllamaClient(url, "", 10);
     client.ping().whenComplete((ignored, pingEx) -> {
-        if (pingEx != null) {
+        if (Objects.nonNull(pingEx)) {
             ApplicationManager.getApplication().invokeLater(() -> {
-                Throwable cause = pingEx.getCause() != null ? pingEx.getCause() : pingEx;
+                Throwable cause = Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
                 Messages.showErrorDialog(myMainPanel,
                     "No Ollama server found at " + url + ".\n"
                         + "Ensure Ollama is running and the URL is correct.\n\n"
@@ -201,8 +202,8 @@ public class DbSeedSettingsComponent {
         }
         client.listModels().whenComplete((models, ex) -> {
             ApplicationManager.getApplication().invokeLater(() -> {
-                if (ex != null) {
-                    Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+                if (Objects.nonNull(ex)) {
+                    Throwable cause = Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
                     Messages.showErrorDialog(myMainPanel,
                         "Could not fetch models from Ollama at " + url + ".\n"
                             + "Error: " + cause.getMessage(),
@@ -218,7 +219,7 @@ public class DbSeedSettingsComponent {
                         for (String model : models) {
                             myOllamaModelDropdown.addItem(model);
                         }
-                        if (currentSelection != null && models.contains(currentSelection)) {
+                        if (Objects.nonNull(currentSelection) && models.contains(currentSelection)) {
                             myOllamaModelDropdown.setSelectedItem(currentSelection);
                         }
                     }
@@ -251,7 +252,7 @@ public class DbSeedSettingsComponent {
               null,
               currentFile,
               file -> {
-                if (file != null) {
+                if (Objects.nonNull(file)) {
                   field.setText(file.getPath());
                 }
               });
@@ -376,7 +377,7 @@ public class DbSeedSettingsComponent {
   }
 
   public void setOllamaModel(String model) {
-    if (model != null && !model.isEmpty()) {
+    if (Objects.nonNull(model) && !model.isEmpty()) {
         boolean exists = false;
         for (int i = 0; i < myOllamaModelDropdown.getItemCount(); i++) {
             if (model.equals(myOllamaModelDropdown.getItemAt(i))) {

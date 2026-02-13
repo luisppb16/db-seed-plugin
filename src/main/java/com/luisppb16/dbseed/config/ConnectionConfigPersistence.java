@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.project.Project;
+import java.util.Objects;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -45,12 +46,12 @@ public class ConnectionConfigPersistence {
     properties.setValue(ROWS_KEY, String.valueOf(config.rowsPerTable()));
     properties.setValue(DEFERRED_KEY, String.valueOf(config.deferred()));
 
-    if (config.softDeleteColumns() != null) {
+    if (Objects.nonNull(config.softDeleteColumns())) {
       properties.setValue(SOFT_DELETE_COLUMNS_KEY, config.softDeleteColumns());
     }
     properties.setValue(
         SOFT_DELETE_USE_DEFAULT_KEY, String.valueOf(config.softDeleteUseSchemaDefault()));
-    if (config.softDeleteValue() != null) {
+    if (Objects.nonNull(config.softDeleteValue())) {
       properties.setValue(SOFT_DELETE_VALUE_KEY, config.softDeleteValue());
     }
 

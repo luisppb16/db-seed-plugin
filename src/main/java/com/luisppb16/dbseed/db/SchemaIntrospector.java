@@ -33,30 +33,6 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Advanced database schema introspection engine for the DBSeed plugin ecosystem.
- *
- * <p>This utility class provides comprehensive database schema analysis capabilities, extracting
- * detailed metadata about tables, columns, constraints, and relationships from live database
- * connections. It implements sophisticated algorithms for discovering primary keys, foreign keys,
- * check constraints, unique constraints, and other structural elements across multiple database
- * systems. The introspector handles database-specific variations in metadata access patterns and
- * provides unified access to schema information regardless of the underlying database system.
- *
- * <p>Key responsibilities include:
- *
- * <ul>
- *   <li>Discovering and analyzing database tables and their structural properties
- *   <li>Extracting column metadata including data types, nullability, and constraints
- *   <li>Identifying primary key and foreign key relationships between tables
- *   <li>Extracting check constraints and inferring value bounds and allowed values
- *   <li>Handling database-specific metadata access patterns and variations
- *   <li>Building comprehensive Table objects with complete structural information
- * </ul>
- *
- * <p>The implementation includes database-specific handling for PostgreSQL, H2, and generic JDBC
- * databases, with optimized queries for each system. It uses regex pattern matching to extract
- * constraint information from database-specific representations and provides intelligent fallback
- * mechanisms when certain metadata access methods fail. The class also implements caching
- * mechanisms for improved performance when processing large schemas.
  */
 @Slf4j
 @UtilityClass
@@ -64,9 +40,25 @@ public class SchemaIntrospector {
 
   private static final String COLUMN_NAME = "COLUMN_NAME";
   private static final String TABLE_NAME = "TABLE_NAME";
+  private static final String TABLE_SCHEM = "TABLE_SCHEM";
+  private static final String REMARKS = "REMARKS";
+  private static final String DATA_TYPE = "DATA_TYPE";
+  private static final String TYPE_NAME = "TYPE_NAME";
+  private static final String IS_NULLABLE = "IS_NULLABLE";
+  private static final String COLUMN_SIZE = "COLUMN_SIZE";
+  private static final String DECIMAL_DIGITS = "DECIMAL_DIGITS";
+  private static final String FKTABLE_SCHEM = "FKTABLE_SCHEM";
+  private static final String FKTABLE_NAME = "FKTABLE_NAME";
+  private static final String FK_NAME = "FK_NAME";
+  private static final String FKCOLUMN_NAME = "FKCOLUMN_NAME";
+  private static final String PKCOLUMN_NAME = "PKCOLUMN_NAME";
+  private static final String PKTABLE_NAME = "PKTABLE_NAME";
+  private static final String INDEX_NAME = "INDEX_NAME";
+
+  private static final String PRODUCT_H2 = "h2";
+  private static final String PRODUCT_POSTGRES = "postgres";
 
   private static final String CAST_PATTERN = "(?:\\s*::[a-zA-Z0-9 ]+)*";
-
   private static final Pattern POSTGRES_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
   private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
 
@@ -120,8 +112,8 @@ public class SchemaIntrospector {
         list.add(
             new TableRawData(
                 rs.getString(TABLE_NAME),
-                rs.getString("TABLE_SCHEM"),
-                safe(rs.getString("REMARKS"))));
+                rs.getString(TABLE_SCHEM),
+                safe(rs.getString(REMARKS))));
       }
     }
     return list;
@@ -133,17 +125,17 @@ public class SchemaIntrospector {
     try (final ResultSet rs = meta.getColumns(null, schema, "%", "%")) {
       while (rs.next()) {
         final String tableName = rs.getString(TABLE_NAME);
-        final String tableSchema = rs.getString("TABLE_SCHEM");
+        final String tableSchema = rs.getString(TABLE_SCHEM);
         final TableKey key = new TableKey(tableSchema, tableName);
         final ColumnRawData col =
             new ColumnRawData(
                 rs.getString(COLUMN_NAME),
-                rs.getInt("DATA_TYPE"),
-                rs.getString("TYPE_NAME"),
-                "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")),
-                rs.getInt("COLUMN_SIZE"),
-                rs.getInt("DECIMAL_DIGITS"),
-                safe(rs.getString("REMARKS")));
+                rs.getInt(DATA_TYPE),
+                rs.getString(TYPE_NAME),
+                "YES".equalsIgnoreCase(rs.getString(IS_NULLABLE)),
+                rs.getInt(COLUMN_SIZE),
+                rs.getInt(DECIMAL_DIGITS),
+                safe(rs.getString(REMARKS)));
         map.computeIfAbsent(key, k -> new ArrayList<>()).add(col);
       }
     }
@@ -172,7 +164,7 @@ public class SchemaIntrospector {
           raw.name().toLowerCase(Locale.ROOT).endsWith("guid")
               || raw.name().toLowerCase(Locale.ROOT).endsWith("uuid")
               || raw.type() == java.sql.Types.OTHER
-              || (raw.typeName() != null
+              || (Objects.nonNull(raw.typeName())
                   && raw.typeName().toLowerCase(Locale.ROOT).contains("uuid"));
 
       columns.add(
@@ -197,7 +189,7 @@ public class SchemaIntrospector {
     final Map<TableKey, List<String>> map = new LinkedHashMap<>();
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
 
-    if (product.contains("h2")) {
+    if (product.contains(PRODUCT_H2)) {
       for (final TableRawData table : rawTables) {
         try (final ResultSet rs = meta.getPrimaryKeys(null, schema, table.name())) {
           collectPrimaryKeys(rs, map);
@@ -222,7 +214,7 @@ public class SchemaIntrospector {
       throws SQLException {
     while (rs.next()) {
       final String tableName = rs.getString(TABLE_NAME);
-      final String tableSchema = rs.getString("TABLE_SCHEM");
+      final String tableSchema = rs.getString(TABLE_SCHEM);
       final TableKey key = new TableKey(tableSchema, tableName);
       map.computeIfAbsent(key, k -> new ArrayList<>()).add(rs.getString(COLUMN_NAME));
     }
@@ -239,7 +231,7 @@ public class SchemaIntrospector {
     final Map<TableKey, Map<String, String>> fkToPkTable = new HashMap<>();
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
 
-    if (product.contains("h2")) {
+    if (product.contains(PRODUCT_H2)) {
       for (final TableRawData table : rawTables) {
         try (final ResultSet rs = meta.getImportedKeys(null, schema, table.name())) {
           collectImportedKeys(rs, groupedMappings, fkToPkTable);
@@ -267,14 +259,14 @@ public class SchemaIntrospector {
       final Map<TableKey, Map<String, String>> fkToPkTable)
       throws SQLException {
     while (rs.next()) {
-      final String fkSchema = rs.getString("FKTABLE_SCHEM");
-      final String fkTable = rs.getString("FKTABLE_NAME");
+      final String fkSchema = rs.getString(FKTABLE_SCHEM);
+      final String fkTable = rs.getString(FKTABLE_NAME);
       final TableKey key = new TableKey(fkSchema, fkTable);
 
-      final String fkName = rs.getString("FK_NAME");
-      final String fkCol = rs.getString("FKCOLUMN_NAME");
-      final String pkCol = rs.getString("PKCOLUMN_NAME");
-      final String pkTableName = rs.getString("PKTABLE_NAME");
+      final String fkName = rs.getString(FK_NAME);
+      final String fkCol = rs.getString(FKCOLUMN_NAME);
+      final String pkCol = rs.getString(PKCOLUMN_NAME);
+      final String pkTableName = rs.getString(PKTABLE_NAME);
 
       groupedMappings
           .computeIfAbsent(key, k -> new LinkedHashMap<>())
@@ -328,10 +320,10 @@ public class SchemaIntrospector {
       try (final ResultSet rs = meta.getIndexInfo(null, schema, tableData.name(), true, false)) {
         while (rs.next()) {
           final String tableName = rs.getString(TABLE_NAME);
-          final String tableSchema = rs.getString("TABLE_SCHEM");
-          final String idxName = rs.getString("INDEX_NAME");
+          final String tableSchema = rs.getString(TABLE_SCHEM);
+          final String idxName = rs.getString(INDEX_NAME);
           final String colName = rs.getString(COLUMN_NAME);
-          if (idxName == null || colName == null) continue;
+          if (Objects.isNull(idxName) || Objects.isNull(colName)) continue;
 
           final TableKey key = new TableKey(tableSchema, tableName);
           idxCols
@@ -342,10 +334,10 @@ public class SchemaIntrospector {
       }
     }
     final Map<TableKey, List<List<String>>> result = new LinkedHashMap<>();
-    for (Map.Entry<TableKey, Map<String, List<String>>> entry : idxCols.entrySet()) {
-      final List<List<String>> list = entry.getValue().values().stream().map(List::copyOf).toList();
-      result.put(entry.getKey(), list);
-    }
+    idxCols.forEach((key, value) -> {
+      final List<List<String>> list = value.values().stream().map(List::copyOf).toList();
+      result.put(key, list);
+    });
     return result;
   }
 
@@ -388,7 +380,7 @@ public class SchemaIntrospector {
             });
 
     for (final String check : checks) {
-      if (check == null || check.isBlank()) continue;
+      if (Objects.isNull(check) || check.isBlank()) continue;
 
       final Matcher mi = inPattern.matcher(check);
       while (mi.find()) {
@@ -450,9 +442,9 @@ public class SchemaIntrospector {
     final Map<TableKey, List<String>> checks = new HashMap<>();
     final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
 
-    if (product.contains("postgres")) {
+    if (product.contains(PRODUCT_POSTGRES)) {
       loadAllPostgresCheckConstraints(conn, schema, checks);
-    } else if (product.contains("h2")) {
+    } else if (product.contains(PRODUCT_H2)) {
       loadAllH2CheckConstraints(conn, schema, checks);
     } else {
       loadGenericCheckConstraints(tables, columns, checks);
@@ -471,7 +463,7 @@ public class SchemaIntrospector {
         extractChecksFromText(table.remarks(), tableChecks);
       }
       final List<ColumnRawData> cols = columns.get(key);
-      if (cols != null) {
+      if (Objects.nonNull(cols)) {
         for (final ColumnRawData col : cols) {
           if (!col.remarks().isEmpty()) {
             extractChecksFromText(col.remarks(), tableChecks);
@@ -491,12 +483,12 @@ public class SchemaIntrospector {
                 + "JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc ON cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME "
                 + "WHERE tc.CONSTRAINT_TYPE = 'CHECK'");
 
-    if (schema != null) {
+    if (Objects.nonNull(schema)) {
       sql.append(" AND tc.TABLE_SCHEMA = ?");
     }
 
     try (final PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-      if (schema != null) {
+      if (Objects.nonNull(schema)) {
         ps.setString(1, schema.toUpperCase(Locale.ROOT));
       }
       try (final ResultSet rs = ps.executeQuery()) {
@@ -504,7 +496,7 @@ public class SchemaIntrospector {
           final String tableSchema = rs.getString("TABLE_SCHEMA");
           final String tableName = rs.getString(TABLE_NAME);
           final String clause = rs.getString("CHECK_CLAUSE");
-          if (clause != null && !clause.isBlank()) {
+          if (Objects.nonNull(clause) && !clause.isBlank()) {
             final TableKey key = new TableKey(tableSchema, tableName);
             checks.computeIfAbsent(key, k -> new ArrayList<>()).add(clause);
           }
@@ -540,7 +532,7 @@ public class SchemaIntrospector {
           final String tableSchema = rs.getString("nspname");
           final String tableName = rs.getString("relname");
           final String def = rs.getString("condef");
-          if (def != null && !def.isBlank()) {
+          if (Objects.nonNull(def) && !def.isBlank()) {
             final TableKey key = new TableKey(tableSchema, tableName);
             final List<String> list = checks.computeIfAbsent(key, k -> new ArrayList<>());
             final Matcher m = POSTGRES_CHECK_PATTERN.matcher(def);
@@ -563,7 +555,7 @@ public class SchemaIntrospector {
   }
 
   private static String safe(final String s) {
-    return s == null ? "" : s;
+    return Objects.requireNonNullElse(s, "");
   }
 
   private static int[] inferBoundsFromChecks(final List<String> checks, final String columnName) {
@@ -593,7 +585,7 @@ public class SchemaIntrospector {
             });
 
     for (final String check : checks) {
-      if (check == null || check.isBlank()) continue;
+      if (Objects.isNull(check) || check.isBlank()) continue;
       final String exprNoParens = check.replaceAll("[()]+", " ");
 
       final int[] betweenBounds = parseBounds(exprNoParens, betweenPattern);

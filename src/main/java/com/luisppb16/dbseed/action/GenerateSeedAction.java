@@ -55,7 +55,7 @@ public final class GenerateSeedAction extends AnAction {
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
-    if (project == null) {
+    if (Objects.isNull(project)) {
       log.debug("Action canceled: no active project.");
       return;
     }
@@ -99,13 +99,13 @@ public final class GenerateSeedAction extends AnAction {
                 }
               });
 
-      if (errorRef.get() != null) {
+      if (Objects.nonNull(errorRef.get())) {
         handleException(project, errorRef.get());
         return;
       }
 
       final List<Table> tables = tablesRef.get();
-      if (tables == null || tables.isEmpty()) {
+      if (Objects.isNull(tables) || tables.isEmpty()) {
         Messages.showErrorDialog(
             project, "No tables found in schema: " + config.schema(), "DBSeed Error");
         return;
@@ -140,7 +140,7 @@ public final class GenerateSeedAction extends AnAction {
       ConnectionConfigPersistence.save(project, finalConfig);
 
       if (settings.isUseAiGeneration()
-          && (settings.getAiApplicationContext() == null
+          && (Objects.isNull(settings.getAiApplicationContext())
               || settings.getAiApplicationContext().isBlank())) {
         final int aiResult =
             Messages.showYesNoDialog(
@@ -159,7 +159,7 @@ public final class GenerateSeedAction extends AnAction {
 
       ProgressManager.getInstance()
           .run(
-              new Task.Backgroundable(project, APP_NAME.getValue(), false) {
+              new Task.Backgroundable(project, APP_NAME.getValue(), true) {
                 @Override
                 public void run(@NotNull final ProgressIndicator indicator) {
                   try {

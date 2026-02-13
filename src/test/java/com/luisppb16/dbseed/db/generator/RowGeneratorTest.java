@@ -49,7 +49,6 @@ class RowGeneratorTest {
         Set.of(),
         null,
         null,
-        null,
         null);
   }
 
@@ -68,7 +67,6 @@ class RowGeneratorTest {
         null,
         2,
         Set.of(),
-        null,
         null,
         null,
         null);
@@ -231,7 +229,6 @@ class RowGeneratorTest {
             Set.of(),
             null,
             null,
-            null,
             null);
     List<Row> rows = gen.generate();
     for (Row r : rows) {
@@ -264,7 +261,6 @@ class RowGeneratorTest {
             "1",
             2,
             Set.of(),
-            null,
             null,
             null,
             null);
@@ -304,7 +300,6 @@ class RowGeneratorTest {
             Set.of(),
             null,
             null,
-            null,
             null);
     List<Row> rows = gen.generate();
     // First 3 rows should have type=fixed
@@ -338,7 +333,6 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
-            null,
             null,
             null,
             null);

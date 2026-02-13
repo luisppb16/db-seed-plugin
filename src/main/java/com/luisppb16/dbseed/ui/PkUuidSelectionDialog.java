@@ -142,7 +142,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                       pkCol -> {
                         final Column col = table.column(pkCol);
                         final String lower = pkCol.toLowerCase(Locale.ROOT);
-                        return (col != null && col.uuid())
+                        return (Objects.nonNull(col) && col.uuid())
                             || lower.contains("uuid")
                             || lower.contains("guid");
                       })
@@ -155,7 +155,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         });
 
     String cols = initialConfig.softDeleteColumns();
-    if (cols == null) {
+    if (Objects.isNull(cols)) {
       cols = DbSeedSettingsState.getInstance().getSoftDeleteColumns();
     }
     softDeleteColumnsField.setText(cols);
@@ -163,7 +163,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     softDeleteUseSchemaDefaultBox.setSelected(initialConfig.softDeleteUseSchemaDefault());
 
     String val = initialConfig.softDeleteValue();
-    if (val == null) {
+    if (Objects.isNull(val)) {
       val = DbSeedSettingsState.getInstance().getSoftDeleteValue();
     }
     softDeleteValueField.setText(val);
@@ -286,7 +286,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   if (sourceBox.isSelected()) {
                     final JCheckBox targetBox =
                         targetMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
-                    if (targetBox != null) {
+                    if (Objects.nonNull(targetBox)) {
                       targetBox.setEnabled(false);
                     }
                   }
@@ -348,7 +348,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         (box, isSelected) -> {
           final String tableName = getTableNameForComponent(box);
           final String columnName = getColumnNameForCheckBox(box);
-          if (tableName != null) {
+          if (Objects.nonNull(tableName)) {
             onPkBoxChanged(tableName, columnName, isSelected);
           }
         },
@@ -410,7 +410,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           } else {
             final String tableName = getTableNameForComponent(box);
             final String columnName = getColumnNameForCheckBox(box);
-            if (tableName != null) {
+            if (Objects.nonNull(tableName)) {
               onExcludeBoxChanged(tableName, columnName, isSelected);
             }
           }
@@ -441,7 +441,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JCheckBox aiBox =
         aiCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
-    if (aiBox != null) {
+    if (Objects.nonNull(aiBox)) {
       aiBox.setEnabled(!isSelected);
       if (isSelected) {
         aiBox.setSelected(false);
@@ -467,7 +467,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JCheckBox otherBox =
         otherCheckBoxesMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
-    if (otherBox != null) {
+    if (Objects.nonNull(otherBox)) {
       otherBox.setEnabled(!isSelected);
       if (isSelected) {
         otherBox.setSelected(false);
@@ -574,7 +574,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private String getTableNameForComponent(final Component component) {
     Component current = component;
-    while (current != null) {
+    while (Objects.nonNull(current)) {
       if (current instanceof final JPanel panel) {
         for (final Component child : panel.getComponents()) {
           if (child instanceof final JCheckBox box
@@ -776,7 +776,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         (box, isSelected) -> {
           final String tableName = getTableNameForComponent(box);
           final String columnName = getColumnNameForCheckBox(box);
-          if (tableName != null) {
+          if (Objects.nonNull(tableName)) {
             onAiBoxChanged(tableName, columnName, isSelected);
           }
         },

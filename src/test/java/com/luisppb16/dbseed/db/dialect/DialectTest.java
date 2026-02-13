@@ -140,7 +140,7 @@ class DialectTest {
 
   @Nested
   class MySQLDialectTests {
-    final MySQLDialect d = new MySQLDialect();
+    final DatabaseDialect d = new StandardDialect("mysql.properties");
 
     @Test
     void quote_backtick() {
@@ -169,7 +169,7 @@ class DialectTest {
 
   @Nested
   class PostgreSqlDialectTests {
-    final PostgreSqlDialect d = new PostgreSqlDialect();
+    final DatabaseDialect d = new StandardDialect("postgresql.properties");
 
     @Test
     void quote_doubleQuote() {
@@ -186,7 +186,7 @@ class DialectTest {
 
   @Nested
   class SqlServerDialectTests {
-    final SqlServerDialect d = new SqlServerDialect();
+    final DatabaseDialect d = new StandardDialect("sqlserver.properties");
 
     @Test
     void quote_squareBrackets() {
@@ -214,7 +214,7 @@ class DialectTest {
 
   @Nested
   class OracleDialectTests {
-    final OracleDialect d = new OracleDialect();
+    final DatabaseDialect d = new StandardDialect("oracle.properties");
 
     @Test
     void quote_uppercase() {
@@ -244,7 +244,7 @@ class DialectTest {
 
   @Nested
   class SqliteDialectTests {
-    final SqliteDialect d = new SqliteDialect();
+    final DatabaseDialect d = new StandardDialect("sqlite.properties");
 
     @Test
     void batchSplittingAt100Rows() {

@@ -20,48 +20,117 @@ class DialectFactoryTest {
     return DriverInfo.builder().driverClass(driverClass).urlTemplate(urlTemplate).build();
   }
 
-  static Stream<Arguments> dialectCases() {
+  // ── Auto-detection from driverClass / urlTemplate ──
+
+  static Stream<Arguments> mysqlCases() {
     return Stream.of(
-        // MySQL
-        Arguments.of("com.mysql.cj.jdbc.Driver", "", MySQLDialect.class),
-        Arguments.of("", "jdbc:mysql://host/db", MySQLDialect.class),
-        // MariaDB
-        Arguments.of("org.mariadb.jdbc.Driver", "", MySQLDialect.class),
-        Arguments.of("", "jdbc:mariadb://host/db", MySQLDialect.class),
-        // SQL Server
-        Arguments.of("com.microsoft.sqlserver.jdbc.SQLServerDriver", "", SqlServerDialect.class),
-        Arguments.of("", "jdbc:sqlserver://host", SqlServerDialect.class),
-        // Oracle
-        Arguments.of("oracle.jdbc.OracleDriver", "", OracleDialect.class),
-        Arguments.of("", "jdbc:oracle:thin:@host", OracleDialect.class),
-        // SQLite
-        Arguments.of("org.sqlite.JDBC", "", SqliteDialect.class),
-        Arguments.of("", "jdbc:sqlite:file.db", SqliteDialect.class),
-        // PostgreSQL
-        Arguments.of("org.postgresql.Driver", "", PostgreSqlDialect.class),
-        Arguments.of("", "jdbc:postgresql://host/db", PostgreSqlDialect.class),
-        // Redshift / CockroachDB -> PostgreSQL
-        Arguments.of("", "jdbc:redshift://host/db", PostgreSqlDialect.class),
-        Arguments.of("", "jdbc:cockroach://host/db", PostgreSqlDialect.class),
-        // H2 -> PostgreSQL
-        Arguments.of("org.h2.Driver", "", PostgreSqlDialect.class),
-        // DB2 -> Standard
-        Arguments.of("com.ibm.db2.jcc.DB2Driver", "", StandardDialect.class));
+        Arguments.of("com.mysql.cj.jdbc.Driver", ""),
+        Arguments.of("", "jdbc:mysql://host/db"),
+        Arguments.of("org.mariadb.jdbc.Driver", ""),
+        Arguments.of("", "jdbc:mariadb://host/db"));
   }
 
   @ParameterizedTest
-  @MethodSource("dialectCases")
-  void resolve_returnsCorrectDialect(String driverClass, String url, Class<?> expected) {
-    assertThat(DialectFactory.resolve(driver(driverClass, url))).isInstanceOf(expected);
+  @MethodSource("mysqlCases")
+  void resolve_mysql_backtickQuoting(String driverClass, String url) {
+    DatabaseDialect d = DialectFactory.resolve(driver(driverClass, url));
+    assertThat(d.quote("t")).isEqualTo("`t`");
+    assertThat(d.formatBoolean(true)).isEqualTo("1");
+    assertThat(d.beginTransaction()).isEqualTo("START TRANSACTION;\n");
   }
+
+  static Stream<Arguments> sqlserverCases() {
+    return Stream.of(
+        Arguments.of("com.microsoft.sqlserver.jdbc.SQLServerDriver", ""),
+        Arguments.of("", "jdbc:sqlserver://host"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("sqlserverCases")
+  void resolve_sqlserver_squareBrackets(String driverClass, String url) {
+    DatabaseDialect d = DialectFactory.resolve(driver(driverClass, url));
+    assertThat(d.quote("t")).startsWith("[");
+    assertThat(d.formatBoolean(true)).isEqualTo("1");
+    assertThat(d.beginTransaction()).isEqualTo("BEGIN TRANSACTION;\n");
+  }
+
+  static Stream<Arguments> oracleCases() {
+    return Stream.of(
+        Arguments.of("oracle.jdbc.OracleDriver", ""),
+        Arguments.of("", "jdbc:oracle:thin:@host"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("oracleCases")
+  void resolve_oracle_uppercase(String driverClass, String url) {
+    DatabaseDialect d = DialectFactory.resolve(driver(driverClass, url));
+    assertThat(d.quote("myCol")).isEqualTo("\"MYCOL\"");
+    assertThat(d.formatBoolean(true)).isEqualTo("1");
+  }
+
+  static Stream<Arguments> sqliteCases() {
+    return Stream.of(
+        Arguments.of("org.sqlite.JDBC", ""),
+        Arguments.of("", "jdbc:sqlite:file.db"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("sqliteCases")
+  void resolve_sqlite_detected(String driverClass, String url) {
+    DatabaseDialect d = DialectFactory.resolve(driver(driverClass, url));
+    assertThat(d.formatBoolean(true)).isEqualTo("1");
+    assertThat(d.beginTransaction()).isEqualTo("BEGIN TRANSACTION;\n");
+  }
+
+  static Stream<Arguments> postgresqlCases() {
+    return Stream.of(
+        Arguments.of("org.postgresql.Driver", ""),
+        Arguments.of("", "jdbc:postgresql://host/db"),
+        Arguments.of("", "jdbc:redshift://host/db"),
+        Arguments.of("", "jdbc:cockroach://host/db"),
+        Arguments.of("org.h2.Driver", ""));
+  }
+
+  @ParameterizedTest
+  @MethodSource("postgresqlCases")
+  void resolve_postgresql_doubleQuotes(String driverClass, String url) {
+    DatabaseDialect d = DialectFactory.resolve(driver(driverClass, url));
+    assertThat(d.quote("t")).isEqualTo("\"t\"");
+    assertThat(d.formatBoolean(true)).isEqualTo("TRUE");
+    assertThat(d.beginTransaction()).isEqualTo("BEGIN;\n");
+  }
+
+  // ── Explicit dialect field takes priority ──
+
+  @Test
+  void resolve_explicitDialect_overridesAutoDetection() {
+    DriverInfo info =
+        DriverInfo.builder()
+            .driverClass("com.mysql.cj.jdbc.Driver")
+            .dialect("oracle")
+            .build();
+    DatabaseDialect d = DialectFactory.resolve(info);
+    assertThat(d.quote("col")).isEqualTo("\"COL\"");
+  }
+
+  // ── Fallback to standard ──
 
   @Test
   void resolve_nullDriverInfo_returnsStandard() {
-    assertThat(DialectFactory.resolve(null)).isInstanceOf(StandardDialect.class);
+    DatabaseDialect d = DialectFactory.resolve(null);
+    assertThat(d).isInstanceOf(StandardDialect.class);
+    assertThat(d.quote("t")).isEqualTo("\"t\"");
   }
 
   @Test
   void resolve_emptyDriverInfo_returnsStandard() {
-    assertThat(DialectFactory.resolve(driver("", ""))).isInstanceOf(StandardDialect.class);
+    DatabaseDialect d = DialectFactory.resolve(driver("", ""));
+    assertThat(d).isInstanceOf(StandardDialect.class);
+  }
+
+  @Test
+  void resolve_unknownDriver_returnsStandard() {
+    DatabaseDialect d = DialectFactory.resolve(driver("com.ibm.db2.jcc.DB2Driver", ""));
+    assertThat(d).isInstanceOf(StandardDialect.class);
   }
 }

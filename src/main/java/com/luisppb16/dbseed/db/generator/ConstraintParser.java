@@ -93,7 +93,7 @@ public final class ConstraintParser {
   }
 
   private static String stripQuotes(final String s) {
-    if (s == null) return null;
+    if (Objects.isNull(s)) return null;
     final String trimmed = s.trim();
     if ((trimmed.startsWith("'") && trimmed.endsWith("'"))
         || (trimmed.startsWith("\"") && trimmed.endsWith("\""))) {
@@ -105,7 +105,7 @@ public final class ConstraintParser {
   public static List<MultiColumnConstraint> parseMultiColumnConstraints(final List<String> checks) {
     final List<MultiColumnConstraint> result = new java.util.ArrayList<>();
     for (final String check : checks) {
-      if (check == null || check.isBlank()) {
+      if (Objects.isNull(check) || check.isBlank()) {
         continue;
       }
       final String checkUpper = check.toUpperCase(Locale.ROOT);
@@ -118,7 +118,7 @@ public final class ConstraintParser {
         continue;
       }
       final MultiColumnConstraint mcc = parseDnfConstraint(check);
-      if (mcc != null && !mcc.allowedCombinations().isEmpty()) {
+      if (Objects.nonNull(mcc) && !mcc.allowedCombinations().isEmpty()) {
         result.add(mcc);
       }
     }
@@ -236,7 +236,7 @@ public final class ConstraintParser {
 
   public ParsedConstraint parse(
       final List<CheckExpression> checkExpressions, final int columnLength) {
-    if (checkExpressions == null || checkExpressions.isEmpty()) {
+    if (Objects.isNull(checkExpressions) || checkExpressions.isEmpty()) {
       return ParsedConstraint.empty();
     }
 
@@ -269,7 +269,7 @@ public final class ConstraintParser {
       maxLen = parseLengthConstraint(check, maxLen);
     }
 
-    if (columnLength > 0 && (maxLen == null || columnLength < maxLen)) {
+    if (columnLength > 0 && (Objects.isNull(maxLen) || columnLength < maxLen)) {
       maxLen = columnLength;
     }
 
@@ -292,10 +292,9 @@ public final class ConstraintParser {
         final double b = Double.parseDouble(mb.group(2));
         final double lo = Math.min(a, b);
         final double hi = Math.max(a, b);
-        newLower = (newLower == null) ? lo : Math.max(newLower, lo);
-        newUpper = (newUpper == null) ? hi : Math.min(newUpper, hi);
+        newLower = Objects.isNull(newLower) ? lo : Math.max(newLower, lo);
+        newUpper = Objects.isNull(newUpper) ? hi : Math.min(newUpper, hi);
       } catch (final NumberFormatException ignored) {
-        // Non-numeric BETWEEN bounds; skip
       }
     }
     return new BetweenParseResult(newLower, newUpper);
@@ -319,7 +318,6 @@ public final class ConstraintParser {
         newLower = updateLowerBound(op, val, newLower);
         newUpper = updateUpperBound(op, val, newUpper);
       } catch (final NumberFormatException ignored) {
-        // Non-numeric range bound; skip
       }
     }
     return new RangeParseResult(newLower, newUpper);
@@ -328,8 +326,8 @@ public final class ConstraintParser {
   private Double updateLowerBound(final String op, final double val, final Double currentLower) {
     return switch (op) {
       case ">" ->
-          (currentLower == null) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
-      case ">=", "=" -> (currentLower == null) ? val : Math.max(currentLower, val);
+          Objects.isNull(currentLower) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
+      case ">=", "=" -> Objects.isNull(currentLower) ? val : Math.max(currentLower, val);
       default -> currentLower;
     };
   }
@@ -337,8 +335,8 @@ public final class ConstraintParser {
   private Double updateUpperBound(final String op, final double val, final Double currentUpper) {
     return switch (op) {
       case "<" ->
-          (currentUpper == null) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
-      case "<=", "=" -> (currentUpper == null) ? val : Math.min(currentUpper, val);
+          Objects.isNull(currentUpper) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
+      case "<=", "=" -> Objects.isNull(currentUpper) ? val : Math.min(currentUpper, val);
       default -> currentUpper;
     };
   }
@@ -361,7 +359,7 @@ public final class ConstraintParser {
     final Matcher me = patterns.eq().matcher(exprNoParens);
     while (me.find()) {
       final String s = stripQuotes(me.group(1));
-      if (s != null && !s.isEmpty()) {
+      if (Objects.nonNull(s) && !s.isEmpty()) {
         allowed.add(s);
       }
     }
@@ -377,10 +375,9 @@ public final class ConstraintParser {
       try {
         final int v = Integer.parseInt(num);
         if ("<".equals(op) || "<=".equals(op) || "=".equals(op)) {
-          newMaxLen = (newMaxLen == null) ? v : Math.min(newMaxLen, v);
+          newMaxLen = Objects.isNull(newMaxLen) ? v : Math.min(newMaxLen, v);
         }
       } catch (final NumberFormatException ignored) {
-        // Non-numeric length constraint; skip
       }
     }
     return newMaxLen;

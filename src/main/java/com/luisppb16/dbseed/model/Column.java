@@ -61,7 +61,7 @@ public record Column(
 
   public Column {
     Objects.requireNonNull(name, "Column name cannot be null.");
-    allowedValues = allowedValues != null ? Set.copyOf(allowedValues) : Set.of();
+    allowedValues = Objects.nonNull(allowedValues) ? Set.copyOf(allowedValues) : Set.of();
   }
 
   public boolean hasAllowedValues() {

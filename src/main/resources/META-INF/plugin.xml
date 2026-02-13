@@ -30,26 +30,21 @@
                 <li><b>AI-Powered Data Generation (Ollama):</b> Generate context-aware, realistic data using an external Ollama LLM server.
                     <ul>
                         <li>New "AI Columns" tab in the configuration dialog lets you choose which string columns get AI-generated content.</li>
-                        <li>Smart defaults: columns named <code>description</code>, <code>title</code>, <code>bio</code>, <code>email</code>, etc. are pre-selected automatically.</li>
-                        <li>Configurable word count per AI value (1 word up to full paragraphs).</li>
-                        <li>Async generation with virtual threads for maximum throughput.</li>
-                        <li>Real-time progress indicator during AI processing.</li>
+                        <li>Configurable word count per AI value (one word up to full paragraphs).</li>
                     </ul>
                 </li>
                 <li><b>AI Settings in Global Configuration:</b>
                     <ul>
                         <li>Enable/disable AI generation, set Ollama URL and model.</li>
-                        <li>"Get models" button with live server connectivity check.</li>
+                        <li>"Get models" button with a live server connectivity check.</li>
                         <li>Application context text area to guide the AI towards your domain.</li>
                         <li>Words per AI value spinner to control output length.</li>
                     </ul>
                 </li>
-                <li><b>Schema Introspection Refactor:</b> Check constraint loading now uses database-specific queries (PostgreSQL, H2) instead of dialect properties, improving reliability.</li>
+                <li><b>Auto-Detect SQL Dialect:</b> <code>DialectFactory</code> now auto-detects the correct dialect from the driver class name or JDBC URL when no explicit dialect is configured.</li>
                 <li><b>Dialect System Cleanup:</b> Removed property-driven check constraint configuration from dialect files. Dialects are now simpler and more maintainable.</li>
                 <li><b>Improved Error Handling:</b> Seed actions now show modal error dialogs instead of balloon notifications, with proper thread-safe modality state.</li>
-                <li><b>Settings UI Improvements:</b> The settings panel is now scrollable and responsive, fitting properly within the IDE window.</li>
-                <li><b>Progress Reporting:</b> Data generation progress is now driven dynamically per-table instead of using hardcoded fractions.</li>
-                <li><b>Test Suite Expansion:</b> Expanded coverage across 12 test files with improved assertions and formatting.</li>
+                <li><b>Repetition Rule Fix:</b> String values in repetition rule fixed columns are now properly parsed into their typed representation before use.</li>
             </ul>
 
             <h3>Version 1.2.5</h3>

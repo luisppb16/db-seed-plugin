@@ -52,11 +52,9 @@ public record ForeignKey(
     Objects.requireNonNull(pkTable, "The primary table name (pkTable) cannot be null.");
     Objects.requireNonNull(columnMapping, "The column mapping cannot be null.");
 
-    // Immutable copy of the mapping.
     columnMapping = Map.copyOf(columnMapping);
 
-    // If the name was not provided, one is generated based on the PK and child columns.
-    if (name == null || name.isBlank()) {
+    if (Objects.isNull(name) || name.isBlank()) {
       final String cols =
           columnMapping.keySet().stream()
               .sorted(Comparator.naturalOrder())

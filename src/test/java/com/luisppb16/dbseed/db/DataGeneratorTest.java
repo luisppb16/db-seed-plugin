@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.db;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationParameters;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationResult;
 import com.luisppb16.dbseed.model.Column;
@@ -15,9 +16,27 @@ import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Types;
 import java.util.*;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 class DataGeneratorTest {
+
+  private static MockedStatic<DbSeedSettingsState> settingsMock;
+
+  @BeforeAll
+  static void setUp() {
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(false);
+    settingsMock = org.mockito.Mockito.mockStatic(DbSeedSettingsState.class);
+    settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+  }
+
+  @AfterAll
+  static void tearDown() {
+    settingsMock.close();
+  }
 
   private static Column intPk(String name) {
     return Column.builder().name(name).jdbcType(Types.INTEGER).primaryKey(true).build();

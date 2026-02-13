@@ -96,7 +96,7 @@ public class SchemaDsl {
     if (column.notNull()) {
       sql.append(" NOT NULL");
     }
-    if (column.defaultValue() != null) {
+    if (Objects.nonNull(column.defaultValue())) {
       sql.append(" DEFAULT %s".formatted(column.defaultValue()));
     }
     if (column.unique()) {
@@ -148,7 +148,7 @@ public class SchemaDsl {
     }
 
     public boolean isForeignKey() {
-      return foreignKey != null;
+      return Objects.nonNull(foreignKey);
     }
   }
 

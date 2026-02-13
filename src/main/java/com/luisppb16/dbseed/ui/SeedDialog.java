@@ -72,7 +72,7 @@ public final class SeedDialog extends DialogWrapper {
 
     urlField =
         new JTextField(
-            driverInfo.urlTemplate() != null ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
+            Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner =
@@ -118,7 +118,6 @@ public final class SeedDialog extends DialogWrapper {
     try {
       rowsSpinner.commitEdit();
     } catch (ParseException ignored) {
-      // Spinner retains last valid value
     }
     super.doOKAction();
     saveConfiguration();
@@ -126,7 +125,7 @@ public final class SeedDialog extends DialogWrapper {
 
   private void loadConfiguration(@Nullable final String urlTemplate) {
     final Project project = getCurrentProject();
-    if (project == null) {
+    if (Objects.isNull(project)) {
       return;
     }
 
@@ -218,10 +217,10 @@ public final class SeedDialog extends DialogWrapper {
     String urlToUse = urlTemplate;
     boolean usingSavedConfig = false;
 
-    if (urlToUse == null) {
+    if (Objects.isNull(urlToUse)) {
       urlToUse = Objects.requireNonNullElse(savedConfig.url(), DEFAULT_POSTGRES_URL);
       usingSavedConfig = true;
-    } else if (savedConfig.url() != null && isSameDriverType(urlTemplate, savedConfig.url())) {
+    } else if (Objects.nonNull(savedConfig.url()) && isSameDriverType(urlTemplate, savedConfig.url())) {
       urlToUse = savedConfig.url();
       usingSavedConfig = true;
     }
@@ -229,7 +228,7 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private boolean isSameDriverType(String template, String savedUrl) {
-    if (template == null || savedUrl == null) return false;
+    if (Objects.isNull(template) || Objects.isNull(savedUrl)) return false;
     int firstColon = template.indexOf(':');
     int secondColon = template.indexOf(':', firstColon + 1);
     if (secondColon > 0) {
@@ -241,7 +240,7 @@ public final class SeedDialog extends DialogWrapper {
 
   private void saveConfiguration() {
     final Project project = getCurrentProject();
-    if (project != null) {
+    if (Objects.nonNull(project)) {
       final GenerationConfig config = getConfiguration();
       ConnectionConfigPersistence.save(project, config);
     }

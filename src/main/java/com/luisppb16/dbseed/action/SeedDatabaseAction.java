@@ -5,6 +5,8 @@
 
 package com.luisppb16.dbseed.action;
 
+import static com.luisppb16.dbseed.model.Constant.APP_NAME;
+
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -53,14 +55,14 @@ import org.jetbrains.annotations.NotNull;
 
 /** Comprehensive database seeding workflow orchestrator for the DBSeed plugin ecosystem. */
 @Slf4j
-public class SeedDatabaseAction extends AnAction {
+public final class SeedDatabaseAction extends AnAction {
 
   private static final long INSERT_THRESHOLD = 10000L;
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
-    if (project == null) {
+    if (Objects.isNull(project)) {
       log.debug("Action canceled: no active project.");
       return;
     }
@@ -122,18 +124,17 @@ public class SeedDatabaseAction extends AnAction {
 
               @Override
               public void onSuccess() {
-                if (errorRef.get() != null) {
+                if (Objects.nonNull(errorRef.get())) {
                   handleException(project, "Error introspecting schema: ", errorRef.get());
                   return;
                 }
                 final List<Table> tables = tablesRef.get();
-                if (tables == null || tables.isEmpty()) {
+                if (Objects.isNull(tables) || tables.isEmpty()) {
                   Messages.showErrorDialog(
                       project, "No tables found in schema: " + config.schema(), "DBSeed Error");
                   return;
                 }
-                ApplicationManager.getApplication()
-                    .invokeLater(() -> continueGeneration(project, config, tables, chosenDriver));
+                continueGeneration(project, config, tables, chosenDriver);
               }
             });
   }
@@ -148,17 +149,17 @@ public class SeedDatabaseAction extends AnAction {
       final String message =
           String.format(
               "This operation will generate approximately %,d rows."
-                  + " El plugin puede manejarlos, pero su base de datos puede tardar un tiempo en insertarlos.%n%n"
-                  + "¿Aún desea continuar?",
+                  + " The plugin can handle them, but your database may take some time to insert them.%n%n"
+                  + "Do you still wish to continue?",
               totalRows);
 
       final int result =
           Messages.showOkCancelDialog(
               project,
               message,
-              "Operación de siembra de datos masiva",
-              "Continuar",
-              "Cancelar",
+              "Massive Data Seeding Operation",
+              "Continue",
+              "Cancel",
               Messages.getWarningIcon());
 
       if (result == Messages.CANCEL) {
@@ -184,6 +185,7 @@ public class SeedDatabaseAction extends AnAction {
         final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
         final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
         final Map<String, Set<String>> aiColumns = pkDialog.getAiColumnsByTable();
+        final Set<String> excludedTables = pkDialog.getExcludedTables();
 
         final Map<String, Map<String, String>> pkUuidOverrides =
             selectedPkUuidColumns.entrySet().stream()
@@ -202,7 +204,7 @@ public class SeedDatabaseAction extends AnAction {
         final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
         if (settings.isUseAiGeneration()
-            && (settings.getAiApplicationContext() == null
+            && (Objects.isNull(settings.getAiApplicationContext())
                 || settings.getAiApplicationContext().isBlank())) {
           final int aiResult =
               Messages.showYesNoDialog(
@@ -236,12 +238,15 @@ public class SeedDatabaseAction extends AnAction {
 
         ProgressManager.getInstance()
             .run(
-                new Task.Backgroundable(project, "Generating SQL", false) {
+                new Task.Backgroundable(project, APP_NAME.getValue(), true) {
                   @Override
                   public void run(@NotNull final ProgressIndicator indicator) {
                     try {
                       indicator.setIndeterminate(false);
                       indicator.setText("Generating data...");
+
+                      final List<Table> filteredTables =
+                          ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
@@ -252,7 +257,7 @@ public class SeedDatabaseAction extends AnAction {
                       final DataGenerator.GenerationResult gen =
                           DataGenerator.generate(
                               DataGenerator.GenerationParameters.builder()
-                                  .tables(ordered)
+                                  .tables(filteredTables)
                                   .rowsPerTable(finalConfig.rowsPerTable())
                                   .deferred(effectiveDeferred)
                                   .pkUuidOverrides(pkUuidOverrides)
@@ -275,6 +280,8 @@ public class SeedDatabaseAction extends AnAction {
                       log.info(
                           "Data generation completed for {} rows per table.",
                           finalConfig.rowsPerTable());
+
+                      if (indicator.isCanceled()) return;
 
                       indicator.setText("Building SQL...");
                       indicator.setText2("");
@@ -302,7 +309,13 @@ public class SeedDatabaseAction extends AnAction {
     final String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
     final String fileName = String.format("V%s__seed.sql", timestamp);
 
-    final Path path = Paths.get(Objects.requireNonNull(project.getBasePath()), outputDir, fileName);
+    final String basePath = project.getBasePath();
+    if (Objects.isNull(basePath)) {
+      Messages.showErrorDialog(project, "Could not determine project base path.", "DBSeed Error");
+      return;
+    }
+
+    final Path path = Paths.get(basePath, outputDir, fileName);
 
     try {
       Files.createDirectories(path.getParent());
@@ -310,7 +323,7 @@ public class SeedDatabaseAction extends AnAction {
 
       final VirtualFile virtualFile =
           LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
-      if (virtualFile != null) {
+      if (Objects.nonNull(virtualFile)) {
         FileEditorManager.getInstance(project).openFile(virtualFile, true);
         log.info("File {} saved and opened in the editor.", fileName);
       } else {

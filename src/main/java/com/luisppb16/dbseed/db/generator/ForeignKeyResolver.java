@@ -27,31 +27,12 @@ import java.util.stream.Collectors;
 
 /**
  * Sophisticated foreign key resolution engine for database seeding operations in the DBSeed plugin.
- *
- * <p>This class implements advanced algorithms for resolving foreign key relationships during the
- * data generation process. It handles complex scenarios including nullable vs non-nullable foreign
- * keys, unique foreign key constraints, and circular dependency detection. The resolver manages
- * both immediate foreign key value assignment and deferred updates for tables that haven't been
- * processed yet, ensuring referential integrity across the entire database schema.
- *
- * <p>Key responsibilities include:
- *
- * <ul>
- *   <li>Resolving foreign key relationships between generated table data
- *   <li>Handling nullable and non-nullable foreign key constraints appropriately
- *   <li>Detecting and managing circular foreign key dependencies
- *   <li>Managing unique foreign key constraints and 1:1 relationships
- *   <li>Generating pending updates for deferred foreign key assignments
- *   <li>Ensuring referential integrity across the entire database schema
- * </ul>
- *
- * <p>The implementation uses sophisticated algorithms to handle unique foreign key constraints by
- * maintaining queues of available parent rows and ensuring proper distribution. It also implements
- * cycle detection mechanisms to prevent infinite loops when dealing with circular foreign key
- * dependencies, throwing appropriate exceptions for non-nullable cycles while handling nullable
- * cycles through deferred updates.
  */
 public final class ForeignKeyResolver {
+
+  private static final int MAX_UNIQUE_FK_ATTEMPTS_FACTOR = 100;
+  private static final String COMBINATION_DELIMITER = "|";
+  private static final String NULL_VALUE = "NULL";
 
   private final Map<String, Table> tableMap;
   private final Map<Table, List<Row>> data;
@@ -130,7 +111,7 @@ public final class ForeignKeyResolver {
   private void handleUniqueFkResolution(
       final Table table, final List<Row> rows, final List<List<String>> uniqueKeysOnFks) {
     final Set<String> usedCombinations = new HashSet<>();
-    final int maxAttempts = 100 * rows.size();
+    final int maxAttempts = MAX_UNIQUE_FK_ATTEMPTS_FACTOR * rows.size();
 
     for (final Row row : rows) {
       final Optional<Map<String, Object>> resolvedFkValues =
@@ -164,12 +145,12 @@ public final class ForeignKeyResolver {
     final Map<String, Object> potentialFkValues = new HashMap<>();
     for (final ForeignKey fk : table.foreignKeys()) {
       final Table parent = tableMap.get(fk.pkTable());
-      final List<Row> parentRows = (parent != null) ? data.get(parent) : null;
+      final List<Row> parentRows = Objects.nonNull(parent) ? data.get(parent) : null;
 
-      if (parent != null && parentRows != null && !parentRows.isEmpty()) {
+      if (Objects.nonNull(parent) && Objects.nonNull(parentRows) && !parentRows.isEmpty()) {
         final Row parentRow =
             getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), false);
-        if (parentRow != null) {
+        if (Objects.nonNull(parentRow)) {
           fk.columnMapping()
               .forEach(
                   (fkCol, pkCol) -> potentialFkValues.put(fkCol, parentRow.values().get(pkCol)));
@@ -186,8 +167,8 @@ public final class ForeignKeyResolver {
     for (final List<String> ukColumns : uniqueKeysOnFks) {
       final String combination =
           ukColumns.stream()
-              .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
-              .collect(Collectors.joining("|"));
+              .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
+              .collect(Collectors.joining(COMBINATION_DELIMITER));
       if (usedCombinations.contains(combination)) {
         return true;
       }
@@ -202,8 +183,8 @@ public final class ForeignKeyResolver {
     for (final List<String> ukColumns : uniqueKeysOnFks) {
       final String combination =
           ukColumns.stream()
-              .map(c -> Objects.toString(potentialFkValues.get(c), "NULL"))
-              .collect(Collectors.joining("|"));
+              .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
+              .collect(Collectors.joining(COMBINATION_DELIMITER));
       usedCombinations.add(combination);
     }
   }
@@ -212,7 +193,7 @@ public final class ForeignKeyResolver {
       final ForeignKey fk, final Table table, final Row row, final boolean fkNullable) {
 
     final Table parent = tableMap.get(fk.pkTable());
-    if (parent == null) {
+    if (Objects.isNull(parent)) {
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
@@ -223,7 +204,7 @@ public final class ForeignKeyResolver {
     final Row parentRow =
         getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), fkNullable);
 
-    if (parentRow == null) {
+    if (Objects.isNull(parentRow)) {
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
@@ -258,7 +239,7 @@ public final class ForeignKeyResolver {
       final boolean fkNullable) {
 
     if (fk.uniqueOnFk()) {
-      final String key = tableName + "|" + fk.name();
+      final String key = tableName + COMBINATION_DELIMITER + fk.name();
       final Deque<Row> queue =
           uniqueFkParentQueues.computeIfAbsent(
               key,

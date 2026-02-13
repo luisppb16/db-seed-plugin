@@ -129,7 +129,7 @@ public final class SchemaDesigner extends AnAction {
 
     private void addTable() {
       final String tableName = JOptionPane.showInputDialog(this, "Table name:");
-      if (tableName == null || tableName.isBlank()) {
+      if (Objects.isNull(tableName) || tableName.isBlank()) {
         return;
       }
       final List<SchemaDsl.Column> columns = collectColumns();
@@ -141,8 +141,8 @@ public final class SchemaDesigner extends AnAction {
     private List<SchemaDsl.Column> collectColumns() {
       final List<SchemaDsl.Column> columns = new ArrayList<>();
       String columnName;
-      while ((columnName = JOptionPane.showInputDialog(this, "Column name (blank to finish):"))
-              != null
+      while (Objects.nonNull(
+              columnName = JOptionPane.showInputDialog(this, "Column name (blank to finish):"))
           && !columnName.isBlank()) {
         final Optional<SqlType> type =
             Optional.ofNullable(

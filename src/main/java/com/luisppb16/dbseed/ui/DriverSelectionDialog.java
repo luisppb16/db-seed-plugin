@@ -12,6 +12,7 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -95,7 +96,7 @@ public class DriverSelectionDialog extends DialogWrapper {
             new DefaultComboBoxModel<>(
                 drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
 
-    if (lastDriverName != null) {
+    if (Objects.nonNull(lastDriverName)) {
       for (int i = 0; i < drivers.size(); i++) {
         if (drivers.get(i).name().equals(lastDriverName)) {
           box.setSelectedIndex(i);

@@ -138,7 +138,7 @@ public class RepetitionRulesPanel extends JPanel {
               rightPanelLayout.show(rightPanelContainer, table.name());
             } else if (selectedValue instanceof ColumnItem(Column column)) {
               final Table parentTable = findParentTable(tables, column);
-              if (parentTable != null) {
+              if (Objects.nonNull(parentTable)) {
                 rightPanelLayout.show(rightPanelContainer, parentTable.name());
               }
             }

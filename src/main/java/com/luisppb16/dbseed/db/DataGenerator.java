@@ -23,10 +23,9 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import lombok.Builder;
 import lombok.experimental.UtilityClass;
@@ -37,6 +36,8 @@ import net.datafaker.Faker;
 public class DataGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
+  private static final String SOFT_DELETE_DELIMITER = ",";
+  private static final String EMPTY_CONTEXT = "";
 
   public static GenerationResult generate(final GenerationParameters params) {
     final List<Table> orderedTables =
@@ -60,7 +61,7 @@ public class DataGenerator {
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     final OllamaClient ollamaClient =
         settings.isUseAiGeneration()
-                && settings.getOllamaUrl() != null
+                && Objects.nonNull(settings.getOllamaUrl())
                 && !settings.getOllamaUrl().isBlank()
             ? new OllamaClient(
                 settings.getOllamaUrl(),
@@ -68,31 +69,28 @@ public class DataGenerator {
                 settings.getAiRequestTimeoutSeconds())
             : null;
 
-    try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-      final Map<String, Set<String>> aiColumns =
-          params.aiColumns() != null ? params.aiColumns() : Map.of();
+    final Map<String, Set<String>> aiColumns =
+        Objects.requireNonNullElse(params.aiColumns(), Map.of());
 
-      generateTableRows(
-          orderedTables,
-          params.rowsPerTable(),
-          excludedColumnsSet,
-          params.repetitionRules(),
-          faker,
-          usedUuids,
-          tableConstraints,
-          data,
-          dictionaryWords,
-          params.useLatinDictionary(),
-          softDeleteCols,
-          params.softDeleteUseSchemaDefault(),
-          params.softDeleteValue(),
-          params.numericScale(),
-          aiColumns,
-          ollamaClient,
-          params.applicationContext() != null ? params.applicationContext() : "",
-          executor,
-          params.indicator());
-    }
+    generateTableRows(
+        orderedTables,
+        params.rowsPerTable(),
+        excludedColumnsSet,
+        params.repetitionRules(),
+        faker,
+        usedUuids,
+        tableConstraints,
+        data,
+        dictionaryWords,
+        params.useLatinDictionary(),
+        softDeleteCols,
+        params.softDeleteUseSchemaDefault(),
+        params.softDeleteValue(),
+        params.numericScale(),
+        aiColumns,
+        ollamaClient,
+        Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
+        params.indicator());
 
     validateNumericConstraints(orderedTables, tableConstraints, data, params.numericScale());
 
@@ -108,8 +106,8 @@ public class DataGenerator {
     tables.forEach(
         t -> {
           final Map<String, String> pkOverridesForTable =
-              pkUuidOverrides != null ? pkUuidOverrides.get(t.name()) : null;
-          if (pkOverridesForTable == null || pkOverridesForTable.isEmpty()) {
+              Objects.nonNull(pkUuidOverrides) ? pkUuidOverrides.get(t.name()) : null;
+          if (Objects.isNull(pkOverridesForTable) || pkOverridesForTable.isEmpty()) {
             overridden.put(t.name(), t);
             return;
           }
@@ -145,8 +143,8 @@ public class DataGenerator {
 
   private static Set<String> parseSoftDeleteColumns(final String softDeleteColumns) {
     final Set<String> softDeleteCols = new HashSet<>();
-    if (softDeleteColumns != null) {
-      java.util.Arrays.stream(softDeleteColumns.split(","))
+    if (Objects.nonNull(softDeleteColumns)) {
+      java.util.Arrays.stream(softDeleteColumns.split(SOFT_DELETE_DELIMITER))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .forEach(softDeleteCols::add);
@@ -172,13 +170,12 @@ public class DataGenerator {
       final Map<String, Set<String>> aiColumns,
       final OllamaClient ollamaClient,
       final String applicationContext,
-      final ExecutorService executor,
       final ProgressIndicator indicator) {
 
     final int totalTables = orderedTables.size();
     for (int i = 0; i < totalTables; i++) {
       final Table table = orderedTables.get(i);
-      if (indicator != null) {
+      if (Objects.nonNull(indicator)) {
         indicator.setText(
             "Generating data for table: "
                 + table.name()
@@ -200,7 +197,7 @@ public class DataGenerator {
               table,
               rowsPerTable,
               excludedColumns.getOrDefault(table.name(), Set.of()),
-              repetitionRules != null
+              Objects.nonNull(repetitionRules)
                   ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
                   : Collections.emptyList(),
               faker,
@@ -214,14 +211,13 @@ public class DataGenerator {
               aiColumns.getOrDefault(table.name(), Set.of()),
               ollamaClient,
               applicationContext,
-              executor,
               indicator);
 
       final List<Row> rows = rowGenerator.generate();
       data.put(table, rows);
       tableConstraints.put(table.name(), rowGenerator.getConstraints());
 
-      if (indicator != null) {
+      if (Objects.nonNull(indicator)) {
         indicator.setFraction((double) (i + 1) / totalTables);
       }
     }
@@ -237,7 +233,7 @@ public class DataGenerator {
       final Map<String, ConstraintParser.ParsedConstraint> constraints =
           tableConstraints.getOrDefault(table.name(), Map.of());
       final List<Row> rows = data.get(table);
-      if (rows == null) continue;
+      if (Objects.isNull(rows)) continue;
       for (final Row row : rows) {
         validateRowNumericConstraints(table, row, constraints, numericScale);
       }
@@ -254,10 +250,10 @@ public class DataGenerator {
       final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
       if (ValueGenerator.isNumericJdbc(col.jdbcType())
-          && pc != null
-          && (pc.min() != null || pc.max() != null)) {
-        if (val != null
-            && pc.allowedValues() != null
+          && Objects.nonNull(pc)
+          && (Objects.nonNull(pc.min()) || Objects.nonNull(pc.max()))) {
+        if (Objects.nonNull(val)
+            && Objects.nonNull(pc.allowedValues())
             && !pc.allowedValues().isEmpty()
             && pc.allowedValues().contains(String.valueOf(val))) {
           continue;

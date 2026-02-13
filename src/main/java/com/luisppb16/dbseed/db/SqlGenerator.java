@@ -25,6 +25,14 @@ public class SqlGenerator {
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
   private static final int BATCH_SIZE = 1000;
 
+  private static final String SQL_UPDATE = "UPDATE ";
+  private static final String SQL_SET = " SET ";
+  private static final String SQL_WHERE = " WHERE ";
+  private static final String SQL_AND = " AND ";
+  private static final String SQL_EQUALS = "=";
+  private static final String SQL_COMMA_SPACE = ", ";
+  private static final String SQL_STATEMENT_END = ";\n";
+
   private static final Set<String> RESERVED_KEYWORDS =
       Set.of(
           "select", "from", "where", "group", "order", "limit", "offset", "insert", "update",
@@ -67,7 +75,7 @@ public class SqlGenerator {
       final DatabaseDialect dialect) {
     data.forEach(
         (table, rows) -> {
-          if (rows == null || rows.isEmpty()) {
+          if (Objects.isNull(rows) || rows.isEmpty()) {
             return;
           }
 
@@ -76,7 +84,7 @@ public class SqlGenerator {
           final String columnList =
               columnOrder.stream()
                   .map(col -> qualified(opts, col, dialect))
-                  .collect(Collectors.joining(", "));
+                  .collect(Collectors.joining(SQL_COMMA_SPACE));
 
           for (int i = 0; i < rows.size(); i += BATCH_SIZE) {
             final List<Row> batch = rows.subList(i, Math.min(i + BATCH_SIZE, rows.size()));
@@ -90,7 +98,7 @@ public class SqlGenerator {
       final List<PendingUpdate> updates,
       final SqlOptions opts,
       final DatabaseDialect dialect) {
-    if (updates != null && !updates.isEmpty()) {
+    if (Objects.nonNull(updates) && !updates.isEmpty()) {
       for (final PendingUpdate update : updates) {
         final String tableName = qualified(opts, update.table(), dialect);
 
@@ -101,10 +109,10 @@ public class SqlGenerator {
                       StringBuilder valSb = new StringBuilder();
                       dialect.formatValue(e.getValue(), valSb);
                       return qualified(opts, e.getKey(), dialect)
-                          .concat("=")
+                          .concat(SQL_EQUALS)
                           .concat(valSb.toString());
                     })
-                .collect(Collectors.joining(", "));
+                .collect(Collectors.joining(SQL_COMMA_SPACE));
 
         final String wherePart =
             update.pkValues().entrySet().stream()
@@ -113,18 +121,18 @@ public class SqlGenerator {
                       StringBuilder valSb = new StringBuilder();
                       dialect.formatValue(e.getValue(), valSb);
                       return qualified(opts, e.getKey(), dialect)
-                          .concat("=")
+                          .concat(SQL_EQUALS)
                           .concat(valSb.toString());
                     })
-                .collect(Collectors.joining(" AND "));
+                .collect(Collectors.joining(SQL_AND));
 
-        sb.append("UPDATE ")
+        sb.append(SQL_UPDATE)
             .append(tableName)
-            .append(" SET ")
+            .append(SQL_SET)
             .append(setPart)
-            .append(" WHERE ")
+            .append(SQL_WHERE)
             .append(wherePart)
-            .append(";\n");
+            .append(SQL_STATEMENT_END);
       }
     }
   }

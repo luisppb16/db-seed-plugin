@@ -16,8 +16,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class DialectFactoryTest {
 
-  private static DriverInfo driver(String driverClass, String urlTemplate) {
-    return DriverInfo.builder().driverClass(driverClass).urlTemplate(urlTemplate).build();
+  private static DriverInfo driver(String dialect) {
+    return DriverInfo.builder().dialect(dialect).build();
   }
 
   // ── Auto-detection from driverClass / urlTemplate ──

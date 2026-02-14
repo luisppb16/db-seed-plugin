@@ -59,6 +59,11 @@ public class AbstractDialect implements DatabaseDialect {
   }
 
   @Override
+  public String getProperty(String key, String defaultValue) {
+    return props.getProperty(key, defaultValue);
+  }
+
+  @Override
   public String quote(String identifier) {
     String quoteChar = props.getProperty("quoteChar", "\"");
     String quoteEscape = props.getProperty("quoteEscape", "\"\"");

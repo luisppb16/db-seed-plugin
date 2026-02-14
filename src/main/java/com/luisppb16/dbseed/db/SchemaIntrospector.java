@@ -5,6 +5,7 @@
 
 package com.luisppb16.dbseed.db;
 
+import com.luisppb16.dbseed.db.dialect.DatabaseDialect;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
@@ -121,16 +122,17 @@ public class SchemaIntrospector {
   private static final Map<String, Pattern> BETWEEN_PATTERNS = new ConcurrentHashMap<>();
   private static final Map<String, Pattern> GTE_LTE_PATTERNS = new ConcurrentHashMap<>();
 
-  public static List<Table> introspect(final Connection conn, final String schema)
-      throws SQLException {
+  public static List<Table> introspect(final Connection conn, final String schema,
+      final DatabaseDialect dialect) throws SQLException {
     Objects.requireNonNull(conn, "Connection cannot be null");
+    Objects.requireNonNull(dialect, "Dialect cannot be null");
     final DatabaseMetaData meta = conn.getMetaData();
     final List<Table> tables = new ArrayList<>();
 
     final List<TableRawData> rawTables = loadAllTables(meta, schema);
     final Map<TableKey, List<ColumnRawData>> rawColumns = loadAllColumns(meta, schema);
     final Map<TableKey, List<String>> allChecks =
-        loadAllCheckConstraints(conn, meta, schema, rawTables, rawColumns);
+        loadAllCheckConstraints(conn, schema, rawTables, rawColumns, dialect);
     final Map<TableKey, List<String>> allPks = loadAllPrimaryKeys(meta, schema, rawTables);
     final Map<TableKey, List<List<String>>> allUniqueKeys =
         loadAllUniqueKeys(meta, schema, rawTables);
@@ -213,6 +215,7 @@ public class SchemaIntrospector {
       }
 
       final Set<String> allowedValues = inferAllowedValuesFromChecks(checkConstraints, raw.name());
+      final boolean isPk = pkSet.contains(raw.name());
       final boolean isUuid =
           raw.name().toLowerCase(Locale.ROOT).endsWith("guid")
               || raw.name().toLowerCase(Locale.ROOT).endsWith("uuid")
@@ -223,8 +226,8 @@ public class SchemaIntrospector {
           new Column(
               raw.name(),
               raw.type(),
-              raw.nullable(),
-              pkSet.contains(raw.name()),
+              isPk ? false : raw.nullable(),
+              isPk,
               isUuid,
               raw.length(),
               raw.scale(),
@@ -485,26 +488,26 @@ public class SchemaIntrospector {
 
   private static Map<TableKey, List<String>> loadAllCheckConstraints(
       final Connection conn,
-      final DatabaseMetaData meta,
       final String schema,
       final List<TableRawData> tables,
-      final Map<TableKey, List<ColumnRawData>> columns)
+      final Map<TableKey, List<ColumnRawData>> columns,
+      final DatabaseDialect dialect)
       throws SQLException {
 
     final Map<TableKey, List<String>> checks = new HashMap<>();
-    final String product = safe(meta.getDatabaseProductName()).toLowerCase(Locale.ROOT);
+    final String query = dialect.getProperty("checkConstraint.query", "");
 
     if (product.contains(PRODUCT_POSTGRES)) {
       loadAllPostgresCheckConstraints(conn, schema, checks);
     } else if (product.contains(PRODUCT_H2)) {
       loadAllH2CheckConstraints(conn, schema, checks);
     } else {
-      loadGenericCheckConstraints(tables, columns, checks);
+      loadQueryCheckConstraints(conn, schema, checks, dialect, query);
     }
     return checks;
   }
 
-  private static void loadGenericCheckConstraints(
+  private static void loadRemarksCheckConstraints(
       final List<TableRawData> tables,
       final Map<TableKey, List<ColumnRawData>> columns,
       final Map<TableKey, List<String>> checks) {
@@ -525,8 +528,12 @@ public class SchemaIntrospector {
     }
   }
 
-  private static void loadAllH2CheckConstraints(
-      final Connection conn, final String schema, final Map<TableKey, List<String>> checks)
+  private static void loadQueryCheckConstraints(
+      final Connection conn,
+      final String schema,
+      final Map<TableKey, List<String>> checks,
+      final DatabaseDialect dialect,
+      final String baseQuery)
       throws SQLException {
     final StringBuilder sql =
         new StringBuilder(
@@ -554,11 +561,7 @@ public class SchemaIntrospector {
           }
         }
       }
-    } catch (SQLException e) {
-      log.warn("Failed to load H2 check constraints for schema {}", schema, e);
-      throw e;
     }
-  }
 
   private static void loadAllPostgresCheckConstraints(
       final Connection conn, final String schema, final Map<TableKey, List<String>> checks)
@@ -589,13 +592,19 @@ public class SchemaIntrospector {
             final List<String> list = checks.computeIfAbsent(key, k -> new ArrayList<>());
             final Matcher m = POSTGRES_CHECK_PATTERN.matcher(def);
             if (m.find()) {
-              list.add(m.group(1));
-            } else {
-              list.add(def);
+              clause = m.group(1);
             }
           }
+          if (!quoteChar.isEmpty()) {
+            clause = clause.replace(quoteChar, "");
+          }
+
+          final TableKey key = new TableKey(resultSchema, tableName);
+          checks.computeIfAbsent(key, k -> new ArrayList<>()).add(clause);
         }
       }
+    } catch (final SQLException e) {
+      log.warn("Failed to load check constraints via query, constraints may be incomplete", e);
     }
   }
 

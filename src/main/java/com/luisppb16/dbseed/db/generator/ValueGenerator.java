@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -26,12 +27,30 @@ import net.datafaker.Faker;
 
 /**
  * Advanced value generation engine for database seeding operations in the DBSeed plugin.
- *
- * <p>This class implements sophisticated algorithms for generating realistic and
- * constraint-compliant data values across various SQL data types. It combines multiple data sources
- * including Faker library, custom dictionaries, and user-defined allowed values to produce
- * meaningful sample data. The generator handles complex scenarios such as UUID uniqueness, numeric
- * range constraints, string length limitations, and database-specific type requirements.
+ * <p>
+ * This class implements sophisticated algorithms for generating realistic and constraint-compliant
+ * data values across various SQL data types. It combines multiple data sources including Faker
+ * library, custom dictionaries, and user-defined allowed values to produce meaningful sample
+ * data. The generator handles complex scenarios such as UUID uniqueness, numeric range
+ * constraints, string length limitations, and database-specific type requirements.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Generating type-appropriate values for all major SQL data types</li>
+ *   <li>Respecting column constraints including min/max values and allowed value sets</li>
+ *   <li>Managing UUID uniqueness across the entire generation process</li>
+ *   <li>Applying parsed constraint information to guide value generation</li>
+ *   <li>Handling soft-delete value configurations appropriately</li>
+ *   <li>Implementing sophisticated numeric value generation with precision control</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation includes specialized algorithms for different data types, with particular
+ * attention to numeric precision and scale handling. The class maintains global state for
+ * UUID uniqueness and implements retry mechanisms to ensure constraint compliance. It also
+ * provides methods for generating values within specific bounds when constraints are present.
+ * </p>
  */
 public final class ValueGenerator {
 
@@ -39,24 +58,6 @@ public final class ValueGenerator {
   private static final int DEFAULT_INT_MAX = 10_000;
   private static final int DEFAULT_LONG_MAX = 1_000_000;
   private static final int DEFAULT_DECIMAL_MAX = 1_000;
-  private static final int DEFAULT_STRING_LENGTH = 255;
-
-  private static final double NULL_PROBABILITY = 0.3;
-
-  private static final int ISO_COUNTRY_CODE_2_LEN = 2;
-  private static final int ISO_COUNTRY_CODE_3_LEN = 3;
-  private static final int IBAN_ES_LEN = 24;
-  private static final String IBAN_ES_PREFIX = "ES";
-  private static final int IBAN_ES_DIGITS = 22;
-
-  private static final int MAX_DICTIONARY_WORDS = 5;
-  private static final int MIN_FAKER_WORDS = 3;
-  private static final int FAKER_WORDS_DIVISOR = 5;
-  private static final int MIN_FAKER_WORDS_CLAMP = 4;
-  private static final int MAX_FAKER_WORDS_CLAMP = 10;
-
-  private static final int DATE_RANGE_DAYS = 3650;
-  private static final int TIMESTAMP_RANGE_SECONDS = 31_536_000;
 
   private final Faker faker;
   private final List<String> dictionaryWords;
@@ -71,43 +72,14 @@ public final class ValueGenerator {
       final Set<UUID> usedUuids,
       final int numericScale) {
     this.faker = Objects.requireNonNull(faker, "Faker cannot be null");
-    this.dictionaryWords = Objects.requireNonNullElse(dictionaryWords, Collections.emptyList());
+    this.dictionaryWords = dictionaryWords != null ? dictionaryWords : Collections.emptyList();
     this.useLatinDictionary = useLatinDictionary;
     this.usedUuids = Objects.requireNonNull(usedUuids, "Used UUIDs set cannot be null");
     this.numericScale = numericScale;
   }
 
-  public static boolean isNumericJdbc(final int jdbcType) {
-    return switch (jdbcType) {
-      case Types.INTEGER,
-          Types.SMALLINT,
-          Types.TINYINT,
-          Types.BIGINT,
-          Types.DECIMAL,
-          Types.NUMERIC,
-          Types.FLOAT,
-          Types.DOUBLE,
-          Types.REAL ->
-          true;
-      default -> false;
-    };
-  }
-
-  public static boolean isNumericOutsideBounds(final Object value, final ParsedConstraint pc) {
-    if (Objects.isNull(value) || Objects.isNull(pc)) return false;
-    try {
-      final double v;
-      if (value instanceof Number n) v = n.doubleValue();
-      else v = Double.parseDouble(value.toString());
-      return (Objects.nonNull(pc.min()) && v < pc.min()) || (Objects.nonNull(pc.max()) && v > pc.max());
-    } catch (final NumberFormatException e) {
-      return true;
-    }
-  }
-
-  public Object generateValue(
-      final Column column, final ParsedConstraint constraint, final int rowIndex) {
-    if (column.nullable() && ThreadLocalRandom.current().nextDouble() < NULL_PROBABILITY) {
+  public Object generateValue(final Column column, final ParsedConstraint constraint, final int rowIndex) {
+    if (column.nullable() && !column.primaryKey() && ThreadLocalRandom.current().nextDouble() < 0.3) {
       return null;
     }
 
@@ -119,26 +91,23 @@ public final class ValueGenerator {
       return pickRandom(new ArrayList<>(column.allowedValues()), column.jdbcType());
     }
 
-    if (Objects.nonNull(constraint)
-        && Objects.nonNull(constraint.allowedValues())
-        && !constraint.allowedValues().isEmpty()) {
+    if (constraint != null && constraint.allowedValues() != null && !constraint.allowedValues().isEmpty()) {
       return pickRandom(new ArrayList<>(constraint.allowedValues()), column.jdbcType());
     }
 
     final ParsedConstraint effectivePc = determineEffectiveNumericConstraint(column, constraint);
-    if (Objects.nonNull(effectivePc.min()) || Objects.nonNull(effectivePc.max())) {
+    if (effectivePc.min() != null || effectivePc.max() != null) {
       final Object bounded = generateNumericWithinBounds(column, effectivePc);
-      if (Objects.nonNull(bounded)) return bounded;
+      if (bounded != null) return bounded;
     }
 
-    Integer maxLen = Objects.nonNull(constraint) ? constraint.maxLength() : null;
-    if (Objects.isNull(maxLen) || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
+    Integer maxLen = constraint != null ? constraint.maxLength() : null;
+    if (maxLen == null || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
 
     return generateDefaultValue(column, rowIndex, maxLen);
   }
 
-  public Object generateSoftDeleteValue(
-      final Column column, final boolean useSchemaDefault, final String value) {
+  public Object generateSoftDeleteValue(final Column column, final boolean useSchemaDefault, final String value) {
     if (useSchemaDefault) {
       return SqlKeyword.DEFAULT;
     }
@@ -148,14 +117,12 @@ public final class ValueGenerator {
   private Object generateUuidValue(final Column column, final ParsedConstraint constraint) {
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
       final UUID uuid = tryParseUuidFromAllowedValues(column.allowedValues());
-      if (Objects.nonNull(uuid)) return uuid;
+      if (uuid != null) return uuid;
     }
 
-    if (Objects.nonNull(constraint)
-        && Objects.nonNull(constraint.allowedValues())
-        && !constraint.allowedValues().isEmpty()) {
+    if (constraint != null && constraint.allowedValues() != null && !constraint.allowedValues().isEmpty()) {
       final UUID uuid = tryParseUuidFromAllowedValues(constraint.allowedValues());
-      if (Objects.nonNull(uuid)) return uuid;
+      if (uuid != null) return uuid;
     }
 
     return generateUuid();
@@ -166,7 +133,7 @@ public final class ValueGenerator {
       try {
         final UUID u = UUID.fromString(s.trim());
         if (usedUuids.add(u)) return u;
-      } catch (final IllegalArgumentException ignored) {
+      } catch (final IllegalArgumentException e) {
       }
     }
     return null;
@@ -182,19 +149,18 @@ public final class ValueGenerator {
         "Unable to generate a unique UUID after " + UUID_GENERATION_LIMIT + " attempts");
   }
 
-  private ParsedConstraint determineEffectiveNumericConstraint(
-      final Column column, final ParsedConstraint pc) {
-    final Double pcMin = Objects.nonNull(pc) ? pc.min() : null;
-    final Double pcMax = Objects.nonNull(pc) ? pc.max() : null;
+  private ParsedConstraint determineEffectiveNumericConstraint(final Column column, final ParsedConstraint pc) {
+    final Double pcMin = pc != null ? pc.min() : null;
+    final Double pcMax = pc != null ? pc.max() : null;
     final Double cmin = column.minValue() != 0 ? (double) column.minValue() : null;
     final Double cmax = column.maxValue() != 0 ? (double) column.maxValue() : null;
-    final Double effectiveMin = Objects.nonNull(pcMin) ? pcMin : cmin;
-    final Double effectiveMax = Objects.nonNull(pcMax) ? pcMax : cmax;
+    final Double effectiveMin = (pcMin != null) ? pcMin : cmin;
+    final Double effectiveMax = (pcMax != null) ? pcMax : cmax;
     return new ParsedConstraint(
         effectiveMin,
         effectiveMax,
-        Objects.nonNull(pc) ? pc.allowedValues() : Collections.emptySet(),
-        Objects.nonNull(pc) ? pc.maxLength() : null);
+        pc != null ? pc.allowedValues() : Collections.emptySet(),
+        pc != null ? pc.maxLength() : null);
   }
 
   private Object generateDefaultValue(final Column column, final int index, final Integer maxLen) {
@@ -210,9 +176,9 @@ public final class ValueGenerator {
       case Types.BIGINT -> boundedLong(column);
       case Types.BOOLEAN, Types.BIT -> faker.bool().bool();
       case Types.DATE ->
-          Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, DATE_RANGE_DAYS)));
+          Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650)));
       case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
-          Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
+          Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, 31_536_000)));
       case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
       case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
       default -> index;
@@ -221,10 +187,10 @@ public final class ValueGenerator {
 
   @SuppressWarnings("java:S2245")
   private String generateString(final Integer maxLen, final int jdbcType) {
-    final int len = (Objects.nonNull(maxLen) && maxLen > 0) ? maxLen : DEFAULT_STRING_LENGTH;
-    if (len == ISO_COUNTRY_CODE_2_LEN) return faker.country().countryCode2();
-    if (len == ISO_COUNTRY_CODE_3_LEN) return faker.country().countryCode3();
-    if (len == IBAN_ES_LEN) return normalizeToLength(IBAN_ES_PREFIX + faker.number().digits(IBAN_ES_DIGITS), len, jdbcType);
+    final int len = (maxLen != null && maxLen > 0) ? maxLen : 255;
+    if (len == 2) return faker.country().countryCode2();
+    if (len == 3) return faker.country().countryCode3();
+    if (len == 24) return normalizeToLength("ES" + faker.number().digits(22), len, jdbcType);
 
     boolean useDictionary = !dictionaryWords.isEmpty();
     if (useDictionary && useLatinDictionary) {
@@ -233,14 +199,14 @@ public final class ValueGenerator {
 
     if (useDictionary) {
       final int numWords =
-          ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), MAX_DICTIONARY_WORDS));
+          ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), 5));
       final StringBuilder phraseBuilder = new StringBuilder();
       for (int i = 0; i < numWords; i++) {
         phraseBuilder.append(pickRandom(dictionaryWords, Types.VARCHAR)).append(" ");
       }
       return normalizeToLength(phraseBuilder.toString().trim(), len, jdbcType);
     } else {
-      final int numWords = ThreadLocalRandom.current().nextInt(MIN_FAKER_WORDS, Math.clamp(len / FAKER_WORDS_DIVISOR, MIN_FAKER_WORDS_CLAMP, MAX_FAKER_WORDS_CLAMP));
+      final int numWords = ThreadLocalRandom.current().nextInt(3, Math.clamp(len / 5, 4, 10));
       final String phrase = String.join(" ", faker.lorem().words(numWords));
       return normalizeToLength(phrase, len, jdbcType);
     }
@@ -249,7 +215,7 @@ public final class ValueGenerator {
   @SuppressWarnings("java:S2245")
   private Object pickRandom(final List<String> vals, final int jdbcType) {
     String v = vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
-    if (Objects.isNull(v)) return null;
+    if (v == null) return null;
     v = v.trim();
     if (v.isEmpty()) return "";
     try {
@@ -278,7 +244,7 @@ public final class ValueGenerator {
   }
 
   private Object convertStringValue(final String value, final Column column) {
-    if (Objects.isNull(value) || "NULL".equalsIgnoreCase(value)) return null;
+    if (value == null || "NULL".equalsIgnoreCase(value)) return null;
     try {
       return switch (column.jdbcType()) {
         case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
@@ -378,12 +344,12 @@ public final class ValueGenerator {
   }
 
   private int getIntMinWithConstraint(final Column column, final ParsedConstraint pc) {
-    final boolean hasMin = Objects.nonNull(pc) && Objects.nonNull(pc.min());
+    final boolean hasMin = pc != null && pc.min() != null;
     return hasMin ? pc.min().intValue() : getIntMin(column);
   }
 
   private int getIntMaxWithConstraint(final Column column, final ParsedConstraint pc) {
-    final boolean hasMax = Objects.nonNull(pc) && Objects.nonNull(pc.max());
+    final boolean hasMax = pc != null && pc.max() != null;
     return hasMax ? pc.max().intValue() : getIntMax(column);
   }
 
@@ -396,12 +362,12 @@ public final class ValueGenerator {
   }
 
   private long getLongMinWithConstraint(final Column column, final ParsedConstraint pc) {
-    final boolean hasMin = Objects.nonNull(pc) && Objects.nonNull(pc.min());
+    final boolean hasMin = pc != null && pc.min() != null;
     return hasMin ? pc.min().longValue() : getLongMin(column);
   }
 
   private long getLongMaxWithConstraint(final Column column, final ParsedConstraint pc) {
-    final boolean hasMax = Objects.nonNull(pc) && Objects.nonNull(pc.max());
+    final boolean hasMax = pc != null && pc.max() != null;
     return hasMax ? pc.max().longValue() : getLongMax(column);
   }
 
@@ -439,8 +405,8 @@ public final class ValueGenerator {
   }
 
   private double[] getNumericBoundsWithConstraint(final Column column, final ParsedConstraint pc) {
-    final boolean hasMin = Objects.nonNull(pc) && Objects.nonNull(pc.min());
-    final boolean hasMax = Objects.nonNull(pc) && Objects.nonNull(pc.max());
+    final boolean hasMin = pc != null && pc.min() != null;
+    final boolean hasMax = pc != null && pc.max() != null;
     double min = hasMin ? pc.min() : getDoubleMin(column);
     double max = hasMax ? pc.max() : getDoubleMax(column);
     if (min > max) {
@@ -456,5 +422,33 @@ public final class ValueGenerator {
 
   private int getEffectiveScale(final Column column) {
     return column.scale() > 0 ? column.scale() : numericScale;
+  }
+
+  public static boolean isNumericJdbc(final int jdbcType) {
+    return switch (jdbcType) {
+      case Types.INTEGER,
+          Types.SMALLINT,
+          Types.TINYINT,
+          Types.BIGINT,
+          Types.DECIMAL,
+          Types.NUMERIC,
+          Types.FLOAT,
+          Types.DOUBLE,
+          Types.REAL ->
+          true;
+      default -> false;
+    };
+  }
+
+  public static boolean isNumericOutsideBounds(final Object value, final ParsedConstraint pc) {
+    if (value == null || pc == null) return false;
+    try {
+      final double v;
+      if (value instanceof Number n) v = n.doubleValue();
+      else v = Double.parseDouble(value.toString());
+      return (pc.min() != null && v < pc.min()) || (pc.max() != null && v > pc.max());
+    } catch (final NumberFormatException e) {
+      return true;
+    }
   }
 }

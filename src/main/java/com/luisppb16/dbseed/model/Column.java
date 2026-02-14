@@ -11,29 +11,31 @@ import lombok.Builder;
 
 /**
  * Immutable representation of a database column definition in the DBSeed plugin ecosystem.
- *
- * <p>This record class captures the complete metadata for a database column, including its name,
- * data type, nullability, primary key status, length, scale, value constraints, and allowed values.
- * It serves as a fundamental building block for schema representation and data generation,
- * providing essential information for value generation algorithms and constraint validation during
- * the seeding process.
- *
- * <p>Key responsibilities include:
- *
+ * <p>
+ * This record class captures the complete metadata for a database column, including its
+ * name, data type, nullability, primary key status, length, scale, value constraints,
+ * and allowed values. It serves as a fundamental building block for schema representation
+ * and data generation, providing essential information for value generation algorithms
+ * and constraint validation during the seeding process.
+ * </p>
+ * <p>
+ * Key responsibilities include:
  * <ul>
- *   <li>Representing the complete structural definition of a database column
- *   <li>Storing JDBC type information for proper value generation
- *   <li>Managing column constraints (nullability, primary key, UUID flag)
- *   <li>Tracking physical attributes (length, scale, min/max values)
- *   <li>Defining allowed value sets for constrained columns
- *   <li>Providing convenience methods for constraint checking
- *   <li>Ensuring immutability and thread safety for concurrent access
+ *   <li>Representing the complete structural definition of a database column</li>
+ *   <li>Storing JDBC type information for proper value generation</li>
+ *   <li>Managing column constraints (nullability, primary key, UUID flag)</li>
+ *   <li>Tracking physical attributes (length, scale, min/max values)</li>
+ *   <li>Defining allowed value sets for constrained columns</li>
+ *   <li>Providing convenience methods for constraint checking</li>
+ *   <li>Ensuring immutability and thread safety for concurrent access</li>
  * </ul>
- *
- * <p>The implementation includes validation for required fields and defensive copying for mutable
- * collections. The class provides helper methods to check constraint conditions and is designed for
- * efficient use in data generation algorithms that need to respect column-specific constraints and
- * properties.
+ * </p>
+ * <p>
+ * The implementation includes validation for required fields and defensive copying
+ * for mutable collections. The class provides helper methods to check constraint
+ * conditions and is designed for efficient use in data generation algorithms that
+ * need to respect column-specific constraints and properties.
+ * </p>
  *
  * @param name The name of the column
  * @param jdbcType The JDBC type identifier for the column
@@ -61,7 +63,7 @@ public record Column(
 
   public Column {
     Objects.requireNonNull(name, "Column name cannot be null.");
-    allowedValues = Objects.nonNull(allowedValues) ? Set.copyOf(allowedValues) : Set.of();
+    allowedValues = allowedValues != null ? Set.copyOf(allowedValues) : Set.of();
   }
 
   public boolean hasAllowedValues() {

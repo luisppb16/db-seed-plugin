@@ -7,11 +7,12 @@ package com.luisppb16.dbseed.db;
 
 import static org.assertj.core.api.Assertions.*;
 
-import com.luisppb16.dbseed.db.TopologicalSorter.SortResult;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
 import java.util.*;
+import java.util.stream.Collectors;
+import com.luisppb16.dbseed.db.TopologicalSorter.SortResult;
 import org.junit.jupiter.api.Test;
 
 class TopologicalSorterTest {
@@ -83,7 +84,11 @@ class TopologicalSorterTest {
     // A is parent; B and C depend on A; D depends on B and C
     SortResult result =
         TopologicalSorter.sort(
-            List.of(tbl("A"), tbl("B", fk("A")), tbl("C", fk("A")), tbl("D", fk("B"), fk("C"))));
+            List.of(
+                tbl("A"),
+                tbl("B", fk("A")),
+                tbl("C", fk("A")),
+                tbl("D", fk("B"), fk("C"))));
     int idxA = result.ordered().indexOf("A");
     int idxB = result.ordered().indexOf("B");
     int idxC = result.ordered().indexOf("C");
@@ -121,7 +126,8 @@ class TopologicalSorterTest {
 
   @Test
   void sort_twoTableCycle() {
-    SortResult result = TopologicalSorter.sort(List.of(tbl("A", fk("B")), tbl("B", fk("A"))));
+    SortResult result =
+        TopologicalSorter.sort(List.of(tbl("A", fk("B")), tbl("B", fk("A"))));
     assertThat(result.cycles()).hasSize(1);
     assertThat(result.cycles().get(0)).containsExactlyInAnyOrder("A", "B");
   }
@@ -136,7 +142,8 @@ class TopologicalSorterTest {
   @Test
   void sort_threeTableCycle() {
     SortResult result =
-        TopologicalSorter.sort(List.of(tbl("A", fk("B")), tbl("B", fk("C")), tbl("C", fk("A"))));
+        TopologicalSorter.sort(
+            List.of(tbl("A", fk("B")), tbl("B", fk("C")), tbl("C", fk("A"))));
     assertThat(result.cycles()).hasSize(1);
     assertThat(result.cycles().get(0)).containsExactlyInAnyOrder("A", "B", "C");
   }
@@ -145,7 +152,8 @@ class TopologicalSorterTest {
   void sort_mixedCyclicAndAcyclic() {
     // D is independent; A <-> B form a cycle
     SortResult result =
-        TopologicalSorter.sort(List.of(tbl("A", fk("B")), tbl("B", fk("A")), tbl("D")));
+        TopologicalSorter.sort(
+            List.of(tbl("A", fk("B")), tbl("B", fk("A")), tbl("D")));
     assertThat(result.cycles()).hasSize(1);
     assertThat(result.ordered()).contains("D", "A", "B");
   }
@@ -155,7 +163,11 @@ class TopologicalSorterTest {
     // A <-> B and C <-> D
     SortResult result =
         TopologicalSorter.sort(
-            List.of(tbl("A", fk("B")), tbl("B", fk("A")), tbl("C", fk("D")), tbl("D", fk("C"))));
+            List.of(
+                tbl("A", fk("B")),
+                tbl("B", fk("A")),
+                tbl("C", fk("D")),
+                tbl("D", fk("C"))));
     assertThat(result.cycles()).hasSize(2);
   }
 

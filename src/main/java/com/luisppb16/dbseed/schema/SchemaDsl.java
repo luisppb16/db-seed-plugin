@@ -12,29 +12,31 @@ import lombok.experimental.UtilityClass;
 
 /**
  * Domain-specific language for defining database schemas programmatically in the DBSeed plugin.
- *
- * <p>This utility class provides a fluent API for constructing database schema definitions using a
- * domain-specific language approach. It enables programmatic creation of database schemas with
- * tables, columns, primary keys, foreign keys, constraints, and other structural elements. The DSL
- * abstracts away raw SQL syntax while maintaining expressiveness for complex schema definitions. It
- * serves as both a schema definition mechanism and a SQL generation utility.
- *
- * <p>Key responsibilities include:
- *
+ * <p>
+ * This utility class provides a fluent API for constructing database schema definitions using
+ * a domain-specific language approach. It enables programmatic creation of database schemas
+ * with tables, columns, primary keys, foreign keys, constraints, and other structural elements.
+ * The DSL abstracts away raw SQL syntax while maintaining expressiveness for complex schema
+ * definitions. It serves as both a schema definition mechanism and a SQL generation utility.
+ * </p>
+ * <p>
+ * Key responsibilities include:
  * <ul>
- *   <li>Providing a fluent API for programmatic schema definition
- *   <li>Generating SQL DDL statements from schema object models
- *   <li>Managing schema element relationships (primary keys, foreign keys)
- *   <li>Supporting various column constraints (NOT NULL, UNIQUE, DEFAULT)
- *   <li>Ensuring schema object immutability and thread safety
- *   <li>Validating schema structure and element relationships
+ *   <li>Providing a fluent API for programmatic schema definition</li>
+ *   <li>Generating SQL DDL statements from schema object models</li>
+ *   <li>Managing schema element relationships (primary keys, foreign keys)</li>
+ *   <li>Supporting various column constraints (NOT NULL, UNIQUE, DEFAULT)</li>
+ *   <li>Ensuring schema object immutability and thread safety</li>
+ *   <li>Validating schema structure and element relationships</li>
  * </ul>
- *
- * <p>The implementation uses immutable record types to represent schema elements, ensuring thread
- * safety and preventing unintended modifications. The DSL follows builder patterns to enable
- * readable schema definitions and includes comprehensive validation to ensure schema integrity. The
- * class also provides SQL generation capabilities to transform schema definitions into executable
- * DDL statements.
+ * </p>
+ * <p>
+ * The implementation uses immutable record types to represent schema elements, ensuring
+ * thread safety and preventing unintended modifications. The DSL follows builder patterns
+ * to enable readable schema definitions and includes comprehensive validation to ensure
+ * schema integrity. The class also provides SQL generation capabilities to transform
+ * schema definitions into executable DDL statements.
+ * </p>
  */
 @UtilityClass
 public class SchemaDsl {
@@ -61,7 +63,8 @@ public class SchemaDsl {
   }
 
   public static Column pk(final String name, final SqlType type) {
-    return new Column(name, type, true, true, null, true);
+    return new Column(
+        name, type, true, true, null, true);
   }
 
   @SuppressWarnings("unused")
@@ -75,26 +78,20 @@ public class SchemaDsl {
     return schema.tables().stream().map(SchemaDsl::tableSql).collect(Collectors.joining());
   }
 
-  private static String quoteIdentifier(final String identifier) {
-    return "\"" + identifier.replace("\"", "\"\"") + "\"";
-  }
-
   private static String tableSql(final Table table) {
-    final String quotedName = quoteIdentifier(table.name());
     if (table.columns().isEmpty()) {
-      return "CREATE TABLE %s ();%n%n".formatted(quotedName);
+      return "CREATE TABLE %s ();%n%n".formatted(table.name());
     }
     final String cols =
         table.columns().stream()
             .map(SchemaDsl::columnSql)
             .collect(Collectors.joining("," + System.lineSeparator() + "  "));
-    return "CREATE TABLE %s (%n  %s%n);%n%n".formatted(quotedName, cols);
+    return "CREATE TABLE %s (%n  %s%n);%n%n".formatted(table.name(), cols);
   }
 
   private static String columnSql(final Column column) {
     final StringBuilder sql =
-        new StringBuilder(
-            "%s %s".formatted(quoteIdentifier(column.name()), column.type().toSql()));
+        new StringBuilder("%s %s".formatted(column.name(), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");
@@ -102,7 +99,7 @@ public class SchemaDsl {
     if (column.notNull()) {
       sql.append(" NOT NULL");
     }
-    if (Objects.nonNull(column.defaultValue())) {
+    if (column.defaultValue() != null) {
       sql.append(" DEFAULT %s".formatted(column.defaultValue()));
     }
     if (column.unique()) {
@@ -110,9 +107,7 @@ public class SchemaDsl {
     }
     if (column.isForeignKey()) {
       final ForeignKeyReference fk = column.foreignKey();
-      sql.append(
-          " REFERENCES %s(%s)"
-              .formatted(quoteIdentifier(fk.table()), quoteIdentifier(fk.column())));
+      sql.append(" REFERENCES %s(%s)".formatted(fk.table(), fk.column()));
     }
     return sql.toString();
   }
@@ -156,7 +151,7 @@ public class SchemaDsl {
     }
 
     public boolean isForeignKey() {
-      return Objects.nonNull(foreignKey);
+      return foreignKey != null;
     }
   }
 

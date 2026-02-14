@@ -10,9 +10,10 @@ import java.util.List;
 
 /**
  * Contract defining database-specific SQL dialect implementations for the DBSeed plugin.
- *
- * <p>Each dialect provides database-appropriate SQL statement generation, taking into account the
- * unique syntax and requirements of different database management systems.
+ * <p>
+ * Each dialect provides database-appropriate SQL statement generation, taking into account
+ * the unique syntax and requirements of different database management systems.
+ * </p>
  */
 public interface DatabaseDialect {
 

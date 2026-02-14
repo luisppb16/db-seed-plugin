@@ -115,7 +115,8 @@ class ModelRecordsTest {
 
   @Test
   void fk_nullColumnMapping_throwsNPE() {
-    assertThatNullPointerException().isThrownBy(() -> new ForeignKey("fk1", "parent", null, false));
+    assertThatNullPointerException()
+        .isThrownBy(() -> new ForeignKey("fk1", "parent", null, false));
   }
 
   @Test
@@ -148,8 +149,7 @@ class ModelRecordsTest {
 
   @Test
   void pendingUpdate_fieldsAccessible() {
-    com.luisppb16.dbseed.db.PendingUpdate pu =
-        new com.luisppb16.dbseed.db.PendingUpdate("t", Map.of("fk", 1), Map.of("pk", 2));
+    com.luisppb16.dbseed.db.PendingUpdate pu = new com.luisppb16.dbseed.db.PendingUpdate("t", Map.of("fk", 1), Map.of("pk", 2));
     assertThat(pu.table()).isEqualTo("t");
     assertThat(pu.fkValues()).containsEntry("fk", 1);
     assertThat(pu.pkValues()).containsEntry("pk", 2);

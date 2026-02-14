@@ -11,45 +11,20 @@
         <![CDATA[
             A smart SQL seed generator that respects your schema's integrity.
 
-            This plugin generates synthetic data by introspecting your database's `DatabaseMetaData`.
+            This plugin generates synthetic data by introspects your database's `DatabaseMetaData`.
             It automatically analyzes table dependencies, manages foreign keys, and resolves complex cycles using Tarjan's algorithm.
             Stop writing manual insert scripts for your test environments.
             <h2>Main Features</h2>
-            <ul>
               <li>Schema introspection via DatabaseMetaData.</li>
               <li>Table sorting using Tarjan's algorithm to detect cycles.</li>
               <li>Synthetic data generation with DataFaker.</li>
               <li>Cycle handling with deferred constraints.</li>
               <li>Support for multiple databases with dynamic driver downloads.</li>
-            </ul>
         ]]>
     </description>
 
     <change-notes>
         <![CDATA[
-            <h3>Version 1.3.0</h3>
-            <ul>
-                <li><b>AI-Powered Data Generation (Ollama):</b> Generate context-aware, realistic data using an external Ollama LLM server.
-                    <ul>
-                        <li>New "AI Columns" tab in the configuration dialog lets you choose which string columns get AI-generated content.</li>
-                        <li>Configurable word count per AI value (one word up to full paragraphs).</li>
-                        <li><b>Note:</b> only the column name along with the context previously provided by the user is sent to the AI.</li>
-                    </ul>
-                </li>
-                <li><b>AI Settings in Global Configuration:</b>
-                    <ul>
-                        <li>Enable/disable AI generation, set Ollama URL and model. You can use whether local or cloud-based models.</li>
-                        <li>"Get models" button with a live server connectivity check.</li>
-                        <li>Application context text area to guide the AI towards your domain.</li>
-                        <li>Words per AI value spinner to control output length.</li>
-                    </ul>
-                </li>
-                <li><b>Auto-Detect SQL Dialect:</b> <code>DialectFactory</code> now auto-detects the correct dialect from the driver class name or JDBC URL when no explicit dialect is configured.</li>
-                <li><b>Dialect System Cleanup:</b> Removed property-driven check constraint configuration from dialect files. Dialects are now simpler and more maintainable.</li>
-                <li><b>Improved Error Handling:</b> Seed actions now show modal error dialogs instead of balloon notifications, with proper thread-safe modality state.</li>
-                <li><b>Repetition Rule Fix:</b> String values in repetition rule fixed columns are now properly parsed into their typed representation before use.</li>
-            </ul>
-
             <h3>Version 1.2.5</h3>
             <ul>
                 <li><b>Multi-Dialect Support:</b> Added support for SQLite and improved driver configuration for various SQL dialects.</li>

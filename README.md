@@ -80,19 +80,6 @@ of these options to tailor the generated string data to your specific needs.
 
 ---
 
-### 🤖 New Feature: AI-Powered Data Generation (Ollama)
-
-The plugin now integrates with [Ollama](https://ollama.com/) to generate context-aware, realistic seed data using local LLMs. Instead of relying solely on random/faker values, you can leverage AI to produce meaningful content for string columns.
-
-- **AI Columns Selection**: A new "AI Columns" tab in the generation dialog lets you choose which string columns get AI-generated content.
-- **Smart Defaults**: Columns named `description`, `title`, `bio`, `email`, etc. are pre-selected automatically.
-- **Batch Generation**: AI values are generated in batches of 20 for maximum throughput, with automatic retries and deduplication.
-- **Configurable Word Count**: Control output length from a single word up to full paragraphs.
-- **Cancellable Processing**: The generation task is now cancellable — you can stop it at any time via the IDE progress bar.
-- **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide application context to guide the AI, and test connectivity — all from **Settings → DBSeed4SQL**.
-
----
-
 ### 🔧 Main Functionality
 
 - Schema introspection via `DatabaseMetaData`.
@@ -103,8 +90,6 @@ The plugin now integrates with [Ollama](https://ollama.com/) to generate context
 - Interactive selection of UUIDs in PKs through a UI dialog.
 - Automatic opening of the generated SQL in the IntelliJ editor.
 - Standalone visual schema designer to prototype tables and generate creation SQL.
-- **AI-Powered Data Generation**: Generate realistic, context-aware seed data using a local Ollama LLM server.
-- **Auto-Detect SQL Dialect**: The `DialectFactory` now auto-detects the dialect from the driver class or JDBC URL when no explicit dialect is configured.
 - **Improved Password Input**: The database configuration dialog now features a "show password" toggle (eye icon) directly within the
   password field, allowing users to easily reveal or hide the entered password. This provides a more intuitive and secure user experience.
 - **Batch Query Execution**: Optimized SQL script generation to execute queries in batches, significantly improving performance for large

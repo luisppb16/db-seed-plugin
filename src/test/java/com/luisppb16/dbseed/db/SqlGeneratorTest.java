@@ -139,14 +139,8 @@ class SqlGeneratorTest {
 
   @Test
   void generate_nullIdentifier_throwsIAE() {
-    Table t =
-        new Table(
-            "t",
-            List.of(Column.builder().name("id").jdbcType(4).build()),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(Column.builder().name("id").jdbcType(4).build()),
+        List.of(), List.of(), List.of(), List.of());
     Map<String, Object> vals = new LinkedHashMap<>();
     vals.put("id", 1);
     vals.put(null, "oops");
@@ -156,14 +150,9 @@ class SqlGeneratorTest {
     // But the column order comes from table.columns(), not row keys,
     // so null values (not keys) won't cause the issue.
     // Instead test that a null-named column throws
-    Table badTable =
-        new Table(
-            "t",
-            List.of(Column.builder().name("id").jdbcType(4).build()),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table badTable = new Table("t",
+        List.of(Column.builder().name("id").jdbcType(4).build()),
+        List.of(), List.of(), List.of(), List.of());
     // If we pass null identifier directly to internal method it should throw,
     // but we can't call it directly. So test passes if no exception on normal flow.
     assertThatCode(() -> SqlGenerator.generate(new LinkedHashMap<>(), List.of(), false))

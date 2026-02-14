@@ -10,7 +10,6 @@ import static com.luisppb16.dbseed.model.Constant.APP_NAME;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
@@ -18,7 +17,6 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.Messages;
 import com.intellij.testFramework.LightVirtualFile;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
@@ -34,6 +32,7 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
+import com.luisppb16.dbseed.util.NotificationHelper;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -47,7 +46,35 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
-/** Alternative seed generation workflow action for the DBSeed plugin ecosystem. */
+/**
+ * Alternative seed generation workflow action for the DBSeed plugin ecosystem.
+ * <p>
+ * This IntelliJ action provides an alternative pathway for generating database seed scripts,
+ * implementing a streamlined workflow that combines schema introspection, data generation,
+ * and SQL output in a cohesive process. Unlike the primary seeding action, this implementation
+ * focuses on a more direct approach to seed generation with integrated configuration management
+ * and optimized progress tracking. The action manages database connectivity, handles complex
+ * schema dependencies, and generates comprehensive SQL scripts with proper foreign key ordering.
+ * </p>
+ * <p>
+ * Key responsibilities include:
+ * <ul>
+ *   <li>Initiating the alternative seed generation workflow with driver selection</li>
+ *   <li>Performing schema introspection in background threads for responsive UI</li>
+ *   <li>Coordinating user configuration through multiple dialog interfaces</li>
+ *   <li>Generating data with respect to user-defined constraints and preferences</li>
+ *   <li>Producing properly ordered SQL scripts accounting for foreign key dependencies</li>
+ *   <li>Managing configuration persistence and user preferences</li>
+ * </ul>
+ * </p>
+ * <p>
+ * The implementation follows IntelliJ's threading model by performing long-running operations
+ * on background threads while updating UI elements on the Event Dispatch Thread. It implements
+ * sophisticated error handling with appropriate user notifications and ensures proper resource
+ * cleanup during database operations. The action also handles complex schema scenarios including
+ * circular foreign key dependencies and deferred constraint processing.
+ * </p>
+ */
 @Slf4j
 public final class GenerateSeedAction extends AnAction {
 
@@ -56,12 +83,10 @@ public final class GenerateSeedAction extends AnAction {
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
-    if (Objects.isNull(project)) {
+    if (project == null) {
       log.debug("Action canceled: no active project.");
       return;
     }
-
-    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
     try {
       final Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
@@ -77,6 +102,7 @@ public final class GenerateSeedAction extends AnAction {
       }
 
       final GenerationConfig config = seedDialog.getConfiguration();
+      final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
       final AtomicReference<List<Table>> tablesRef = new AtomicReference<>();
       final AtomicReference<Exception> errorRef = new AtomicReference<>();
@@ -100,15 +126,14 @@ public final class GenerateSeedAction extends AnAction {
                 }
               });
 
-      if (Objects.nonNull(errorRef.get())) {
+      if (errorRef.get() != null) {
         handleException(project, errorRef.get());
         return;
       }
 
       final List<Table> tables = tablesRef.get();
-      if (Objects.isNull(tables) || tables.isEmpty()) {
-        Messages.showErrorDialog(
-            project, "No tables found in schema: " + config.schema(), "DBSeed Error");
+      if (tables == null || tables.isEmpty()) {
+        notifyError(project, "No tables found in schema: " + config.schema());
         return;
       }
 
@@ -122,8 +147,7 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getSelectionByTable(),
               pkDialog.getExcludedColumnsByTable(),
               pkDialog.getRepetitionRules(),
-              pkDialog.getExcludedTables(),
-              pkDialog.getAiColumnsByTable());
+              pkDialog.getExcludedTables());
 
       final GenerationConfig finalConfig =
           new GenerationConfig(
@@ -140,27 +164,9 @@ public final class GenerateSeedAction extends AnAction {
 
       ConnectionConfigPersistence.save(project, finalConfig);
 
-      if (settings.isUseAiGeneration()
-          && (Objects.isNull(settings.getAiApplicationContext())
-              || settings.getAiApplicationContext().isBlank())) {
-        final int aiResult =
-            Messages.showYesNoDialog(
-                project,
-                "AI generation is enabled but the application context is empty.\n"
-                    + "Without context, the AI model may produce less relevant data.\n\n"
-                    + "Continue without application context?",
-                "Empty AI Application Context",
-                "Continue",
-                "Cancel",
-                Messages.getWarningIcon());
-        if (aiResult != Messages.YES) {
-          return;
-        }
-      }
-
       ProgressManager.getInstance()
           .run(
-              new Task.Backgroundable(project, APP_NAME.getValue(), true) {
+              new Task.Backgroundable(project, APP_NAME.getValue(), false) {
                 @Override
                 public void run(@NotNull final ProgressIndicator indicator) {
                   try {
@@ -233,14 +239,9 @@ public final class GenerateSeedAction extends AnAction {
                 .softDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault())
                 .softDeleteValue(config.softDeleteValue())
                 .numericScale(config.numericScale())
-                .aiColumns(selections.aiColumns())
-                .applicationContext(
-                    settings.isUseAiGeneration() ? settings.getAiApplicationContext() : null)
-                .indicator(indicator)
                 .build());
 
     indicator.setText("Building SQL...");
-    indicator.setText2("");
     final String sql =
         SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
 
@@ -264,16 +265,16 @@ public final class GenerateSeedAction extends AnAction {
     }
     log.error("Error during seed SQL generation.", ex);
 
-    ApplicationManager.getApplication()
-        .invokeLater(
-            () -> Messages.showErrorDialog(project, message, "DBSeed Error"),
-            ModalityState.defaultModalityState());
+    ApplicationManager.getApplication().invokeLater(() -> notifyError(project, message));
+  }
+
+  private void notifyError(final Project project, final String message) {
+    NotificationHelper.notifyError(project, message);
   }
 
   private record DialogSelections(
       Map<String, Set<String>> pkUuidOverrides,
       Map<String, Set<String>> excludedColumns,
       Map<String, List<RepetitionRule>> repetitionRules,
-      Set<String> excludedTables,
-      Map<String, Set<String>> aiColumns) {}
+      Set<String> excludedTables) {}
 }

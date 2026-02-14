@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luisppb16.dbseed.config.DriverInfo;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Objects;
 import java.util.Collections;
 import java.util.List;
 import lombok.experimental.UtilityClass;
@@ -27,7 +26,7 @@ public class DriverRegistry {
   static {
     List<DriverInfo> tempDrivers;
     try (final InputStream in = DriverRegistry.class.getResourceAsStream(DRIVERS_JSON_PATH)) {
-      if (Objects.isNull(in)) {
+      if (in == null) {
         log.error("Driver configuration file not found: {}", DRIVERS_JSON_PATH);
         throw new IllegalStateException(
             "Driver configuration file not found: " + DRIVERS_JSON_PATH);

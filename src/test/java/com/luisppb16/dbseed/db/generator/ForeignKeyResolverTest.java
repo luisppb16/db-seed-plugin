@@ -45,16 +45,10 @@ class ForeignKeyResolverTest {
 
   @Test
   void parentChildResolution() {
-    Table parent =
-        new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
-    Table child =
-        new Table(
-            "child",
-            List.of(intCol("id"), intCol("parent_id")),
-            List.of("id"),
-            List.of(fk("parent", "parent_id", "id")),
-            List.of(),
-            List.of());
+    Table parent = new Table("parent", List.of(intCol("id")),
+        List.of("id"), List.of(), List.of(), List.of());
+    Table child = new Table("child", List.of(intCol("id"), intCol("parent_id")),
+        List.of("id"), List.of(fk("parent", "parent_id", "id")), List.of(), List.of());
 
     Row parentRow = mutableRow("id", 100);
     Row childRow = mutableRow("id", 1, "parent_id", null);
@@ -74,14 +68,8 @@ class ForeignKeyResolverTest {
 
   @Test
   void parentNotInMap_null() {
-    Table child =
-        new Table(
-            "child",
-            List.of(intCol("id"), intCol("fk_id")),
-            List.of("id"),
-            List.of(fk("missing", "fk_id", "id")),
-            List.of(),
-            List.of());
+    Table child = new Table("child", List.of(intCol("id"), intCol("fk_id")),
+        List.of("id"), List.of(fk("missing", "fk_id", "id")), List.of(), List.of());
     Row childRow = mutableRow("id", 1, "fk_id", 99);
 
     Map<String, Table> tableMap = Map.of("child", child);
@@ -95,16 +83,10 @@ class ForeignKeyResolverTest {
 
   @Test
   void emptyParentRows_null() {
-    Table parent =
-        new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
-    Table child =
-        new Table(
-            "child",
-            List.of(intCol("id"), nullableCol("parent_id")),
-            List.of("id"),
-            List.of(fk("parent", "parent_id", "id")),
-            List.of(),
-            List.of());
+    Table parent = new Table("parent", List.of(intCol("id")),
+        List.of("id"), List.of(), List.of(), List.of());
+    Table child = new Table("child", List.of(intCol("id"), nullableCol("parent_id")),
+        List.of("id"), List.of(fk("parent", "parent_id", "id")), List.of(), List.of());
 
     Row childRow = mutableRow("id", 1, "parent_id", null);
 
@@ -116,33 +98,21 @@ class ForeignKeyResolverTest {
     data.put(child, List.of(childRow));
 
     // Empty parent rows causes IllegalArgumentException from ThreadLocalRandom.nextInt(0)
-    assertThatThrownBy(
-            () -> {
-              ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false);
-              resolver.resolve();
-            })
-        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> {
+      ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false);
+      resolver.resolve();
+    }).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void multiColumnFk() {
-    Table parent =
-        new Table(
-            "parent",
-            List.of(intCol("pk1"), intCol("pk2")),
-            List.of("pk1", "pk2"),
-            List.of(),
-            List.of(),
-            List.of());
-    ForeignKey mfk = new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), false);
-    Table child =
-        new Table(
-            "child",
-            List.of(intCol("id"), intCol("fk1"), intCol("fk2")),
-            List.of("id"),
-            List.of(mfk),
-            List.of(),
-            List.of());
+    Table parent = new Table("parent", List.of(intCol("pk1"), intCol("pk2")),
+        List.of("pk1", "pk2"), List.of(), List.of(), List.of());
+    ForeignKey mfk = new ForeignKey(null, "parent",
+        Map.of("fk1", "pk1", "fk2", "pk2"), false);
+    Table child = new Table("child",
+        List.of(intCol("id"), intCol("fk1"), intCol("fk2")),
+        List.of("id"), List.of(mfk), List.of(), List.of());
 
     Row parentRow = mutableRow("pk1", 10, "pk2", 20);
     Row childRow = mutableRow("id", 1, "fk1", null, "fk2", null);
@@ -164,22 +134,10 @@ class ForeignKeyResolverTest {
 
   @Test
   void deferred_true_resolvesDirectly() {
-    Table a =
-        new Table(
-            "A",
-            List.of(intCol("id"), intCol("b_id")),
-            List.of("id"),
-            List.of(fk("B", "b_id", "id")),
-            List.of(),
-            List.of());
-    Table b =
-        new Table(
-            "B",
-            List.of(intCol("id"), intCol("a_id")),
-            List.of("id"),
-            List.of(fk("A", "a_id", "id")),
-            List.of(),
-            List.of());
+    Table a = new Table("A", List.of(intCol("id"), intCol("b_id")),
+        List.of("id"), List.of(fk("B", "b_id", "id")), List.of(), List.of());
+    Table b = new Table("B", List.of(intCol("id"), intCol("a_id")),
+        List.of("id"), List.of(fk("A", "a_id", "id")), List.of(), List.of());
 
     Row rowA = mutableRow("id", 1, "b_id", null);
     Row rowB = mutableRow("id", 2, "a_id", null);
@@ -198,15 +156,10 @@ class ForeignKeyResolverTest {
   @Test
   void deferred_false_nullableFk_createsPendingUpdate() {
     // A has nullable FK to B. A must be processed BEFORE B so B isn't "inserted" yet.
-    Table a =
-        new Table(
-            "A",
-            List.of(intCol("id"), nullableCol("b_id")),
-            List.of("id"),
-            List.of(fk("B", "b_id", "id")),
-            List.of(),
-            List.of());
-    Table b = new Table("B", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
+    Table a = new Table("A", List.of(intCol("id"), nullableCol("b_id")),
+        List.of("id"), List.of(fk("B", "b_id", "id")), List.of(), List.of());
+    Table b = new Table("B", List.of(intCol("id")),
+        List.of("id"), List.of(), List.of(), List.of());
 
     Row rowA = mutableRow("id", 1, "b_id", null);
     Row rowB = mutableRow("id", 2);
@@ -229,15 +182,10 @@ class ForeignKeyResolverTest {
   @Test
   void deferred_false_nonNullableCycle_throws() {
     // A has non-nullable FK to B. A must be processed BEFORE B.
-    Table a =
-        new Table(
-            "A",
-            List.of(intCol("id"), intCol("b_id")),
-            List.of("id"),
-            List.of(fk("B", "b_id", "id")),
-            List.of(),
-            List.of());
-    Table b = new Table("B", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
+    Table a = new Table("A", List.of(intCol("id"), intCol("b_id")),
+        List.of("id"), List.of(fk("B", "b_id", "id")), List.of(), List.of());
+    Table b = new Table("B", List.of(intCol("id")),
+        List.of("id"), List.of(), List.of(), List.of());
 
     Row rowA = mutableRow("id", 1, "b_id", null);
     Row rowB = mutableRow("id", 2);
@@ -251,12 +199,10 @@ class ForeignKeyResolverTest {
     data.put(b, List.of(rowB));
 
     // A processed first, B not inserted yet, FK is non-nullable → throws
-    assertThatThrownBy(
-            () -> {
-              ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false);
-              resolver.resolve();
-            })
-        .isInstanceOf(IllegalStateException.class)
+    assertThatThrownBy(() -> {
+      ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false);
+      resolver.resolve();
+    }).isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Cycle with non-nullable FK");
   }
 
@@ -264,16 +210,11 @@ class ForeignKeyResolverTest {
 
   @Test
   void uniqueFk_distinctParents() {
-    Table parent =
-        new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
-    Table child =
-        new Table(
-            "child",
-            List.of(intCol("id"), intCol("parent_id")),
-            List.of("id"),
-            List.of(uniqueFk("parent", "parent_id", "id")),
-            List.of(),
-            List.of(List.of("parent_id")));
+    Table parent = new Table("parent", List.of(intCol("id")),
+        List.of("id"), List.of(), List.of(), List.of());
+    Table child = new Table("child", List.of(intCol("id"), intCol("parent_id")),
+        List.of("id"), List.of(uniqueFk("parent", "parent_id", "id")),
+        List.of(), List.of(List.of("parent_id")));
 
     Row p1 = mutableRow("id", 1);
     Row p2 = mutableRow("id", 2);
@@ -299,16 +240,11 @@ class ForeignKeyResolverTest {
 
   @Test
   void uniqueFk_moreChildrenThanParents_nonNullable_throws() {
-    Table parent =
-        new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
-    Table child =
-        new Table(
-            "child",
-            List.of(intCol("id"), intCol("parent_id")),
-            List.of("id"),
-            List.of(uniqueFk("parent", "parent_id", "id")),
-            List.of(),
-            List.of(List.of("parent_id")));
+    Table parent = new Table("parent", List.of(intCol("id")),
+        List.of("id"), List.of(), List.of(), List.of());
+    Table child = new Table("child", List.of(intCol("id"), intCol("parent_id")),
+        List.of("id"), List.of(uniqueFk("parent", "parent_id", "id")),
+        List.of(), List.of(List.of("parent_id")));
 
     Row p1 = mutableRow("id", 1);
     Row c1 = mutableRow("id", 10, "parent_id", null);
@@ -324,12 +260,10 @@ class ForeignKeyResolverTest {
     data.put(child, List.of(c1, c2, c3));
 
     // 3 children but only 1 parent with unique FK – should throw for non-nullable
-    assertThatThrownBy(
-            () -> {
-              ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false);
-              resolver.resolve();
-            })
-        .isInstanceOf(IllegalStateException.class)
+    assertThatThrownBy(() -> {
+      ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false);
+      resolver.resolve();
+    }).isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Not enough rows");
   }
 }

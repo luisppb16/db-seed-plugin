@@ -34,56 +34,24 @@ class RowGeneratorTest {
 
   private RowGenerator generator(Table table, int rowCount) {
     return new RowGenerator(
-        table,
-        rowCount,
-        Set.of(),
-        List.of(),
-        new Faker(),
-        new HashSet<>(),
-        List.of(),
-        false,
-        Set.of(),
-        false,
-        null,
-        2,
-        Set.of(),
-        null,
-        null,
-        null);
+        table, rowCount, Set.of(), List.of(),
+        new Faker(), new HashSet<>(), List.of(), false,
+        Set.of(), false, null, 2);
   }
 
   private RowGenerator generator(Table table, int rowCount, Set<String> excluded) {
     return new RowGenerator(
-        table,
-        rowCount,
-        excluded,
-        List.of(),
-        new Faker(),
-        new HashSet<>(),
-        List.of(),
-        false,
-        Set.of(),
-        false,
-        null,
-        2,
-        Set.of(),
-        null,
-        null,
-        null);
+        table, rowCount, excluded, List.of(),
+        new Faker(), new HashSet<>(), List.of(), false,
+        Set.of(), false, null, 2);
   }
 
   // ── Basic ──
 
   @Test
   void correctRowCount() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), varcharCol("name")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intCol("id"), varcharCol("name")),
+        List.of(), List.of(), List.of(), List.of());
     List<Row> rows = generator(t, 10).generate();
     assertThat(rows).hasSize(10);
   }
@@ -97,14 +65,8 @@ class RowGeneratorTest {
 
   @Test
   void allColumnsPresent() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("a"), intCol("b"), varcharCol("c")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intCol("a"), intCol("b"), varcharCol("c")),
+        List.of(), List.of(), List.of(), List.of());
     List<Row> rows = generator(t, 5).generate();
     for (Row row : rows) {
       assertThat(row.values()).containsKeys("a", "b", "c");
@@ -115,7 +77,8 @@ class RowGeneratorTest {
 
   @Test
   void integerPk_unique() {
-    Table t = new Table("t", List.of(intPk("id")), List.of("id"), List.of(), List.of(), List.of());
+    Table t = new Table("t", List.of(intPk("id")),
+        List.of("id"), List.of(), List.of(), List.of());
     List<Row> rows = generator(t, 20).generate();
     Set<Object> pkValues = new HashSet<>();
     for (Row r : rows) {
@@ -126,14 +89,8 @@ class RowGeneratorTest {
 
   @Test
   void compositePk_unique() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intPk("a"), intPk("b")),
-            List.of("a", "b"),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intPk("a"), intPk("b")),
+        List.of("a", "b"), List.of(), List.of(), List.of());
     List<Row> rows = generator(t, 20).generate();
     Set<String> combos = new HashSet<>();
     for (Row r : rows) {
@@ -146,14 +103,9 @@ class RowGeneratorTest {
 
   @Test
   void noDuplicateUniqueCombinations() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), varcharCol("code")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of(List.of("code")));
+    Table t = new Table("t",
+        List.of(intCol("id"), varcharCol("code")),
+        List.of(), List.of(), List.of(), List.of(List.of("code")));
     List<Row> rows = generator(t, 10).generate();
     Set<Object> seen = new HashSet<>();
     for (Row r : rows) {
@@ -166,14 +118,8 @@ class RowGeneratorTest {
 
   @Test
   void excludedColumn_valueIsNull() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), intCol("excluded_col")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intCol("id"), intCol("excluded_col")),
+        List.of(), List.of(), List.of(), List.of());
     List<Row> rows = generator(t, 5, Set.of("excluded_col")).generate();
     for (Row r : rows) {
       assertThat(r.values().get("excluded_col")).isNull();
@@ -185,14 +131,8 @@ class RowGeneratorTest {
   @Test
   void fkColumn_nonPk_getsNull() {
     ForeignKey fk = new ForeignKey(null, "parent", Map.of("parent_id", "id"), false);
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), intCol("parent_id")),
-            List.of("id"),
-            List.of(fk),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intCol("id"), intCol("parent_id")),
+        List.of("id"), List.of(fk), List.of(), List.of());
     List<Row> rows = generator(t, 5).generate();
     // FK columns that are not PKs should be null (resolved later by ForeignKeyResolver)
     for (Row r : rows) {
@@ -204,32 +144,12 @@ class RowGeneratorTest {
 
   @Test
   void softDelete_schemaDefault() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), intCol("deleted")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
-    RowGenerator gen =
-        new RowGenerator(
-            t,
-            5,
-            Set.of(),
-            List.of(),
-            new Faker(),
-            new HashSet<>(),
-            List.of(),
-            false,
-            Set.of("deleted"),
-            true,
-            null,
-            2,
-            Set.of(),
-            null,
-            null,
-            null);
+    Table t = new Table("t", List.of(intCol("id"), intCol("deleted")),
+        List.of(), List.of(), List.of(), List.of());
+    RowGenerator gen = new RowGenerator(
+        t, 5, Set.of(), List.of(),
+        new Faker(), new HashSet<>(), List.of(), false,
+        Set.of("deleted"), true, null, 2);
     List<Row> rows = gen.generate();
     for (Row r : rows) {
       assertThat(r.values().get("deleted")).isEqualTo(SqlKeyword.DEFAULT);
@@ -238,32 +158,12 @@ class RowGeneratorTest {
 
   @Test
   void softDelete_customValue() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), intCol("is_active")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
-    RowGenerator gen =
-        new RowGenerator(
-            t,
-            5,
-            Set.of(),
-            List.of(),
-            new Faker(),
-            new HashSet<>(),
-            List.of(),
-            false,
-            Set.of("is_active"),
-            false,
-            "1",
-            2,
-            Set.of(),
-            null,
-            null,
-            null);
+    Table t = new Table("t", List.of(intCol("id"), intCol("is_active")),
+        List.of(), List.of(), List.of(), List.of());
+    RowGenerator gen = new RowGenerator(
+        t, 5, Set.of(), List.of(),
+        new Faker(), new HashSet<>(), List.of(), false,
+        Set.of("is_active"), false, "1", 2);
     List<Row> rows = gen.generate();
     for (Row r : rows) {
       assertThat(r.values().get("is_active")).isEqualTo(1);
@@ -274,68 +174,30 @@ class RowGeneratorTest {
 
   @Test
   void repetitionRules_fixedValuesApplied() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), varcharCol("type")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intCol("id"), varcharCol("type")),
+        List.of(), List.of(), List.of(), List.of());
     RepetitionRule rule = new RepetitionRule(3, Map.of("type", "fixed"), Set.of());
-    RowGenerator gen =
-        new RowGenerator(
-            t,
-            10,
-            Set.of(),
-            List.of(rule),
-            new Faker(),
-            new HashSet<>(),
-            List.of(),
-            false,
-            Set.of(),
-            false,
-            null,
-            2,
-            Set.of(),
-            null,
-            null,
-            null);
+    RowGenerator gen = new RowGenerator(
+        t, 10, Set.of(), List.of(rule),
+        new Faker(), new HashSet<>(), List.of(), false,
+        Set.of(), false, null, 2);
     List<Row> rows = gen.generate();
     // First 3 rows should have type=fixed
-    long fixedCount = rows.stream().filter(r -> "fixed".equals(r.values().get("type"))).count();
+    long fixedCount = rows.stream()
+        .filter(r -> "fixed".equals(r.values().get("type")))
+        .count();
     assertThat(fixedCount).isGreaterThanOrEqualTo(3);
   }
 
   @Test
   void repetitionRules_totalRowsCorrect() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("id"), varcharCol("name")),
-            List.of(),
-            List.of(),
-            List.of(),
-            List.of());
+    Table t = new Table("t", List.of(intCol("id"), varcharCol("name")),
+        List.of(), List.of(), List.of(), List.of());
     RepetitionRule rule = new RepetitionRule(3, Map.of(), Set.of());
-    RowGenerator gen =
-        new RowGenerator(
-            t,
-            10,
-            Set.of(),
-            List.of(rule),
-            new Faker(),
-            new HashSet<>(),
-            List.of(),
-            false,
-            Set.of(),
-            false,
-            null,
-            2,
-            Set.of(),
-            null,
-            null,
-            null);
+    RowGenerator gen = new RowGenerator(
+        t, 10, Set.of(), List.of(rule),
+        new Faker(), new HashSet<>(), List.of(), false,
+        Set.of(), false, null, 2);
     List<Row> rows = gen.generate();
     assertThat(rows).hasSize(10);
   }
@@ -344,14 +206,8 @@ class RowGeneratorTest {
 
   @Test
   void getConstraints_returnsMap() {
-    Table t =
-        new Table(
-            "t",
-            List.of(intCol("val")),
-            List.of(),
-            List.of(),
-            List.of("val BETWEEN 1 AND 10"),
-            List.of());
+    Table t = new Table("t", List.of(intCol("val")),
+        List.of(), List.of(), List.of("val BETWEEN 1 AND 10"), List.of());
     RowGenerator gen = generator(t, 1);
     gen.generate();
     assertThat(gen.getConstraints()).containsKey("val");

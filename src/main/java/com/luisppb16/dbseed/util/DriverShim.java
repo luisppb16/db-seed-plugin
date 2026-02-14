@@ -15,28 +15,29 @@ import java.util.logging.Logger;
 
 /**
  * A dynamic JDBC driver wrapper facilitating runtime driver registration in the DBSeed plugin.
- *
- * <p>This record-based implementation serves as a transparent proxy that wraps dynamically loaded
+ * <p>
+ * This record-based implementation serves as a transparent proxy that wraps dynamically loaded
  * JDBC drivers, enabling their registration with the DriverManager despite potential class loader
  * isolation issues. The DriverShim addresses the challenge of integrating third-party JDBC drivers
  * that are loaded at runtime rather than being available in the application's classpath during
  * initialization.
- *
- * <p>Key responsibilities include:
- *
+ * </p>
+ * <p>
+ * Key responsibilities include:
  * <ul>
- *   <li>Providing a bridge between the application's DriverManager and dynamically loaded drivers
- *   <li>Delegating all JDBC interface method calls to the wrapped driver instance
- *   <li>Enabling seamless integration of external database drivers without compile-time
- *       dependencies
- *   <li>Maintaining full JDBC specification compliance through transparent delegation
- *   <li>Facilitating database connectivity for diverse database systems through dynamic loading
+ *   <li>Providing a bridge between the application's DriverManager and dynamically loaded drivers</li>
+ *   <li>Delegating all JDBC interface method calls to the wrapped driver instance</li>
+ *   <li>Enabling seamless integration of external database drivers without compile-time dependencies</li>
+ *   <li>Maintaining full JDBC specification compliance through transparent delegation</li>
+ *   <li>Facilitating database connectivity for diverse database systems through dynamic loading</li>
  * </ul>
- *
- * <p>The implementation leverages Java's record feature for immutability and concise syntax,
+ * </p>
+ * <p>
+ * The implementation leverages Java's record feature for immutability and concise syntax,
  * ensuring thread-safe operation and preventing accidental state modification. All method
  * implementations perform direct delegation to the underlying driver, preserving the original
  * driver's behavior and capabilities.
+ * </p>
  *
  * @param driver The underlying JDBC driver instance to wrap and delegate to
  */

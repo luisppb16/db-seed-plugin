@@ -163,10 +163,11 @@ public class DriverSelectionDialog extends DialogWrapper {
 
     DriverInfo selected = drivers.get(comboBox.getSelectedIndex());
 
-    return Optional.of(selected)
-        .filter(driver -> "Google BigQuery".equalsIgnoreCase(driver.name()))
-        .map(this::configureBigQueryDriver)
-        .or(() -> Optional.of(selected));
+    if ("Google BigQuery".equalsIgnoreCase(selected.name())) {
+      DriverInfo configured = configureBigQueryDriver(selected);
+      return Optional.ofNullable(configured);
+    }
+    return Optional.of(selected);
   }
 
   private DriverInfo configureBigQueryDriver(final DriverInfo selectedDriver) {

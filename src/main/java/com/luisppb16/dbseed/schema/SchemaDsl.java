@@ -75,20 +75,26 @@ public class SchemaDsl {
     return schema.tables().stream().map(SchemaDsl::tableSql).collect(Collectors.joining());
   }
 
+  private static String quoteIdentifier(final String identifier) {
+    return "\"" + identifier.replace("\"", "\"\"") + "\"";
+  }
+
   private static String tableSql(final Table table) {
+    final String quotedName = quoteIdentifier(table.name());
     if (table.columns().isEmpty()) {
-      return "CREATE TABLE %s ();%n%n".formatted(table.name());
+      return "CREATE TABLE %s ();%n%n".formatted(quotedName);
     }
     final String cols =
         table.columns().stream()
             .map(SchemaDsl::columnSql)
             .collect(Collectors.joining("," + System.lineSeparator() + "  "));
-    return "CREATE TABLE %s (%n  %s%n);%n%n".formatted(table.name(), cols);
+    return "CREATE TABLE %s (%n  %s%n);%n%n".formatted(quotedName, cols);
   }
 
   private static String columnSql(final Column column) {
     final StringBuilder sql =
-        new StringBuilder("%s %s".formatted(column.name(), column.type().toSql()));
+        new StringBuilder(
+            "%s %s".formatted(quoteIdentifier(column.name()), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");
@@ -104,7 +110,9 @@ public class SchemaDsl {
     }
     if (column.isForeignKey()) {
       final ForeignKeyReference fk = column.foreignKey();
-      sql.append(" REFERENCES %s(%s)".formatted(fk.table(), fk.column()));
+      sql.append(
+          " REFERENCES %s(%s)"
+              .formatted(quoteIdentifier(fk.table()), quoteIdentifier(fk.column())));
     }
     return sql.toString();
   }

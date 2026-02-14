@@ -270,6 +270,7 @@ public final class SeedDatabaseAction extends AnAction {
                                   .softDeleteUseSchemaDefault(
                                       finalConfig.softDeleteUseSchemaDefault())
                                   .softDeleteValue(finalConfig.softDeleteValue())
+                                  .numericScale(finalConfig.numericScale())
                                   .aiColumns(aiColumns)
                                   .applicationContext(
                                       settings.isUseAiGeneration()

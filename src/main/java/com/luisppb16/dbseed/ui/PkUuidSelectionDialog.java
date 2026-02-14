@@ -445,7 +445,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       aiBox.setEnabled(!isSelected);
       if (isSelected) {
         aiBox.setSelected(false);
-        aiColumnsByTable.getOrDefault(tableName, Collections.emptySet()).remove(columnName);
+        Set<String> aiCols = aiColumnsByTable.get(tableName);
+        if (Objects.nonNull(aiCols)) {
+          aiCols.remove(columnName);
+        }
       }
     }
   }
@@ -471,7 +474,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       otherBox.setEnabled(!isSelected);
       if (isSelected) {
         otherBox.setSelected(false);
-        otherSelectionMap.getOrDefault(tableName, Collections.emptySet()).remove(colName);
+        Set<String> otherCols = otherSelectionMap.get(tableName);
+        if (Objects.nonNull(otherCols)) {
+          otherCols.remove(colName);
+        }
       }
     }
   }
@@ -549,7 +555,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             final boolean selectAll = "Select All".equals(toggleButton.getText());
             checkBoxes.forEach(
                 box -> {
-                  if (box.isSelected() != selectAll) {
+                  if (box.isEnabled() && box.isSelected() != selectAll) {
                     box.setSelected(selectAll);
                     modelUpdater.accept(box, selectAll);
                   }

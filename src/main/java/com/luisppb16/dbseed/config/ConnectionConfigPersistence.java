@@ -5,6 +5,10 @@
 
 package com.luisppb16.dbseed.config;
 
+import com.intellij.credentialStore.CredentialAttributes;
+import com.intellij.credentialStore.CredentialAttributesKt;
+import com.intellij.credentialStore.Credentials;
+import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.project.Project;
 import java.util.Objects;
@@ -29,9 +33,9 @@ public class ConnectionConfigPersistence {
   private static final String SOFT_DELETE_VALUE_KEY = "dbseed.connection.softDeleteValue";
   private static final String NUMERIC_SCALE_KEY = "dbseed.connection.numericScale";
 
-  private static final String DEFAULT_URL = "jdbc:postgresql://localhost:5432/postgres";
-  private static final String DEFAULT_USER = "postgres";
-  private static final String DEFAULT_SCHEMA = "public";
+  private static final String DEFAULT_URL = "";
+  private static final String DEFAULT_USER = "";
+  private static final String DEFAULT_SCHEMA = "";
   private static final int DEFAULT_ROWS = 10;
   private static final boolean DEFAULT_DEFERRED = false;
   private static final int DEFAULT_NUMERIC_SCALE = 2;
@@ -41,8 +45,11 @@ public class ConnectionConfigPersistence {
 
     properties.setValue(URL_KEY, config.url());
     properties.setValue(USER_KEY, config.user());
-    properties.setValue(PASSWORD_KEY, config.password());
     properties.setValue(SCHEMA_KEY, config.schema());
+
+    final CredentialAttributes credAttributes = createCredentialAttributes(project);
+    PasswordSafe.getInstance()
+        .set(credAttributes, new Credentials(config.user(), config.password()));
     properties.setValue(ROWS_KEY, String.valueOf(config.rowsPerTable()));
     properties.setValue(DEFERRED_KEY, String.valueOf(config.deferred()));
 
@@ -66,8 +73,22 @@ public class ConnectionConfigPersistence {
 
     final String url = properties.getValue(URL_KEY, DEFAULT_URL);
     final String user = properties.getValue(USER_KEY, DEFAULT_USER);
-    final String password = properties.getValue(PASSWORD_KEY, "");
     final String schema = properties.getValue(SCHEMA_KEY, DEFAULT_SCHEMA);
+
+    final CredentialAttributes credAttributes = createCredentialAttributes(project);
+    final Credentials credentials = PasswordSafe.getInstance().get(credAttributes);
+    String password = "";
+    if (Objects.nonNull(credentials)) {
+      password = Objects.requireNonNullElse(credentials.getPasswordAsString(), "");
+    }
+
+    final String legacyPassword = properties.getValue(PASSWORD_KEY);
+    if (Objects.nonNull(legacyPassword)) {
+      password = legacyPassword;
+      PasswordSafe.getInstance()
+          .set(credAttributes, new Credentials(user, legacyPassword));
+      properties.unsetValue(PASSWORD_KEY);
+    }
     final int rows = properties.getInt(ROWS_KEY, DEFAULT_ROWS);
     final boolean deferred = properties.getBoolean(DEFERRED_KEY, DEFAULT_DEFERRED);
 
@@ -93,5 +114,10 @@ public class ConnectionConfigPersistence {
     log.debug("Configuration loaded for URL: {}", config.url());
 
     return config;
+  }
+
+  private static CredentialAttributes createCredentialAttributes(@NotNull final Project project) {
+    return new CredentialAttributes(
+        CredentialAttributesKt.generateServiceName("DBSeed", project.getName()));
   }
 }

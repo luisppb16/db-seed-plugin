@@ -289,4 +289,158 @@ class DataGeneratorTest {
       assertThat(r.values().get("text")).isInstanceOf(String.class);
     }
   }
+
+  // ── Numeric scale propagation ──
+
+  @Test
+  void numericScale_appliedToDecimalValues() {
+    Column decCol =
+        Column.builder().name("price").jdbcType(java.sql.Types.DECIMAL).length(10).scale(4).build();
+    Table t =
+        new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
+
+    GenerationParameters params = baseParams().tables(List.of(t)).numericScale(4).rowsPerTable(10).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    List<Row> rows =
+        result.rows().entrySet().stream()
+            .filter(e -> e.getKey().name().equals("t"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElseThrow();
+    assertThat(rows).hasSize(10);
+    for (Row r : rows) {
+      Object val = r.values().get("price");
+      assertThat(val).isInstanceOf(java.math.BigDecimal.class);
+    }
+  }
+
+  @Test
+  void numericScale_defaultScale2_producesTwoDecimals() {
+    Column decCol =
+        Column.builder().name("amount").jdbcType(java.sql.Types.DECIMAL).length(8).build();
+    Table t =
+        new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
+
+    GenerationParameters params = baseParams().tables(List.of(t)).numericScale(2).rowsPerTable(20).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    List<Row> rows =
+        result.rows().entrySet().stream()
+            .filter(e -> e.getKey().name().equals("t"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElseThrow();
+    for (Row r : rows) {
+      Object val = r.values().get("amount");
+      if (val instanceof java.math.BigDecimal bd) {
+        assertThat(bd.scale()).isEqualTo(2);
+      }
+    }
+  }
+
+  // ── Numeric constraint validation ──
+
+  @Test
+  void numericValidation_constrainedValues_withinBounds() {
+    Column intCol =
+        Column.builder().name("score").jdbcType(java.sql.Types.INTEGER).build();
+    Table t =
+        new Table("t", List.of(intCol), List.of(), List.of(), List.of("score BETWEEN 1 AND 5"), List.of());
+
+    GenerationParameters params = baseParams().tables(List.of(t)).rowsPerTable(50).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    List<Row> rows =
+        result.rows().entrySet().stream()
+            .filter(e -> e.getKey().name().equals("t"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElseThrow();
+    for (Row r : rows) {
+      Object val = r.values().get("score");
+      if (val instanceof Integer i) {
+        assertThat(i).isBetween(1, 5);
+      }
+    }
+  }
+
+  // ── Multiple soft delete columns ──
+
+  @Test
+  void softDelete_multipleColumns_allApplied() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intCol("id"), intCol("deleted"), intCol("archived")),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(t))
+            .softDeleteColumns("deleted,archived")
+            .softDeleteUseSchemaDefault(true)
+            .build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("deleted")).isEqualTo(SqlKeyword.DEFAULT);
+      assertThat(r.values().get("archived")).isEqualTo(SqlKeyword.DEFAULT);
+    }
+  }
+
+  // ── Excluded columns ──
+
+  @Test
+  void excludedColumns_notGenerated() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name"), varcharCol("secret")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(t))
+            .excludedColumns(Map.of("t", List.of("secret")))
+            .build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("secret")).isNull();
+    }
+  }
+
+  // ── Empty tables ──
+
+  @Test
+  void multipleTables_emptyAndNonEmpty() {
+    Table empty = new Table("empty", List.of(), List.of(), List.of(), List.of(), List.of());
+    Table normal =
+        new Table(
+            "normal",
+            List.of(intPk("id"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params = baseParams().tables(List.of(empty, normal)).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    assertThat(result.rows().get(empty)).isEmpty();
+    List<Row> normalRows =
+        result.rows().entrySet().stream()
+            .filter(e -> e.getKey().name().equals("normal"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElseThrow();
+    assertThat(normalRows).hasSize(5);
+  }
 }

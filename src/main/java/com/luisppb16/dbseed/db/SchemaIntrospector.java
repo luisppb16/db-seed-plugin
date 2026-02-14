@@ -163,7 +163,6 @@ public class SchemaIntrospector {
       final boolean isUuid =
           raw.name().toLowerCase(Locale.ROOT).endsWith("guid")
               || raw.name().toLowerCase(Locale.ROOT).endsWith("uuid")
-              || raw.type() == java.sql.Types.OTHER
               || (Objects.nonNull(raw.typeName())
                   && raw.typeName().toLowerCase(Locale.ROOT).contains("uuid"));
 
@@ -519,12 +518,12 @@ public class SchemaIntrospector {
                 + "JOIN pg_namespace nsp ON nsp.oid = con.connamespace "
                 + "WHERE con.contype = 'c'");
 
-    if (schema != null) {
+    if (Objects.nonNull(schema)) {
       sql.append(" AND nsp.nspname = ?");
     }
 
     try (final PreparedStatement ps = conn.prepareStatement(sql.toString())) {
-      if (schema != null) {
+      if (Objects.nonNull(schema)) {
         ps.setString(1, schema);
       }
       try (final ResultSet rs = ps.executeQuery()) {
@@ -600,9 +599,14 @@ public class SchemaIntrospector {
   private static int[] parseBounds(final String expr, final Pattern pattern) {
     final Matcher matcher = pattern.matcher(expr);
     if (matcher.find()) {
-      final int min = Integer.parseInt(matcher.group(1));
-      final int max = Integer.parseInt(matcher.group(2));
-      return new int[] {min, max};
+      try {
+        final int min = Integer.parseInt(matcher.group(1));
+        final int max = Integer.parseInt(matcher.group(2));
+        return new int[] {min, max};
+      } catch (final NumberFormatException e) {
+        log.debug("Bound value exceeds int range, skipping constraint: {}", expr);
+        return new int[0];
+      }
     }
     return new int[0];
   }

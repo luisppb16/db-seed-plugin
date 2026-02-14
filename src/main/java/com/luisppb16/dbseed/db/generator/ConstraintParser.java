@@ -374,8 +374,11 @@ public final class ConstraintParser {
       final String num = ml.group(2);
       try {
         final int v = Integer.parseInt(num);
-        if ("<".equals(op) || "<=".equals(op) || "=".equals(op)) {
+        if ("<=".equals(op) || "=".equals(op)) {
           newMaxLen = Objects.isNull(newMaxLen) ? v : Math.min(newMaxLen, v);
+        } else if ("<".equals(op)) {
+          final int exclusive = v - 1;
+          newMaxLen = Objects.isNull(newMaxLen) ? exclusive : Math.min(newMaxLen, exclusive);
         }
       } catch (final NumberFormatException ignored) {
       }
@@ -417,11 +420,17 @@ public final class ConstraintParser {
 
   private record ColumnPatterns(
       Pattern between, Pattern range, Pattern in, Pattern anyArray, Pattern eq, Pattern len) {
+    private static final int MAX_CACHE_SIZE = 500;
     private static final java.util.Map<String, ColumnPatterns> CACHE =
         new java.util.concurrent.ConcurrentHashMap<>();
 
     static ColumnPatterns forColumn(final String columnName) {
-      return CACHE.computeIfAbsent(columnName, ColumnPatterns::create);
+      return CACHE.computeIfAbsent(columnName, key -> {
+        if (CACHE.size() >= MAX_CACHE_SIZE) {
+          CACHE.clear();
+        }
+        return create(key);
+      });
     }
 
     private static ColumnPatterns create(final String name) {

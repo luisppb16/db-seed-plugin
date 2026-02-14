@@ -34,6 +34,7 @@ import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
+import com.intellij.ui.components.JBTextField;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
@@ -52,7 +53,7 @@ public final class SeedDialog extends DialogWrapper {
 
   private final DriverInfo driverInfo;
 
-  private final JTextField urlField;
+  private final JBTextField urlField;
   private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JPasswordField passwordField = new JPasswordField();
@@ -70,9 +71,9 @@ public final class SeedDialog extends DialogWrapper {
     this.driverInfo = driverInfo;
     setTitle("Connection Settings - Step 2/3");
 
-    urlField =
-        new JTextField(
-            Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
+    String template = Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL;
+    urlField = new JBTextField(template);
+    urlField.getEmptyText().setText(extractBaseUrl(template));
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner =
@@ -225,6 +226,18 @@ public final class SeedDialog extends DialogWrapper {
       usingSavedConfig = true;
     }
     return new UrlResolution(urlToUse, usingSavedConfig);
+  }
+
+  private String extractBaseUrl(String url) {
+    if (url.startsWith("jdbc:sqlserver")) {
+      String stripped = url.replaceAll("databaseName=[^;]+;?", "").replace(";;", ";");
+      return stripped.endsWith(";") ? stripped.substring(0, stripped.length() - 1) : stripped;
+    }
+    int lastSlash = url.lastIndexOf('/');
+    if (lastSlash > 0 && lastSlash < url.length() - 1) {
+      return url.substring(0, lastSlash + 1);
+    }
+    return url;
   }
 
   private boolean isSameDriverType(String template, String savedUrl) {

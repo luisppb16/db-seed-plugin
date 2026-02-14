@@ -179,6 +179,67 @@ class ConstraintParserTest {
     assertThat(pc.max()).isEqualTo(10.0);
   }
 
+  // ── Length strict less-than vs less-than-or-equal ──
+
+  @Test
+  void length_strictLessThan_subtractsOne() {
+    ParsedConstraint pc = parse("name", "length(name) < 10");
+    assertThat(pc.maxLength()).isEqualTo(9);
+  }
+
+  @Test
+  void length_lessThanOrEqual_unchanged() {
+    ParsedConstraint pc = parse("name", "length(name) <= 10");
+    assertThat(pc.maxLength()).isEqualTo(10);
+  }
+
+  @Test
+  void length_equal_unchanged() {
+    ParsedConstraint pc = parse("name", "char_length(name) = 5");
+    assertThat(pc.maxLength()).isEqualTo(5);
+  }
+
+  @Test
+  void length_strictLessThan_multipleConstraints_tightest() {
+    ConstraintParser parser = new ConstraintParser("name");
+    ParsedConstraint result =
+        parser.parse(List.of(ce("length(name) < 20"), ce("length(name) <= 15")), 0);
+    assertThat(result.maxLength()).isEqualTo(15);
+  }
+
+  @Test
+  void length_strictLessThan_tighterThanLessEqual() {
+    ConstraintParser parser = new ConstraintParser("name");
+    ParsedConstraint result =
+        parser.parse(List.of(ce("length(name) < 10"), ce("length(name) <= 20")), 0);
+    assertThat(result.maxLength()).isEqualTo(9);
+  }
+
+  @Test
+  void length_columnLengthOverrides_strictLessThan() {
+    ParsedConstraint pc = parse("name", "length(name) < 100", 50);
+    assertThat(pc.maxLength()).isEqualTo(50);
+  }
+
+  // ── Cache behavior ──
+
+  @Test
+  void cache_sameColumn_returnsSamePatterns() {
+    ConstraintParser parser1 = new ConstraintParser("cached_col");
+    ConstraintParser parser2 = new ConstraintParser("cached_col");
+    ParsedConstraint pc1 = parser1.parse(List.of(ce("cached_col >= 1")), 0);
+    ParsedConstraint pc2 = parser2.parse(List.of(ce("cached_col >= 1")), 0);
+    assertThat(pc1.min()).isEqualTo(pc2.min());
+  }
+
+  @Test
+  void cache_differentColumns_bothWork() {
+    ParsedConstraint pc1 = parse("col_a", "col_a >= 5");
+    ParsedConstraint pc2 = parse("col_b", "col_b <= 10");
+    assertThat(pc1.min()).isEqualTo(5.0);
+    assertThat(pc2.max()).isEqualTo(10.0);
+  }
+
   // ── Multi-column constraints ──
 
   @Test

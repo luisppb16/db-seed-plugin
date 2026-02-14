@@ -444,13 +444,14 @@ public class OllamaClient {
   }
 
   private String unescapeJson(String text) {
-    return text.replace("\\n", "\n")
+    return text.replace("\\\\", "\0BACKSLASH\0")
+        .replace("\\n", "\n")
         .replace("\\\"", "\"")
         .replace("\\t", "\t")
         .replace("\\r", "\r")
         .replace("\\b", "\b")
         .replace("\\f", "\f")
-        .replace("\\\\", "\\");
+        .replace("\0BACKSLASH\0", "\\");
   }
 
   /**

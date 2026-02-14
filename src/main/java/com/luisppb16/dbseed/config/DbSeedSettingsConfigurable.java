@@ -138,6 +138,9 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
   @Override
   public void disposeUIResources() {
+    if (Objects.nonNull(mySettingsComponent)) {
+      mySettingsComponent.dispose();
+    }
     mySettingsComponent = null;
   }
 }

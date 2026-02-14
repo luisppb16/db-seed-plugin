@@ -246,6 +246,9 @@ public class DataGenerator {
       final Map<String, ConstraintParser.ParsedConstraint> constraints,
       final int numericScale) {
 
+    final Faker faker = new Faker();
+    final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
+
     for (final Column col : table.columns()) {
       final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
       Object val = row.values().get(col.name());
@@ -260,8 +263,6 @@ public class DataGenerator {
         }
         int attempts = 0;
         while (ValueGenerator.isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-          final ValueGenerator vg =
-              new ValueGenerator(new Faker(), null, false, new HashSet<>(), numericScale);
           val = vg.generateNumericWithinBounds(col, pc);
           attempts++;
         }

@@ -109,6 +109,59 @@ class DialectTest {
     }
   }
 
+  // ── escapeSql / Backslash injection ──
+
+  @Nested
+  class EscapeSqlTests {
+    final DatabaseDialect d = new StandardDialect();
+
+    @Test
+    void singleQuote_escaped() {
+      assertThat(fmt(d, "it's")).isEqualTo("'it''s'");
+    }
+
+    @Test
+    void backslash_escaped() {
+      assertThat(fmt(d, "C:\\path")).isEqualTo("'C:\\\\path'");
+    }
+
+    @Test
+    void backslashBeforeQuote_bothEscaped() {
+      assertThat(fmt(d, "a\\'b")).isEqualTo("'a\\\\''b'");
+    }
+
+    @Test
+    void multipleBackslashes_allEscaped() {
+      assertThat(fmt(d, "a\\\\b")).isEqualTo("'a\\\\\\\\b'");
+    }
+
+    @Test
+    void noSpecialChars_unchanged() {
+      assertThat(fmt(d, "plain text")).isEqualTo("'plain text'");
+    }
+
+    @Test
+    void mysqlBackslashInjection_prevented() {
+      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      String malicious = "\\'; DROP TABLE users; --";
+      String result = fmt(mysql, malicious);
+      assertThat(result).contains("\\\\");
+      assertThat(result).contains("''");
+      assertThat(result).startsWith("'").endsWith("'");
+      assertThat(result).isEqualTo("'\\\\''; DROP TABLE users; --'");
+    }
+
+    @Test
+    void emptyString_escaped() {
+      assertThat(fmt(d, "")).isEqualTo("''");
+    }
+
+    @Test
+    void characterBackslash_escaped() {
+      assertThat(fmt(d, '\\')).isEqualTo("'\\\\'");
+    }
+  }
+
   // ── StandardDialect ──
 
   @Nested

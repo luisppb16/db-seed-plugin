@@ -31,11 +31,12 @@
                     <ul>
                         <li>New "AI Columns" tab in the configuration dialog lets you choose which string columns get AI-generated content.</li>
                         <li>Configurable word count per AI value (one word up to full paragraphs).</li>
+                        <li><b>Note:<b> only the column name along with the context previously provided by the user is sent to the AI.</li>
                     </ul>
                 </li>
                 <li><b>AI Settings in Global Configuration:</b>
                     <ul>
-                        <li>Enable/disable AI generation, set Ollama URL and model.</li>
+                        <li>Enable/disable AI generation, set Ollama URL and model. You can use whether local or cloud-based models.</li>
                         <li>"Get models" button with a live server connectivity check.</li>
                         <li>Application context text area to guide the AI towards your domain.</li>
                         <li>Words per AI value spinner to control output length.</li>

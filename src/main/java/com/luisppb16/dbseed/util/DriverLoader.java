@@ -25,6 +25,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -61,6 +62,7 @@ public class DriverLoader {
   private static final Path DRIVER_DIR =
       Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
+  private static final Set<String> LOADED_DRIVERS = new java.util.HashSet<>();
 
   static {
     try {
@@ -114,7 +116,12 @@ public class DriverLoader {
       downloadDriver(info, jarPath);
     }
 
-    loadDriver(jarPath.toUri().toURL(), info.driverClass());
+    if (!LOADED_DRIVERS.contains(info.driverClass())) {
+      loadDriver(jarPath.toUri().toURL(), info.driverClass());
+      LOADED_DRIVERS.add(info.driverClass());
+    } else {
+      log.debug("Driver {} already loaded, skipping registration.", info.driverClass());
+    }
   }
 
   private static void downloadDriver(final DriverInfo info, final Path target)

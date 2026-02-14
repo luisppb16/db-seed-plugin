@@ -66,6 +66,7 @@ public class DbSeedSettingsComponent {
   private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
   private final JButton myRefreshModelsButton = new JButton("Get models");
   private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("OllamaLoading");
+  private volatile boolean disposed = false;
 
   public DbSeedSettingsComponent() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
@@ -188,8 +189,10 @@ public class DbSeedSettingsComponent {
 
     OllamaClient client = new OllamaClient(url, "", 10);
     client.ping().whenComplete((ignored, pingEx) -> {
+        if (disposed) return;
         if (Objects.nonNull(pingEx)) {
             ApplicationManager.getApplication().invokeLater(() -> {
+                if (disposed) return;
                 Throwable cause = Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
                 Messages.showErrorDialog(myMainPanel,
                     "No Ollama server found at " + url + ".\n"
@@ -201,7 +204,9 @@ public class DbSeedSettingsComponent {
             return;
         }
         client.listModels().whenComplete((models, ex) -> {
+            if (disposed) return;
             ApplicationManager.getApplication().invokeLater(() -> {
+                if (disposed) return;
                 if (Objects.nonNull(ex)) {
                     Throwable cause = Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
                     Messages.showErrorDialog(myMainPanel,
@@ -390,5 +395,10 @@ public class DbSeedSettingsComponent {
         }
         myOllamaModelDropdown.setSelectedItem(model);
     }
+  }
+
+  public void dispose() {
+    disposed = true;
+    myLoadingIcon.dispose();
   }
 }

@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.ai;
 
 import static org.assertj.core.api.Assertions.*;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -334,13 +335,13 @@ class OllamaClientTest {
     @Test
     void missingResponseKey_throws() {
       assertThatThrownBy(() -> invokeExtractRawResponse("{\"error\":\"bad\"}"))
-          .hasCauseInstanceOf(java.io.IOException.class);
+          .hasCauseInstanceOf(IOException.class);
     }
 
     @Test
     void missingClosingQuote_throws() {
       assertThatThrownBy(() -> invokeExtractRawResponse("{\"response\":\"no end"))
-          .hasCauseInstanceOf(java.io.IOException.class);
+          .hasCauseInstanceOf(IOException.class);
     }
   }
 

@@ -14,6 +14,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import java.math.BigDecimal;
 import java.sql.Types;
 import java.util.*;
 import org.junit.jupiter.api.AfterAll;
@@ -295,7 +296,7 @@ class DataGeneratorTest {
   @Test
   void numericScale_appliedToDecimalValues() {
     Column decCol =
-        Column.builder().name("price").jdbcType(java.sql.Types.DECIMAL).length(10).scale(4).build();
+        Column.builder().name("price").jdbcType(Types.DECIMAL).length(10).scale(4).build();
     Table t =
         new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
@@ -311,14 +312,14 @@ class DataGeneratorTest {
     assertThat(rows).hasSize(10);
     for (Row r : rows) {
       Object val = r.values().get("price");
-      assertThat(val).isInstanceOf(java.math.BigDecimal.class);
+      assertThat(val).isInstanceOf(BigDecimal.class);
     }
   }
 
   @Test
   void numericScale_defaultScale2_producesTwoDecimals() {
     Column decCol =
-        Column.builder().name("amount").jdbcType(java.sql.Types.DECIMAL).length(8).build();
+        Column.builder().name("amount").jdbcType(Types.DECIMAL).length(8).build();
     Table t =
         new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
@@ -344,7 +345,7 @@ class DataGeneratorTest {
   @Test
   void numericValidation_constrainedValues_withinBounds() {
     Column intCol =
-        Column.builder().name("score").jdbcType(java.sql.Types.INTEGER).build();
+        Column.builder().name("score").jdbcType(Types.INTEGER).build();
     Table t =
         new Table("t", List.of(intCol), List.of(), List.of(), List.of("score BETWEEN 1 AND 5"), List.of());
 

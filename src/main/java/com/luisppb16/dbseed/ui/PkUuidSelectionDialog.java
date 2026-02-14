@@ -26,6 +26,7 @@ import java.awt.BorderLayout;
 import java.sql.Types;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -607,7 +608,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private void addSearchFunctionality(
       final JPanel topPanel, final JPanel listPanel, final BiConsumer<JPanel, String> filterLogic) {
-    final JPanel searchPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    final JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     final JTextField searchField = new JTextField(20);
     searchField
         .getDocument()

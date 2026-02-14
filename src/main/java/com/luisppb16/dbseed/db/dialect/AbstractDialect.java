@@ -138,7 +138,11 @@ public class AbstractDialect implements DatabaseDialect {
   }
 
   protected String escapeSql(String s) {
-    return s.replace("\\", "\\\\").replace("'", "''");
+    String result = s;
+    if (Boolean.parseBoolean(props.getProperty("escapeBackslash", "false"))) {
+      result = result.replace("\\", "\\\\");
+    }
+    return result.replace("'", "''");
   }
 
   @Override

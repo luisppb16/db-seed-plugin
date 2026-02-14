@@ -26,6 +26,7 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -62,7 +63,7 @@ public class DriverLoader {
   private static final Path DRIVER_DIR =
       Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
-  private static final Set<String> LOADED_DRIVERS = new java.util.HashSet<>();
+  private static final Set<String> LOADED_DRIVERS = ConcurrentHashMap.newKeySet();
 
   static {
     try {

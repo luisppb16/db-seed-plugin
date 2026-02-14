@@ -210,7 +210,7 @@ public class OllamaClient {
       String requestBody =
           String.format(Locale.ROOT,
               "{\"model\": \"%s\", \"prompt\": \"%s\", \"system\": \"%s\", \"stream\": false, \"options\": {\"temperature\": %.1f, \"num_predict\": %d}}",
-              modelName, escapeJson(prompt), escapeJson(SYSTEM_ROLE), DEFAULT_TEMPERATURE, numPredict);
+              escapeJson(modelName), escapeJson(prompt), escapeJson(SYSTEM_ROLE), DEFAULT_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
@@ -281,7 +281,7 @@ public class OllamaClient {
       String requestBody =
           String.format(Locale.ROOT,
               "{\"model\": \"%s\", \"prompt\": \"%s\", \"system\": \"%s\", \"stream\": false, \"options\": {\"temperature\": %.1f, \"num_predict\": %d}}",
-              modelName, escapeJson(prompt), escapeJson(SYSTEM_ROLE), BATCH_TEMPERATURE, numPredict);
+              escapeJson(modelName), escapeJson(prompt), escapeJson(SYSTEM_ROLE), BATCH_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()

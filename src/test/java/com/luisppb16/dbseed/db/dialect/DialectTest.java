@@ -121,23 +121,36 @@ class DialectTest {
     }
 
     @Test
-    void backslash_escaped() {
-      assertThat(fmt(d, "C:\\path")).isEqualTo("'C:\\\\path'");
+    void backslash_notEscaped_standardDialect() {
+      assertThat(fmt(d, "C:\\path")).isEqualTo("'C:\\path'");
     }
 
     @Test
-    void backslashBeforeQuote_bothEscaped() {
-      assertThat(fmt(d, "a\\'b")).isEqualTo("'a\\\\''b'");
-    }
-
-    @Test
-    void multipleBackslashes_allEscaped() {
-      assertThat(fmt(d, "a\\\\b")).isEqualTo("'a\\\\\\\\b'");
+    void backslashBeforeQuote_onlyQuoteEscaped_standardDialect() {
+      assertThat(fmt(d, "a\\'b")).isEqualTo("'a\\''b'");
     }
 
     @Test
     void noSpecialChars_unchanged() {
       assertThat(fmt(d, "plain text")).isEqualTo("'plain text'");
+    }
+
+    @Test
+    void mysqlBackslash_escaped() {
+      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      assertThat(fmt(mysql, "C:\\path")).isEqualTo("'C:\\\\path'");
+    }
+
+    @Test
+    void mysqlBackslashBeforeQuote_bothEscaped() {
+      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      assertThat(fmt(mysql, "a\\'b")).isEqualTo("'a\\\\''b'");
+    }
+
+    @Test
+    void mysqlMultipleBackslashes_allEscaped() {
+      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      assertThat(fmt(mysql, "a\\\\b")).isEqualTo("'a\\\\\\\\b'");
     }
 
     @Test
@@ -157,8 +170,14 @@ class DialectTest {
     }
 
     @Test
-    void characterBackslash_escaped() {
-      assertThat(fmt(d, '\\')).isEqualTo("'\\\\'");
+    void characterBackslash_notEscaped_standardDialect() {
+      assertThat(fmt(d, '\\')).isEqualTo("'\\'");
+    }
+
+    @Test
+    void mysqlCharacterBackslash_escaped() {
+      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      assertThat(fmt(mysql, '\\')).isEqualTo("'\\\\'");
     }
   }
 

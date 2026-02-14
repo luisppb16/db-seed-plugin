@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.CheckExpression;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.MultiColumnConstraint;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.ParsedConstraint;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import org.junit.jupiter.api.Test;
@@ -263,7 +264,7 @@ class ConstraintParserTest {
   @Test
   void multiColumn_nullAndBlank_skipped() {
     List<MultiColumnConstraint> result =
-        ConstraintParser.parseMultiColumnConstraints(java.util.Arrays.asList(null, "", "  "));
+        ConstraintParser.parseMultiColumnConstraints(Arrays.asList(null, "", "  "));
     assertThat(result).isEmpty();
   }
 

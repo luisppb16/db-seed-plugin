@@ -17,6 +17,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -144,7 +145,7 @@ public class DataGenerator {
   private static Set<String> parseSoftDeleteColumns(final String softDeleteColumns) {
     final Set<String> softDeleteCols = new HashSet<>();
     if (Objects.nonNull(softDeleteColumns)) {
-      java.util.Arrays.stream(softDeleteColumns.split(SOFT_DELETE_DELIMITER))
+      Arrays.stream(softDeleteColumns.split(SOFT_DELETE_DELIMITER))
           .map(String::trim)
           .filter(s -> !s.isEmpty())
           .forEach(softDeleteCols::add);

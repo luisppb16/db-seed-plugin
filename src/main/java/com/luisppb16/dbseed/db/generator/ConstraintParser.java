@@ -5,15 +5,20 @@
 
 package com.luisppb16.dbseed.db.generator;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -103,7 +108,7 @@ public final class ConstraintParser {
   }
 
   public static List<MultiColumnConstraint> parseMultiColumnConstraints(final List<String> checks) {
-    final List<MultiColumnConstraint> result = new java.util.ArrayList<>();
+    final List<MultiColumnConstraint> result = new ArrayList<>();
     for (final String check : checks) {
       if (Objects.isNull(check) || check.isBlank()) {
         continue;
@@ -132,7 +137,7 @@ public final class ConstraintParser {
     clean = cleanParens(clean);
 
     final String[] parts = splitByTopLevelOr(clean);
-    final List<java.util.Map<String, String>> combinations =
+    final List<Map<String, String>> combinations =
         Stream.of(parts)
             .map(ConstraintParser::parseAndClause)
             .filter(Objects::nonNull)
@@ -146,13 +151,13 @@ public final class ConstraintParser {
     final Set<String> allColumns =
         combinations.stream()
             .flatMap(m -> m.keySet().stream())
-            .collect(java.util.stream.Collectors.toSet());
+            .collect(Collectors.toSet());
 
     return new MultiColumnConstraint(allColumns, combinations);
   }
 
   private static String[] splitByTopLevelOr(String input) {
-    List<String> parts = new java.util.ArrayList<>();
+    List<String> parts = new ArrayList<>();
     int parenLevel = 0;
     int lastSplit = 0;
 
@@ -197,8 +202,8 @@ public final class ConstraintParser {
     return clean;
   }
 
-  private static java.util.Map<String, String> parseAndClause(final String clause) {
-    final java.util.Map<String, String> combination = new java.util.HashMap<>();
+  private static Map<String, String> parseAndClause(final String clause) {
+    final Map<String, String> combination = new HashMap<>();
     final String[] conditions =
         clause.split("(?i)\\s+AND\\s+|(?<=\\))\\s*AND\\s*|\\s*AND\\s*(?=\\()");
     for (final String cond : conditions) {
@@ -412,7 +417,7 @@ public final class ConstraintParser {
   }
 
   public record MultiColumnConstraint(
-      Set<String> columns, List<java.util.Map<String, String>> allowedCombinations) {}
+      Set<String> columns, List<Map<String, String>> allowedCombinations) {}
 
   private record BetweenParseResult(Double lower, Double upper) {}
 
@@ -421,16 +426,14 @@ public final class ConstraintParser {
   private record ColumnPatterns(
       Pattern between, Pattern range, Pattern in, Pattern anyArray, Pattern eq, Pattern len) {
     private static final int MAX_CACHE_SIZE = 500;
-    private static final java.util.Map<String, ColumnPatterns> CACHE =
-        new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, ColumnPatterns> CACHE =
+        new ConcurrentHashMap<>();
 
     static ColumnPatterns forColumn(final String columnName) {
-      return CACHE.computeIfAbsent(columnName, key -> {
-        if (CACHE.size() >= MAX_CACHE_SIZE) {
-          CACHE.clear();
-        }
-        return create(key);
-      });
+      if (CACHE.size() >= MAX_CACHE_SIZE) {
+        CACHE.clear();
+      }
+      return CACHE.computeIfAbsent(columnName, ColumnPatterns::create);
     }
 
     private static ColumnPatterns create(final String name) {

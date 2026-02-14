@@ -23,8 +23,10 @@ import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
+import java.sql.Types;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -62,32 +64,31 @@ import javax.swing.event.DocumentListener;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Advanced configuration dialog for fine-tuning primary key UUID handling and data generation exclusions.
- * <p>
- * This comprehensive UI component provides users with granular control over the data generation
+ * Advanced configuration dialog for fine-tuning primary key UUID handling and data generation
+ * exclusions.
+ *
+ * <p>This comprehensive UI component provides users with granular control over the data generation
  * process, specifically focusing on UUID primary key management and selective exclusion of tables
  * and columns from the seeding operation. The dialog implements a multi-tab interface that
  * facilitates complex configuration scenarios while maintaining usability across different
  * configuration domains.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Managing primary key UUID identification and configuration across multiple tables</li>
- *   <li>Providing intuitive interfaces for excluding specific tables or columns from generation</li>
- *   <li>Offering advanced configuration options for soft-delete columns and numeric precision</li>
- *   <li>Implementing sophisticated cross-tab synchronization to prevent conflicting selections</li>
- *   <li>Providing real-time filtering and bulk selection capabilities for enhanced UX</li>
- *   <li>Integrating repetition rules configuration for complex data relationships</li>
+ *   <li>Managing primary key UUID identification and configuration across multiple tables
+ *   <li>Providing intuitive interfaces for excluding specific tables or columns from generation
+ *   <li>Offering advanced configuration options for soft-delete columns and numeric precision
+ *   <li>Implementing sophisticated cross-tab synchronization to prevent conflicting selections
+ *   <li>Providing real-time filtering and bulk selection capabilities for enhanced UX
+ *   <li>Integrating repetition rules configuration for complex data relationships
  * </ul>
- * </p>
- * <p>
- * The implementation follows IntelliJ's UI guidelines and leverages the platform's component
- * toolkit to ensure consistency with the IDE's visual design language. The dialog maintains
- * state synchronization between related configuration elements and provides immediate visual
- * feedback for user actions. Advanced features include search functionality, bulk operations,
- * and real-time validation to enhance the user experience.
- * </p>
+ *
+ * <p>The implementation follows IntelliJ's UI guidelines and leverages the platform's component
+ * toolkit to ensure consistency with the IDE's visual design language. The dialog maintains state
+ * synchronization between related configuration elements and provides immediate visual feedback for
+ * user actions. Advanced features include search functionality, bulk operations, and real-time
+ * validation to enhance the user experience.
  */
 public final class PkUuidSelectionDialog extends DialogWrapper {
 
@@ -109,6 +110,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final JBTextField softDeleteValueField = new JBTextField();
 
   private final JSpinner scaleSpinner;
+
+  private final Map<String, Set<String>> aiColumnsByTable = new LinkedHashMap<>();
+  private final Map<String, Map<String, JCheckBox>> aiCheckBoxes = new LinkedHashMap<>();
 
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
@@ -139,7 +143,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                       pkCol -> {
                         final Column col = table.column(pkCol);
                         final String lower = pkCol.toLowerCase(Locale.ROOT);
-                        return (col != null && col.uuid())
+                        return (Objects.nonNull(col) && col.uuid())
                             || lower.contains("uuid")
                             || lower.contains("guid");
                       })
@@ -152,7 +156,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         });
 
     String cols = initialConfig.softDeleteColumns();
-    if (cols == null) {
+    if (Objects.isNull(cols)) {
       cols = DbSeedSettingsState.getInstance().getSoftDeleteColumns();
     }
     softDeleteColumnsField.setText(cols);
@@ -160,7 +164,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     softDeleteUseSchemaDefaultBox.setSelected(initialConfig.softDeleteUseSchemaDefault());
 
     String val = initialConfig.softDeleteValue();
-    if (val == null) {
+    if (Objects.isNull(val)) {
       val = DbSeedSettingsState.getInstance().getSoftDeleteValue();
     }
     softDeleteValueField.setText(val);
@@ -179,7 +183,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   protected void doOKAction() {
     try {
       scaleSpinner.commitEdit();
-    } catch (final ParseException e) {
+    } catch (final ParseException ignored) {
       // Invalid number typed, spinner will retain last valid value.
     }
     super.doOKAction();
@@ -189,6 +193,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   protected @NotNull JComponent createCenterPanel() {
     final JBTabbedPane tabbedPane = new JBTabbedPane();
     tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
+    if (DbSeedSettingsState.getInstance().isUseAiGeneration()) {
+      tabbedPane.addTab("AI Columns", createAiColumnSelectionPanel());
+    }
     tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
     tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
     tabbedPane.addTab("More Settings", createMoreSettingsPanel());
@@ -267,6 +274,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private void synchronizeInitialStates() {
     syncCheckBoxState(pkCheckBoxes, excludeCheckBoxes);
     syncCheckBoxState(excludeCheckBoxes, pkCheckBoxes);
+    syncCheckBoxState(excludeCheckBoxes, aiCheckBoxes);
   }
 
   private void syncCheckBoxState(
@@ -279,7 +287,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   if (sourceBox.isSelected()) {
                     final JCheckBox targetBox =
                         targetMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
-                    if (targetBox != null) {
+                    if (Objects.nonNull(targetBox)) {
                       targetBox.setEnabled(false);
                     }
                   }
@@ -341,7 +349,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         (box, isSelected) -> {
           final String tableName = getTableNameForComponent(box);
           final String columnName = getColumnNameForCheckBox(box);
-          if (tableName != null) {
+          if (Objects.nonNull(tableName)) {
             onPkBoxChanged(tableName, columnName, isSelected);
           }
         },
@@ -403,7 +411,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           } else {
             final String tableName = getTableNameForComponent(box);
             final String columnName = getColumnNameForCheckBox(box);
-            if (tableName != null) {
+            if (Objects.nonNull(tableName)) {
               onExcludeBoxChanged(tableName, columnName, isSelected);
             }
           }
@@ -431,6 +439,19 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private void onExcludeBoxChanged(String tableName, String columnName, boolean isSelected) {
     updateSelectionAndSync(
         tableName, columnName, isSelected, excludedColumnsByTable, pkCheckBoxes, selectionByTable);
+
+    final JCheckBox aiBox =
+        aiCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
+    if (Objects.nonNull(aiBox)) {
+      aiBox.setEnabled(!isSelected);
+      if (isSelected) {
+        aiBox.setSelected(false);
+        Set<String> aiCols = aiColumnsByTable.get(tableName);
+        if (Objects.nonNull(aiCols)) {
+          aiCols.remove(columnName);
+        }
+      }
+    }
   }
 
   private void updateSelectionAndSync(
@@ -450,11 +471,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JCheckBox otherBox =
         otherCheckBoxesMap.getOrDefault(tableName, Collections.emptyMap()).get(colName);
-    if (otherBox != null) {
+    if (Objects.nonNull(otherBox)) {
       otherBox.setEnabled(!isSelected);
       if (isSelected) {
         otherBox.setSelected(false);
-        otherSelectionMap.getOrDefault(tableName, Collections.emptySet()).remove(colName);
+        Set<String> otherCols = otherSelectionMap.get(tableName);
+        if (Objects.nonNull(otherCols)) {
+          otherCols.remove(colName);
+        }
       }
     }
   }
@@ -532,7 +556,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             final boolean selectAll = "Select All".equals(toggleButton.getText());
             checkBoxes.forEach(
                 box -> {
-                  if (box.isSelected() != selectAll) {
+                  if (box.isEnabled() && box.isSelected() != selectAll) {
                     box.setSelected(selectAll);
                     modelUpdater.accept(box, selectAll);
                   }
@@ -557,7 +581,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private String getTableNameForComponent(final Component component) {
     Component current = component;
-    while (current != null) {
+    while (Objects.nonNull(current)) {
       if (current instanceof final JPanel panel) {
         for (final Component child : panel.getComponents()) {
           if (child instanceof final JCheckBox box
@@ -584,7 +608,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private void addSearchFunctionality(
       final JPanel topPanel, final JPanel listPanel, final BiConsumer<JPanel, String> filterLogic) {
-    final JPanel searchPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 0, 0));
+    final JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
     final JTextField searchField = new JTextField(20);
     searchField
         .getDocument()
@@ -675,6 +699,110 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       }
     }
     return columnBoxes;
+  }
+
+  private static boolean isStringType(int jdbcType) {
+    return jdbcType == Types.VARCHAR
+        || jdbcType == Types.CHAR
+        || jdbcType == Types.LONGVARCHAR
+        || jdbcType == Types.CLOB;
+  }
+
+  private static boolean isDefaultAiCandidate(String columnName) {
+    String name = columnName.toLowerCase(Locale.ROOT);
+    return name.contains("description")
+        || name.contains("bio")
+        || name.contains("comment")
+        || name.equals("product_name")
+        || name.contains("title")
+        || name.contains("summary")
+        || name.contains("notes")
+        || name.contains("content")
+        || name.equals("full_name")
+        || name.equals("role_name")
+        || name.equals("username")
+        || name.equals("email")
+        || name.equals("status")
+        || name.equals("carrier")
+        || name.equals("method")
+        || name.equals("country");
+  }
+
+  private JComponent createAiColumnSelectionPanel() {
+    final JPanel listPanel = createConfiguredListPanel();
+    final GridBagConstraints c = createDefaultGridBagConstraints();
+    final List<JCheckBox> checkBoxes = new ArrayList<>();
+
+    tables.forEach(
+        table -> {
+          final Set<String> fkCols = table.fkColumnNames();
+          final List<Column> eligibleColumns =
+              table.columns().stream()
+                  .filter(
+                      col ->
+                          isStringType(col.jdbcType())
+                              && !col.primaryKey()
+                              && !fkCols.contains(col.name()))
+                  .toList();
+
+          if (eligibleColumns.isEmpty()) {
+            return;
+          }
+
+          final JLabel tblLabel = new JLabel(table.name());
+          tblLabel.setFont(tblLabel.getFont().deriveFont(Font.BOLD));
+          tblLabel.setBorder(JBUI.Borders.emptyBottom(4));
+
+          final List<JCheckBox> tableBoxes = new ArrayList<>();
+          eligibleColumns.forEach(
+              column -> {
+                final boolean preSelected = isDefaultAiCandidate(column.name());
+                final JCheckBox box = new JCheckBox(column.name());
+                box.setSelected(preSelected);
+                if (preSelected) {
+                  aiColumnsByTable
+                      .computeIfAbsent(table.name(), k -> new LinkedHashSet<>())
+                      .add(column.name());
+                }
+                aiCheckBoxes
+                    .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
+                    .put(column.name(), box);
+                box.addActionListener(
+                    e -> onAiBoxChanged(table.name(), column.name(), box.isSelected()));
+                tableBoxes.add(box);
+                checkBoxes.add(box);
+              });
+
+          listPanel.add(createTablePanel(tblLabel, tableBoxes), c);
+          c.gridy++;
+        });
+
+    return createTogglableListPanel(
+        listPanel,
+        checkBoxes,
+        (box, isSelected) -> {
+          final String tableName = getTableNameForComponent(box);
+          final String columnName = getColumnNameForCheckBox(box);
+          if (Objects.nonNull(tableName)) {
+            onAiBoxChanged(tableName, columnName, isSelected);
+          }
+        },
+        this::filterPanelComponents);
+  }
+
+  private void onAiBoxChanged(String tableName, String columnName, boolean isSelected) {
+    aiColumnsByTable.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
+    if (isSelected) {
+      aiColumnsByTable.get(tableName).add(columnName);
+    } else {
+      aiColumnsByTable.get(tableName).remove(columnName);
+    }
+  }
+
+  public Map<String, Set<String>> getAiColumnsByTable() {
+    final Map<String, Set<String>> out = new LinkedHashMap<>();
+    aiColumnsByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
+    return out;
   }
 
   public Map<String, Set<String>> getSelectionByTable() {

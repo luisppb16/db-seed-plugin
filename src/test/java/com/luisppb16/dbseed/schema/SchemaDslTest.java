@@ -23,8 +23,7 @@ class SchemaDslTest {
 
   @Test
   void schema_nullTables_throwsNPE() {
-    assertThatNullPointerException()
-        .isThrownBy(() -> new SchemaDsl.Schema(null));
+    assertThatNullPointerException().isThrownBy(() -> new SchemaDsl.Schema(null));
   }
 
   @Test
@@ -35,8 +34,7 @@ class SchemaDslTest {
 
   @Test
   void table_nullName_throwsNPE() {
-    assertThatNullPointerException()
-        .isThrownBy(() -> table(null, column("a", SqlType.INT)));
+    assertThatNullPointerException().isThrownBy(() -> table(null, column("a", SqlType.INT)));
   }
 
   @Test
@@ -69,20 +67,16 @@ class SchemaDslTest {
   void toSql_singleTableWithPk() {
     Schema s = schema(table("users", pk("id", SqlType.INT)));
     String sql = toSql(s);
-    assertThat(sql).contains("CREATE TABLE users");
-    assertThat(sql).contains("id INT PRIMARY KEY");
+    assertThat(sql).contains("CREATE TABLE \"users\"");
+    assertThat(sql).contains("\"id\" INT PRIMARY KEY");
   }
 
   @Test
   void toSql_fkReferences() {
     Schema s =
-        schema(
-            table(
-                "orders",
-                pk("id", SqlType.INT),
-                fk("user_id", SqlType.INT, "users", "id")));
+        schema(table("orders", pk("id", SqlType.INT), fk("user_id", SqlType.INT, "users", "id")));
     String sql = toSql(s);
-    assertThat(sql).contains("REFERENCES users(id)");
+    assertThat(sql).contains("REFERENCES \"users\"(\"id\")");
   }
 
   @Test
@@ -96,23 +90,77 @@ class SchemaDslTest {
   void toSql_emptyColumnsTable() {
     Schema s = schema(table("empty"));
     String sql = toSql(s);
-    assertThat(sql).contains("CREATE TABLE empty ()");
+    assertThat(sql).contains("CREATE TABLE \"empty\" ()");
   }
 
   @Test
   void toSql_multipleTables() {
     Schema s = schema(table("a", column("x", SqlType.INT)), table("b", column("y", SqlType.TEXT)));
     String sql = toSql(s);
-    assertThat(sql).contains("CREATE TABLE a");
-    assertThat(sql).contains("CREATE TABLE b");
+    assertThat(sql).contains("CREATE TABLE \"a\"");
+    assertThat(sql).contains("CREATE TABLE \"b\"");
   }
 
   @Test
   void toSql_columnOrderPreserved() {
     Schema s = schema(table("t", column("z", SqlType.INT), column("a", SqlType.INT)));
     String sql = toSql(s);
-    int zIdx = sql.indexOf("z INT");
-    int aIdx = sql.indexOf("a INT");
+    int zIdx = sql.indexOf("\"z\" INT");
+    int aIdx = sql.indexOf("\"a\" INT");
     assertThat(zIdx).isLessThan(aIdx);
+  }
+
+  // ── Identifier quoting ──
+
+  @Test
+  void toSql_reservedWord_quoted() {
+    Schema s = schema(table("order", column("select", SqlType.INT)));
+    String sql = toSql(s);
+    assertThat(sql).contains("CREATE TABLE \"order\"");
+    assertThat(sql).contains("\"select\" INT");
+  }
+
+  @Test
+  void toSql_specialCharsInName_quoted() {
+    Schema s = schema(table("my table", column("my column", SqlType.INT)));
+    String sql = toSql(s);
+    assertThat(sql).contains("\"my table\"");
+    assertThat(sql).contains("\"my column\"");
+  }
+
+  @Test
+  void toSql_embeddedDoubleQuote_escaped() {
+    Schema s = schema(table("tab\"le", column("co\"l", SqlType.INT)));
+    String sql = toSql(s);
+    assertThat(sql).contains("\"tab\"\"le\"");
+    assertThat(sql).contains("\"co\"\"l\"");
+  }
+
+  @Test
+  void toSql_sqlInjectionInTableName_safe() {
+    Schema s = schema(table("users\"; DROP TABLE users; --", column("id", SqlType.INT)));
+    String sql = toSql(s);
+    assertThat(sql).contains("\"users\"\"; DROP TABLE users; --\"");
+    assertThat(sql).doesNotContain("CREATE TABLE \"users\";");
+  }
+
+  @Test
+  void toSql_fkReferences_quoted() {
+    Schema s =
+        schema(
+            table(
+                "child",
+                pk("id", SqlType.INT),
+                fk("parent_id", SqlType.INT, "parent table", "pk col")));
+    String sql = toSql(s);
+    assertThat(sql).contains("REFERENCES \"parent table\"(\"pk col\")");
+  }
+
+  @Test
+  void toSql_uniqueAndNotNull_withQuoting() {
+    Schema s = schema(table("t", column("name", SqlType.VARCHAR, true, null, true)));
+    String sql = toSql(s);
+    assertThat(sql).contains("\"name\" VARCHAR(255) NOT NULL");
+    assertThat(sql).contains("UNIQUE");
   }
 }

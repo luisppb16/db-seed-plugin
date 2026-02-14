@@ -6,39 +6,20 @@
 package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.options.Configurable;
+import com.intellij.openapi.options.ConfigurationException;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
+import com.luisppb16.dbseed.ai.OllamaClient;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.JComponent;
 import org.jetbrains.annotations.Nls;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * IntelliJ settings configurable implementation for the DBSeed plugin configuration interface.
- * <p>
- * This class provides the integration point between the DBSeed plugin's configuration
- * component and IntelliJ's settings framework. It implements the Configurable interface
- * to provide a standardized way for users to access and modify the plugin's global
- * settings through IntelliJ's settings dialog. The class manages the lifecycle of
- * the settings UI component and handles the application and validation of user changes.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Integrating the DBSeed settings component with IntelliJ's settings framework</li>
- *   <li>Managing the lifecycle of the settings UI component</li>
- *   <li>Handling the application of user changes to persistent settings</li>
- *   <li>Providing validation to determine if settings have been modified</li>
- *   <li>Implementing reset functionality to restore current settings</li>
- *   <li>Properly disposing of UI resources when the settings dialog is closed</li>
- * </ul>
- * </p>
- * <p>
- * The implementation follows IntelliJ's conventions for settings configuration,
- * providing proper integration with the IDE's settings validation and persistence
- * mechanisms. It ensures that changes made in the settings dialog are properly
- * synchronized with the persistent settings state and provides appropriate user
- * feedback when changes are applied or reverted.
- * </p>
- */
+/** IntelliJ settings configurable implementation for the DBSeed plugin configuration interface. */
 public class DbSeedSettingsConfigurable implements Configurable {
 
   private DbSeedSettingsComponent mySettingsComponent;
@@ -74,12 +55,48 @@ public class DbSeedSettingsConfigurable implements Configurable {
             mySettingsComponent.getSoftDeleteColumns(), settings.getSoftDeleteColumns())
         || mySettingsComponent.getSoftDeleteUseSchemaDefault()
             != settings.isSoftDeleteUseSchemaDefault()
-        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue());
+        || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue())
+        || mySettingsComponent.getUseAiGeneration() != settings.isUseAiGeneration()
+        || !Objects.equals(
+            mySettingsComponent.getAiApplicationContext(), settings.getAiApplicationContext())
+        || !Objects.equals(mySettingsComponent.getOllamaUrl(), settings.getOllamaUrl())
+        || !Objects.equals(mySettingsComponent.getOllamaModel(), settings.getOllamaModel())
+        || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
+        || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds();
   }
 
   @Override
-  public void apply() {
+  public void apply() throws ConfigurationException {
+    if (mySettingsComponent.getUseAiGeneration()) {
+      String url = mySettingsComponent.getOllamaUrl();
+      if (Objects.isNull(url) || url.trim().isEmpty()) {
+        throw new ConfigurationException(
+            "Please enter a valid Ollama URL when AI generation is enabled.",
+            "Invalid Ollama Configuration");
+      }
+
+      AtomicReference<Exception> pingError = new AtomicReference<>();
+      ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
+        try {
+          new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
+        } catch (Exception e) {
+          pingError.set(e);
+        }
+      }, "Checking Ollama Server...", false, null);
+
+      if (Objects.nonNull(pingError.get())) {
+        Throwable cause = Objects.nonNull(pingError.get().getCause())
+            ? pingError.get().getCause() : pingError.get();
+        throw new ConfigurationException(
+            "No Ollama server found at " + url.trim() + ".\n"
+                + "Ensure Ollama is running and the URL is correct.\n\n"
+                + "Error: " + cause.getMessage(),
+            "Server Not Reachable");
+      }
+    }
+
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+
     settings.setColumnSpinnerStep(mySettingsComponent.getColumnSpinnerStep());
     settings.setDefaultOutputDirectory(mySettingsComponent.getDefaultOutputDirectory());
     settings.setUseLatinDictionary(mySettingsComponent.getUseLatinDictionary());
@@ -89,6 +106,13 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setSoftDeleteColumns(mySettingsComponent.getSoftDeleteColumns());
     settings.setSoftDeleteUseSchemaDefault(mySettingsComponent.getSoftDeleteUseSchemaDefault());
     settings.setSoftDeleteValue(mySettingsComponent.getSoftDeleteValue());
+
+    settings.setUseAiGeneration(mySettingsComponent.getUseAiGeneration());
+    settings.setAiApplicationContext(mySettingsComponent.getAiApplicationContext());
+    settings.setOllamaUrl(mySettingsComponent.getOllamaUrl());
+    settings.setOllamaModel(mySettingsComponent.getOllamaModel());
+    settings.setAiWordCount(mySettingsComponent.getAiWordCount());
+    settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
   }
 
   @Override
@@ -103,10 +127,20 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setSoftDeleteColumns(settings.getSoftDeleteColumns());
     mySettingsComponent.setSoftDeleteUseSchemaDefault(settings.isSoftDeleteUseSchemaDefault());
     mySettingsComponent.setSoftDeleteValue(settings.getSoftDeleteValue());
+
+    mySettingsComponent.setUseAiGeneration(settings.isUseAiGeneration());
+    mySettingsComponent.setAiApplicationContext(settings.getAiApplicationContext());
+    mySettingsComponent.setOllamaUrl(settings.getOllamaUrl());
+    mySettingsComponent.setOllamaModel(settings.getOllamaModel());
+    mySettingsComponent.setAiWordCount(settings.getAiWordCount());
+    mySettingsComponent.setAiRequestTimeout(settings.getAiRequestTimeoutSeconds());
   }
 
   @Override
   public void disposeUIResources() {
+    if (Objects.nonNull(mySettingsComponent)) {
+      mySettingsComponent.dispose();
+    }
     mySettingsComponent = null;
   }
 }

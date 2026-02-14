@@ -15,30 +15,29 @@ import javax.swing.KeyStroke;
 import lombok.experimental.UtilityClass;
 
 /**
- * Comprehensive utility suite for configuring and enhancing UI component behavior in the DBSeed plugin.
- * <p>
- * This utility class centralizes common UI component customization patterns used throughout the
+ * Comprehensive utility suite for configuring and enhancing UI component behavior in the DBSeed
+ * plugin.
+ *
+ * <p>This utility class centralizes common UI component customization patterns used throughout the
  * DBSeed plugin's user interface. It provides specialized methods for enhancing component
- * functionality, improving user experience, and ensuring consistent behavior across different
- * UI elements. The class focuses on addressing common UI/UX challenges and providing reusable
+ * functionality, improving user experience, and ensuring consistent behavior across different UI
+ * elements. The class focuses on addressing common UI/UX challenges and providing reusable
  * solutions for component configuration.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Configuring keyboard navigation and interaction patterns for enhanced accessibility</li>
- *   <li>Customizing spinner controls with intuitive arrow-key functionality</li>
- *   <li>Providing consistent input handling across different component types</li>
- *   <li>Implementing platform-appropriate UI behavior modifications</li>
- *   <li>Centralizing component configuration logic to promote code reuse</li>
+ *   <li>Configuring keyboard navigation and interaction patterns for enhanced accessibility
+ *   <li>Customizing spinner controls with intuitive arrow-key functionality
+ *   <li>Providing consistent input handling across different component types
+ *   <li>Implementing platform-appropriate UI behavior modifications
+ *   <li>Centralizing component configuration logic to promote code reuse
  * </ul>
- * </p>
- * <p>
- * The implementation follows best practices for Swing component manipulation, ensuring proper
- * event handling and maintaining component state integrity. All methods are designed to be
- * safely callable from the Event Dispatch Thread and implement proper null-safety checks
- * to prevent runtime exceptions.
- * </p>
+ *
+ * <p>The implementation follows best practices for Swing component manipulation, ensuring proper
+ * event handling and maintaining component state integrity. All methods are designed to be safely
+ * callable from the Event Dispatch Thread and implement proper null-safety checks to prevent
+ * runtime exceptions.
  */
 @UtilityClass
 public class ComponentUtils {

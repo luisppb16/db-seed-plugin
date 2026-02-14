@@ -39,32 +39,29 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * Visual database schema designer integration for the DBSeed plugin ecosystem.
- * <p>
- * This IntelliJ action provides a comprehensive visual interface for database schema design,
- * enabling users to create and modify database structures through an intuitive graphical
- * interface. The component bridges the gap between visual schema design and programmatic
- * SQL generation, allowing developers to rapidly prototype database structures and instantly
- * generate corresponding DDL statements. The implementation follows modern UI/UX principles
- * with persistent window positioning and responsive design patterns.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>This IntelliJ action provides a comprehensive visual interface for database schema design,
+ * enabling users to create and modify database structures through an intuitive graphical interface.
+ * The component bridges the gap between visual schema design and programmatic SQL generation,
+ * allowing developers to rapidly prototype database structures and instantly generate corresponding
+ * DDL statements. The implementation follows modern UI/UX principles with persistent window
+ * positioning and responsive design patterns.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Providing an intuitive visual interface for database schema creation and modification</li>
- *   <li>Generating syntactically correct SQL DDL statements from visual schema representations</li>
- *   <li>Managing persistent window state and user preferences for optimal workflow continuity</li>
- *   <li>Implementing asynchronous SQL generation to maintain UI responsiveness</li>
- *   <li>Integrating seamlessly with IntelliJ's action system for consistent user experience</li>
- *   <li>Ensuring data integrity through immutable model representations and validation</li>
+ *   <li>Providing an intuitive visual interface for database schema creation and modification
+ *   <li>Generating syntactically correct SQL DDL statements from visual schema representations
+ *   <li>Managing persistent window state and user preferences for optimal workflow continuity
+ *   <li>Implementing asynchronous SQL generation to maintain UI responsiveness
+ *   <li>Integrating seamlessly with IntelliJ's action system for consistent user experience
+ *   <li>Ensuring data integrity through immutable model representations and validation
  * </ul>
- * </p>
- * <p>
- * The implementation utilizes SwingWorker for non-blocking SQL generation and implements
- * proper resource management patterns. The component stores window position preferences
- * using Java's Preferences API to maintain user-customized layouts across IDE sessions.
- * The visual design follows IntelliJ's UI guidelines to ensure consistency with the
- * overall development environment.
- * </p>
+ *
+ * <p>The implementation utilizes SwingWorker for non-blocking SQL generation and implements proper
+ * resource management patterns. The component stores window position preferences using Java's
+ * Preferences API to maintain user-customized layouts across IDE sessions. The visual design
+ * follows IntelliJ's UI guidelines to ensure consistency with the overall development environment.
  */
 public final class SchemaDesigner extends AnAction {
 
@@ -132,7 +129,7 @@ public final class SchemaDesigner extends AnAction {
 
     private void addTable() {
       final String tableName = JOptionPane.showInputDialog(this, "Table name:");
-      if (tableName == null || tableName.isBlank()) {
+      if (Objects.isNull(tableName) || tableName.isBlank()) {
         return;
       }
       final List<SchemaDsl.Column> columns = collectColumns();
@@ -144,8 +141,8 @@ public final class SchemaDesigner extends AnAction {
     private List<SchemaDsl.Column> collectColumns() {
       final List<SchemaDsl.Column> columns = new ArrayList<>();
       String columnName;
-      while ((columnName = JOptionPane.showInputDialog(this, "Column name (blank to finish):"))
-              != null
+      while (Objects.nonNull(
+              columnName = JOptionPane.showInputDialog(this, "Column name (blank to finish):"))
           && !columnName.isBlank()) {
         final Optional<SqlType> type =
             Optional.ofNullable(
@@ -210,9 +207,11 @@ public final class SchemaDesigner extends AnAction {
                     "Error",
                     JOptionPane.ERROR_MESSAGE);
               } catch (final ExecutionException e) {
+                final String errorMsg = Objects.nonNull(e.getCause())
+                    ? e.getCause().getMessage() : e.getMessage();
                 JOptionPane.showMessageDialog(
                     SchemaDesignerFrame.this,
-                    "Error generating SQL: " + e.getMessage(),
+                    "Error generating SQL: " + errorMsg,
                     "Error",
                     JOptionPane.ERROR_MESSAGE);
               }

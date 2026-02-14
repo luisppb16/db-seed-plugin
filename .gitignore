@@ -48,3 +48,4 @@ gradle/wrapper/gradle-wrapper.jar
 .project
 .factorypath
 .classpath
+/src/main/resources/db

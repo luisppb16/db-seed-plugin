@@ -12,6 +12,7 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -30,30 +31,29 @@ import org.jetbrains.annotations.Nullable;
 
 /**
  * Intelligent database driver selection interface with contextual configuration capabilities.
- * <p>
- * This dialog component serves as the entry point for database connectivity in the DBSeed plugin,
- * providing users with a curated list of supported database drivers. The interface implements
- * dynamic UI adaptation based on the selected driver type, offering specialized configuration
- * options for databases with unique requirements such as Google BigQuery. The component maintains
- * user preferences for driver selection and provides intelligent defaults based on previous usage.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>This dialog component serves as the entry point for database connectivity in the DBSeed
+ * plugin, providing users with a curated list of supported database drivers. The interface
+ * implements dynamic UI adaptation based on the selected driver type, offering specialized
+ * configuration options for databases with unique requirements such as Google BigQuery. The
+ * component maintains user preferences for driver selection and provides intelligent defaults based
+ * on previous usage.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Presenting a curated list of available database drivers with user-friendly names</li>
- *   <li>Implementing dynamic UI adaptation for database-specific configuration requirements</li>
- *   <li>Managing user preferences for driver selection across IDE sessions</li>
- *   <li>Providing contextual configuration interfaces for specialized database systems</li>
- *   <li>Validating driver-specific configuration parameters before proceeding</li>
- *   <li>Generating customized driver configurations with runtime parameters</li>
+ *   <li>Presenting a curated list of available database drivers with user-friendly names
+ *   <li>Implementing dynamic UI adaptation for database-specific configuration requirements
+ *   <li>Managing user preferences for driver selection across IDE sessions
+ *   <li>Providing contextual configuration interfaces for specialized database systems
+ *   <li>Validating driver-specific configuration parameters before proceeding
+ *   <li>Generating customized driver configurations with runtime parameters
  * </ul>
- * </p>
- * <p>
- * The implementation follows a reactive UI pattern where selection changes trigger immediate
+ *
+ * <p>The implementation follows a reactive UI pattern where selection changes trigger immediate
  * interface adaptations. Special attention is given to database systems with unique requirements,
  * such as cloud-based solutions that require additional authentication parameters. The dialog
  * ensures proper validation of required fields before allowing progression in the workflow.
- * </p>
  */
 @Slf4j
 public class DriverSelectionDialog extends DialogWrapper {
@@ -96,7 +96,7 @@ public class DriverSelectionDialog extends DialogWrapper {
             new DefaultComboBoxModel<>(
                 drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
 
-    if (lastDriverName != null) {
+    if (Objects.nonNull(lastDriverName)) {
       for (int i = 0; i < drivers.size(); i++) {
         if (drivers.get(i).name().equals(lastDriverName)) {
           box.setSelectedIndex(i);
@@ -163,10 +163,11 @@ public class DriverSelectionDialog extends DialogWrapper {
 
     DriverInfo selected = drivers.get(comboBox.getSelectedIndex());
 
-    return Optional.of(selected)
-        .filter(driver -> "Google BigQuery".equalsIgnoreCase(driver.name()))
-        .map(this::configureBigQueryDriver)
-        .or(() -> Optional.of(selected));
+    if ("Google BigQuery".equalsIgnoreCase(selected.name())) {
+      DriverInfo configured = configureBigQueryDriver(selected);
+      return Optional.ofNullable(configured);
+    }
+    return Optional.of(selected);
   }
 
   private DriverInfo configureBigQueryDriver(final DriverInfo selectedDriver) {

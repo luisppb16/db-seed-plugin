@@ -5,9 +5,12 @@
 
 package com.luisppb16.dbseed.action;
 
+import static com.luisppb16.dbseed.model.Constant.APP_NAME;
+
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
@@ -31,7 +34,6 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
-import com.luisppb16.dbseed.util.NotificationHelper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,7 +41,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -54,42 +55,65 @@ import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Comprehensive database seeding workflow orchestrator for the DBSeed plugin ecosystem.
- * <p>
- * This IntelliJ action class implements the complete workflow for database seeding operations,
- * from driver selection through schema introspection, data generation, and SQL output.
- * It manages complex multi-step processes involving user interaction, database connectivity,
- * schema analysis, and data generation with sophisticated progress tracking and error handling.
- * The action coordinates multiple subsystems to provide a seamless user experience.
- * </p>
- * <p>
- * Key responsibilities include:
+ * Advanced database seeding workflow orchestrator for the DBSeed plugin ecosystem.
+ *
+ * <p>This action class serves as the primary entry point for the DBSeed plugin functionality,
+ * providing a comprehensive solution for generating synthetic database seed data. It orchestrates
+ * the entire seeding process from initial database connection establishment through final SQL
+ * script generation and file output. The class integrates seamlessly with the IntelliJ platform
+ * action system and provides a sophisticated user interface workflow for configuring seeding
+ * parameters.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Initiating the database seeding workflow with driver selection</li>
- *   <li>Managing multi-step dialog sequences for configuration gathering</li>
- *   <li>Performing schema introspection and dependency analysis</li>
- *   <li>Coordinating data generation with user-defined constraints and preferences</li>
- *   <li>Generating and saving SQL scripts with proper foreign key ordering</li>
- *   <li>Handling large dataset warnings and user confirmations</li>
+ *   <li>Initiating the database connection workflow and driver selection process
+ *   <li>Managing the multi-stage configuration dialog sequence (connection, table selection, PK/UUID configuration)
+ *   <li>Performing schema introspection to analyze database structure and relationships
+ *   <li>Coordinating data generation with advanced features like AI-powered content creation
+ *   <li>Handling complex dependency resolution for tables with foreign key relationships
+ *   <li>Generating optimized SQL scripts with proper insertion order and constraint management
+ *   <li>Managing file output and integration with the IntelliJ editor environment
+ *   <li>Providing progress tracking and error handling throughout the workflow
+ *   <li>Implementing safeguards for large-scale data generation operations
  * </ul>
- * </p>
- * <p>
- * The implementation uses IntelliJ's progress management system for long-running operations
- * and implements proper exception handling with user notifications. It manages complex
- * state transitions between different configuration dialogs and ensures proper cleanup
- * of database resources. The action also handles circular foreign key detection and
- * implements appropriate resolution strategies.
- * </p>
+ *
+ * <p>The class implements a robust error handling mechanism with appropriate user feedback
+ * through IntelliJ's notification system. It supports various database systems through
+ * dynamic driver loading and dialect-specific SQL generation. The workflow includes
+ * intelligent cycle detection and resolution for circular foreign key dependencies,
+ * ensuring that data can be generated even in complex schema scenarios.
+ *
+ * <p>Advanced features include AI-powered data generation using external Ollama LLM servers,
+ * configurable dictionary-based content generation, soft-delete column handling, and
+ * repetition rule support for consistent test data. The class also provides extensive
+ * configuration options for numeric precision, UUID generation, and exclusion rules.
+ *
+ * <p>Thread safety is maintained through proper use of IntelliJ's application threading
+ * model, with background tasks executed through the progress manager and UI updates
+ * performed on the EDT as appropriate. The class follows the builder pattern for
+ * configuration objects and leverages functional programming concepts for data processing.
+ *
+ * @author Luis Paolo Pepe Barra (@LuisPPB16)
+ * @version 1.3.0
+ * @since 2024.1
+ * @see AnAction
+ * @see SeedDialog
+ * @see PkUuidSelectionDialog
+ * @see SchemaIntrospector
+ * @see DataGenerator
+ * @see SqlGenerator
+ * @see DriverLoader
  */
 @Slf4j
-public class SeedDatabaseAction extends AnAction {
+public final class SeedDatabaseAction extends AnAction {
 
   private static final long INSERT_THRESHOLD = 10000L;
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
-    if (project == null) {
+    if (Objects.isNull(project)) {
       log.debug("Action canceled: no active project.");
       return;
     }
@@ -151,19 +175,17 @@ public class SeedDatabaseAction extends AnAction {
 
               @Override
               public void onSuccess() {
-                if (errorRef.get() != null) {
+                if (Objects.nonNull(errorRef.get())) {
                   handleException(project, "Error introspecting schema: ", errorRef.get());
                   return;
                 }
                 final List<Table> tables = tablesRef.get();
-                if (tables == null || tables.isEmpty()) {
-                  notifyError(
-                      project, "No tables found in schema: " + config.schema());
+                if (Objects.isNull(tables) || tables.isEmpty()) {
+                  Messages.showErrorDialog(
+                      project, "No tables found in schema: " + config.schema(), "DBSeed Error");
                   return;
                 }
-                ApplicationManager.getApplication()
-                    .invokeLater(
-                        () -> continueGeneration(project, config, tables, chosenDriver));
+                continueGeneration(project, config, tables, chosenDriver);
               }
             });
   }
@@ -179,14 +201,14 @@ public class SeedDatabaseAction extends AnAction {
           String.format(
               "This operation will generate approximately %,d rows."
                   + " The plugin can handle them, but your database may take some time to insert them.%n%n"
-                  + "Do you still want to continue?",
+                  + "Do you still wish to continue?",
               totalRows);
 
       final int result =
           Messages.showOkCancelDialog(
               project,
               message,
-              "Large Data Seeding Operation",
+              "Massive Data Seeding Operation",
               "Continue",
               "Cancel",
               Messages.getWarningIcon());
@@ -213,6 +235,8 @@ public class SeedDatabaseAction extends AnAction {
         final Map<String, Set<String>> selectedPkUuidColumns = pkDialog.getSelectionByTable();
         final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
         final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
+        final Map<String, Set<String>> aiColumns = pkDialog.getAiColumnsByTable();
+        final Set<String> excludedTables = pkDialog.getExcludedTables();
 
         final Map<String, Map<String, String>> pkUuidOverrides =
             selectedPkUuidColumns.entrySet().stream()
@@ -229,6 +253,24 @@ public class SeedDatabaseAction extends AnAction {
                     Collectors.toMap(Map.Entry::getKey, entry -> List.copyOf(entry.getValue())));
 
         final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+
+        if (settings.isUseAiGeneration()
+            && (Objects.isNull(settings.getAiApplicationContext())
+                || settings.getAiApplicationContext().isBlank())) {
+          final int aiResult =
+              Messages.showYesNoDialog(
+                  project,
+                  "AI generation is enabled but the application context is empty.\n"
+                      + "Without context, the AI model may produce less relevant data.\n\n"
+                      + "Continue without application context?",
+                  "Empty AI Application Context",
+                  "Continue",
+                  "Cancel",
+                  Messages.getWarningIcon());
+          if (aiResult != Messages.YES) {
+            return;
+          }
+        }
 
         final GenerationConfig finalConfig =
             new GenerationConfig(
@@ -247,13 +289,15 @@ public class SeedDatabaseAction extends AnAction {
 
         ProgressManager.getInstance()
             .run(
-                new Task.Backgroundable(project, "Generating SQL", false) {
+                new Task.Backgroundable(project, APP_NAME.getValue(), true) {
                   @Override
                   public void run(@NotNull final ProgressIndicator indicator) {
                     try {
                       indicator.setIndeterminate(false);
                       indicator.setText("Generating data...");
-                      indicator.setFraction(0.3);
+
+                      final List<Table> filteredTables =
+                          ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
@@ -264,7 +308,7 @@ public class SeedDatabaseAction extends AnAction {
                       final DataGenerator.GenerationResult gen =
                           DataGenerator.generate(
                               DataGenerator.GenerationParameters.builder()
-                                  .tables(ordered)
+                                  .tables(filteredTables)
                                   .rowsPerTable(finalConfig.rowsPerTable())
                                   .deferred(effectiveDeferred)
                                   .pkUuidOverrides(pkUuidOverrides)
@@ -277,20 +321,27 @@ public class SeedDatabaseAction extends AnAction {
                                   .softDeleteUseSchemaDefault(
                                       finalConfig.softDeleteUseSchemaDefault())
                                   .softDeleteValue(finalConfig.softDeleteValue())
+                                  .numericScale(finalConfig.numericScale())
+                                  .aiColumns(aiColumns)
+                                  .applicationContext(
+                                      settings.isUseAiGeneration()
+                                          ? settings.getAiApplicationContext()
+                                          : null)
+                                  .indicator(indicator)
                                   .build());
                       log.info(
                           "Data generation completed for {} rows per table.",
                           finalConfig.rowsPerTable());
 
+                      if (indicator.isCanceled()) return;
+
                       indicator.setText("Building SQL...");
-                      indicator.setFraction(0.8);
+                      indicator.setText2("");
                       final String sql =
                           SqlGenerator.generate(
                               gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
                       log.info("SQL script built successfully.");
 
-                      indicator.setText("Opening editor...");
-                      indicator.setFraction(1.0);
                       ApplicationManager.getApplication()
                           .invokeLater(() -> saveAndOpenSqlFile(project, sql));
                     } catch (final Exception ex) {
@@ -310,7 +361,13 @@ public class SeedDatabaseAction extends AnAction {
     final String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
     final String fileName = String.format("V%s__seed.sql", timestamp);
 
-    final Path path = Paths.get(Objects.requireNonNull(project.getBasePath()), outputDir, fileName);
+    final String basePath = project.getBasePath();
+    if (Objects.isNull(basePath)) {
+      Messages.showErrorDialog(project, "Could not determine project base path.", "DBSeed Error");
+      return;
+    }
+
+    final Path path = Paths.get(basePath, outputDir, fileName);
 
     try {
       Files.createDirectories(path.getParent());
@@ -318,12 +375,12 @@ public class SeedDatabaseAction extends AnAction {
 
       final VirtualFile virtualFile =
           LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
-      if (virtualFile != null) {
+      if (Objects.nonNull(virtualFile)) {
         FileEditorManager.getInstance(project).openFile(virtualFile, true);
         log.info("File {} saved and opened in the editor.", fileName);
       } else {
         log.warn("Could not find VirtualFile for path: {}", path);
-        notifyError(project, "Could not open generated SQL file.");
+        Messages.showErrorDialog(project, "Could not open generated SQL file.", "DBSeed Error");
       }
     } catch (final IOException e) {
       handleException(project, "Error saving SQL file: ", e);
@@ -332,10 +389,10 @@ public class SeedDatabaseAction extends AnAction {
 
   private void handleException(final Project project, final String message, final Exception ex) {
     log.error(message, ex);
-    notifyError(project, message + ex.getMessage());
-  }
-
-  private void notifyError(final Project project, final String message) {
-    NotificationHelper.notifyError(project, message);
+    final String fullMessage = message + ex.getMessage();
+    ApplicationManager.getApplication()
+        .invokeLater(
+            () -> Messages.showErrorDialog(project, fullMessage, "DBSeed Error"),
+            ModalityState.defaultModalityState());
   }
 }

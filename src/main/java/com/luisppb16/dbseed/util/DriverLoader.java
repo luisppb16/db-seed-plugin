@@ -25,36 +25,36 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
 /**
  * Comprehensive JDBC driver management system for the DBSeed plugin ecosystem.
- * <p>
- * This utility class orchestrates the complete lifecycle of JDBC drivers required by the DBSeed
- * plugin, from user selection through download, loading, and registration. It addresses the
- * complex challenge of dynamically acquiring database drivers at runtime, which is essential
- * for supporting diverse database systems without bundling all possible drivers with the plugin.
- * The class implements sophisticated caching mechanisms and integrates seamlessly with IntelliJ's
- * project management system to provide optimal user experience.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>This utility class orchestrates the complete lifecycle of JDBC drivers required by the DBSeed
+ * plugin, from user selection through download, loading, and registration. It addresses the complex
+ * challenge of dynamically acquiring database drivers at runtime, which is essential for supporting
+ * diverse database systems without bundling all possible drivers with the plugin. The class
+ * implements sophisticated caching mechanisms and integrates seamlessly with IntelliJ's project
+ * management system to provide optimal user experience.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Managing user-driven driver selection through intuitive dialog interfaces</li>
- *   <li>Automated download and caching of JDBC drivers from Maven repositories</li>
- *   <li>Dynamic loading of drivers using isolated class loaders to prevent conflicts</li>
- *   <li>Registration of loaded drivers with the JDBC DriverManager via DriverShim wrapper</li>
- *   <li>Maintaining user preferences for driver selection across IDE sessions</li>
- *   <li>Implementing robust error handling and recovery mechanisms for network operations</li>
+ *   <li>Managing user-driven driver selection through intuitive dialog interfaces
+ *   <li>Automated download and caching of JDBC drivers from Maven repositories
+ *   <li>Dynamic loading of drivers using isolated class loaders to prevent conflicts
+ *   <li>Registration of loaded drivers with the JDBC DriverManager via DriverShim wrapper
+ *   <li>Maintaining user preferences for driver selection across IDE sessions
+ *   <li>Implementing robust error handling and recovery mechanisms for network operations
  * </ul>
- * </p>
- * <p>
- * The implementation follows security-conscious practices by isolating dynamically loaded
+ *
+ * <p>The implementation follows security-conscious practices by isolating dynamically loaded
  * drivers in separate class loaders, preventing potential conflicts with the IDE's existing
- * classpath. The system also implements intelligent caching to minimize network traffic
- * and improve performance on subsequent accesses.
- * </p>
+ * classpath. The system also implements intelligent caching to minimize network traffic and improve
+ * performance on subsequent accesses.
  */
 @Slf4j
 @UtilityClass
@@ -63,6 +63,7 @@ public class DriverLoader {
   private static final Path DRIVER_DIR =
       Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
+  private static final Set<String> LOADED_DRIVERS = ConcurrentHashMap.newKeySet();
 
   static {
     try {
@@ -116,7 +117,12 @@ public class DriverLoader {
       downloadDriver(info, jarPath);
     }
 
-    loadDriver(jarPath.toUri().toURL(), info.driverClass());
+    if (!LOADED_DRIVERS.contains(info.driverClass())) {
+      loadDriver(jarPath.toUri().toURL(), info.driverClass());
+      LOADED_DRIVERS.add(info.driverClass());
+    } else {
+      log.debug("Driver {} already loaded, skipping registration.", info.driverClass());
+    }
   }
 
   private static void downloadDriver(final DriverInfo info, final Path target)

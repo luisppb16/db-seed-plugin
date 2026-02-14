@@ -20,26 +20,27 @@ import java.util.UUID;
 
 /**
  * Property-driven foundation for database dialect implementations.
- * <p>
- * All SQL dialect behavior is configured via {@code .properties} files loaded from
- * the classpath ({@code /dialects/<name>.properties}). This eliminates the need for
- * separate Java classes per database — each database's syntax is fully described by
- * its properties file.
- * </p>
- * <p>
- * Supported properties:
+ *
+ * <p>All SQL dialect behavior is configured via {@code .properties} files loaded from the classpath
+ * ({@code /dialects/<name>.properties}). This eliminates the need for separate Java classes per
+ * database — each database's syntax is fully described by its properties file.
+ *
+ * <p>Supported properties:
+ *
  * <ul>
- *   <li>{@code quoteChar} / {@code quoteEscape} — identifier quoting</li>
- *   <li>{@code uppercaseIdentifiers} — whether to uppercase identifiers before quoting (e.g. Oracle)</li>
- *   <li>{@code booleanTrue} / {@code booleanFalse} — boolean literals</li>
- *   <li>{@code beginTransaction} / {@code commitTransaction} — transaction control</li>
- *   <li>{@code disableConstraints} / {@code enableConstraints} — FK constraint management</li>
- *   <li>{@code dateFormat} / {@code timestampFormat} / {@code uuidFormat} — type-specific formatting</li>
- *   <li>{@code batchHeader} / {@code batchRowPrefix} / {@code batchRowSuffix} / {@code batchRowSeparator} / {@code batchFooter} — INSERT batch templates</li>
- *   <li>{@code maxBatchSize} — maximum rows per batch INSERT (default 1000)</li>
- *   <li>{@code supportsMultiRowInsert} — whether multi-row VALUES is supported (default true)</li>
+ *   <li>{@code quoteChar} / {@code quoteEscape} — identifier quoting
+ *   <li>{@code uppercaseIdentifiers} — whether to uppercase identifiers before quoting (e.g.
+ *       Oracle)
+ *   <li>{@code booleanTrue} / {@code booleanFalse} — boolean literals
+ *   <li>{@code beginTransaction} / {@code commitTransaction} — transaction control
+ *   <li>{@code disableConstraints} / {@code enableConstraints} — FK constraint management
+ *   <li>{@code dateFormat} / {@code timestampFormat} / {@code uuidFormat} — type-specific
+ *       formatting
+ *   <li>{@code batchHeader} / {@code batchRowPrefix} / {@code batchRowSuffix} / {@code
+ *       batchRowSeparator} / {@code batchFooter} — INSERT batch templates
+ *   <li>{@code maxBatchSize} — maximum rows per batch INSERT (default 1000)
+ *   <li>{@code supportsMultiRowInsert} — whether multi-row VALUES is supported (default true)
  * </ul>
- * </p>
  */
 public class AbstractDialect implements DatabaseDialect {
 
@@ -47,9 +48,9 @@ public class AbstractDialect implements DatabaseDialect {
   protected final Properties props = new Properties();
 
   protected AbstractDialect(String resourceName) {
-    if (resourceName != null) {
+    if (Objects.nonNull(resourceName)) {
       try (InputStream is = getClass().getResourceAsStream("/dialects/" + resourceName)) {
-        if (is != null) {
+        if (Objects.nonNull(is)) {
           props.load(is);
         }
       } catch (IOException ignored) {
@@ -66,8 +67,7 @@ public class AbstractDialect implements DatabaseDialect {
   public String quote(String identifier) {
     String quoteChar = props.getProperty("quoteChar", "\"");
     String quoteEscape = props.getProperty("quoteEscape", "\"\"");
-    boolean uppercase =
-        Boolean.parseBoolean(props.getProperty("uppercaseIdentifiers", "false"));
+    boolean uppercase = Boolean.parseBoolean(props.getProperty("uppercaseIdentifiers", "false"));
     String id = uppercase ? identifier.toUpperCase(Locale.ROOT) : identifier;
     return quoteChar + id.replace(quoteChar, quoteEscape) + quoteChar;
   }
@@ -101,7 +101,7 @@ public class AbstractDialect implements DatabaseDialect {
 
   @Override
   public void formatValue(Object value, StringBuilder sb) {
-    if (value == null) {
+    if (Objects.isNull(value)) {
       sb.append(NULL_STR);
     } else {
       switch (value) {
@@ -143,7 +143,11 @@ public class AbstractDialect implements DatabaseDialect {
   }
 
   protected String escapeSql(String s) {
-    return s.replace("'", "''");
+    String result = s;
+    if (Boolean.parseBoolean(props.getProperty("escapeBackslash", "false"))) {
+      result = result.replace("\\", "\\\\");
+    }
+    return result.replace("'", "''");
   }
 
   @Override
@@ -155,8 +159,7 @@ public class AbstractDialect implements DatabaseDialect {
       List<String> columnOrder) {
 
     int maxBatch = Integer.parseInt(props.getProperty("maxBatchSize", "1000"));
-    boolean multiRow =
-        Boolean.parseBoolean(props.getProperty("supportsMultiRowInsert", "true"));
+    boolean multiRow = Boolean.parseBoolean(props.getProperty("supportsMultiRowInsert", "true"));
 
     String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
     String prefix = props.getProperty("batchRowPrefix", "(");

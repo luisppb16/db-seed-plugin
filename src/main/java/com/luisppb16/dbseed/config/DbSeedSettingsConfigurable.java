@@ -7,16 +7,13 @@ package com.luisppb16.dbseed.config;
 
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
-import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
-import com.intellij.openapi.progress.Task;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.JComponent;
 import org.jetbrains.annotations.Nls;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /** IntelliJ settings configurable implementation for the DBSeed plugin configuration interface. */
@@ -76,21 +73,31 @@ public class DbSeedSettingsConfigurable implements Configurable {
       }
 
       AtomicReference<Exception> pingError = new AtomicReference<>();
-      ProgressManager.getInstance().runProcessWithProgressSynchronously(() -> {
-        try {
-          new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
-        } catch (Exception e) {
-          pingError.set(e);
-        }
-      }, "Checking Ollama Server...", false, null);
+      ProgressManager.getInstance()
+          .runProcessWithProgressSynchronously(
+              () -> {
+                try {
+                  new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
+                } catch (Exception e) {
+                  pingError.set(e);
+                }
+              },
+              "Checking Ollama Server...",
+              false,
+              null);
 
       if (Objects.nonNull(pingError.get())) {
-        Throwable cause = Objects.nonNull(pingError.get().getCause())
-            ? pingError.get().getCause() : pingError.get();
+        Throwable cause =
+            Objects.nonNull(pingError.get().getCause())
+                ? pingError.get().getCause()
+                : pingError.get();
         throw new ConfigurationException(
-            "No Ollama server found at " + url.trim() + ".\n"
+            "No Ollama server found at "
+                + url.trim()
+                + ".\n"
                 + "Ensure Ollama is running and the URL is correct.\n\n"
-                + "Error: " + cause.getMessage(),
+                + "Error: "
+                + cause.getMessage(),
             "Server Not Reachable");
       }
     }

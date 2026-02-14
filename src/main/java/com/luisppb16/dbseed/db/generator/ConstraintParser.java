@@ -149,9 +149,7 @@ public final class ConstraintParser {
     }
 
     final Set<String> allColumns =
-        combinations.stream()
-            .flatMap(m -> m.keySet().stream())
-            .collect(Collectors.toSet());
+        combinations.stream().flatMap(m -> m.keySet().stream()).collect(Collectors.toSet());
 
     return new MultiColumnConstraint(allColumns, combinations);
   }
@@ -331,7 +329,9 @@ public final class ConstraintParser {
   private Double updateLowerBound(final String op, final double val, final Double currentLower) {
     return switch (op) {
       case ">" ->
-          Objects.isNull(currentLower) ? Math.nextUp(val) : Math.max(currentLower, Math.nextUp(val));
+          Objects.isNull(currentLower)
+              ? Math.nextUp(val)
+              : Math.max(currentLower, Math.nextUp(val));
       case ">=", "=" -> Objects.isNull(currentLower) ? val : Math.max(currentLower, val);
       default -> currentLower;
     };
@@ -340,7 +340,9 @@ public final class ConstraintParser {
   private Double updateUpperBound(final String op, final double val, final Double currentUpper) {
     return switch (op) {
       case "<" ->
-          Objects.isNull(currentUpper) ? Math.nextDown(val) : Math.min(currentUpper, Math.nextDown(val));
+          Objects.isNull(currentUpper)
+              ? Math.nextDown(val)
+              : Math.min(currentUpper, Math.nextDown(val));
       case "<=", "=" -> Objects.isNull(currentUpper) ? val : Math.min(currentUpper, val);
       default -> currentUpper;
     };
@@ -426,8 +428,7 @@ public final class ConstraintParser {
   private record ColumnPatterns(
       Pattern between, Pattern range, Pattern in, Pattern anyArray, Pattern eq, Pattern len) {
     private static final int MAX_CACHE_SIZE = 500;
-    private static final Map<String, ColumnPatterns> CACHE =
-        new ConcurrentHashMap<>();
+    private static final Map<String, ColumnPatterns> CACHE = new ConcurrentHashMap<>();
 
     static ColumnPatterns forColumn(final String columnName) {
       if (CACHE.size() >= MAX_CACHE_SIZE) {

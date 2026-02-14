@@ -23,21 +23,25 @@ import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
 
 /**
- * Advanced topological sorting algorithm for database table dependency resolution in the DBSeed plugin.
+ * Advanced topological sorting algorithm for database table dependency resolution in the DBSeed
+ * plugin.
  *
- * <p>This utility class implements sophisticated graph algorithms for determining the correct order in
- * which database tables should be processed during data generation, taking into account foreign key
- * dependencies. It combines Tarjan's algorithm for strongly connected components detection with
- * Kahn's algorithm for topological sorting to handle complex scenarios including circular dependencies.
- * The class provides mechanisms for identifying tables that require deferred constraint processing
- * due to non-nullable foreign key relationships.
+ * <p>This utility class implements sophisticated graph algorithms for determining the correct order
+ * in which database tables should be processed during data generation, taking into account foreign
+ * key dependencies. It combines Tarjan's algorithm for strongly connected components detection with
+ * Kahn's algorithm for topological sorting to handle complex scenarios including circular
+ * dependencies. The class provides mechanisms for identifying tables that require deferred
+ * constraint processing due to non-nullable foreign key relationships.
  *
  * <p>Key responsibilities include:
  *
  * <ul>
- *   <li>Computing topological order of tables based on foreign key dependencies using Kahn's algorithm
- *   <li>Detecting and identifying cyclic dependencies in the table dependency graph using Tarjan's algorithm
- *   <li>Determining when deferred constraint processing is required for non-nullable foreign key cycles
+ *   <li>Computing topological order of tables based on foreign key dependencies using Kahn's
+ *       algorithm
+ *   <li>Detecting and identifying cyclic dependencies in the table dependency graph using Tarjan's
+ *       algorithm
+ *   <li>Determining when deferred constraint processing is required for non-nullable foreign key
+ *       cycles
  *   <li>Providing efficient algorithms for dependency resolution with O(V+E) complexity
  *   <li>Returning both ordered tables and detected cycles for further processing and analysis
  *   <li>Optimizing for performance with large numbers of tables and complex relationship graphs
@@ -54,16 +58,15 @@ import lombok.experimental.UtilityClass;
  *
  * <p>Advanced features include cycle detection and classification, with special handling for
  * self-referencing tables and multi-table cycles. The algorithm identifies when non-nullable
- * foreign key constraints in cycles require deferred constraint processing to allow data
- * insertion. The implementation includes optimizations for memory usage and performance,
- * using efficient data structures such as LinkedHashMap for predictable iteration order
- * and HashSet for fast lookups.
+ * foreign key constraints in cycles require deferred constraint processing to allow data insertion.
+ * The implementation includes optimizations for memory usage and performance, using efficient data
+ * structures such as LinkedHashMap for predictable iteration order and HashSet for fast lookups.
  *
  * <p>The class handles edge cases such as isolated tables with no dependencies, self-referencing
  * foreign keys, and complex multi-table dependency chains. It provides deterministic ordering
  * through lexicographic sorting of tables within strongly connected components, ensuring
- * reproducible results across multiple executions. The algorithm is resilient to schema changes
- * and adapts to varying dependency structures dynamically.
+ * reproducible results across multiple executions. The algorithm is resilient to schema changes and
+ * adapts to varying dependency structures dynamically.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
  * @version 1.3.0

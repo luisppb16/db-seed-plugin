@@ -93,8 +93,7 @@ public class SchemaDsl {
 
   private static String columnSql(final Column column) {
     final StringBuilder sql =
-        new StringBuilder(
-            "%s %s".formatted(quoteIdentifier(column.name()), column.type().toSql()));
+        new StringBuilder("%s %s".formatted(quoteIdentifier(column.name()), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");

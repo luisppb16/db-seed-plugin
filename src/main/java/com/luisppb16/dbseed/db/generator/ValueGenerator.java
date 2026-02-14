@@ -99,7 +99,8 @@ public final class ValueGenerator {
       final double v;
       if (value instanceof Number n) v = n.doubleValue();
       else v = Double.parseDouble(value.toString());
-      return (Objects.nonNull(pc.min()) && v < pc.min()) || (Objects.nonNull(pc.max()) && v > pc.max());
+      return (Objects.nonNull(pc.min()) && v < pc.min())
+          || (Objects.nonNull(pc.max()) && v > pc.max());
     } catch (final NumberFormatException e) {
       return true;
     }
@@ -132,7 +133,8 @@ public final class ValueGenerator {
     }
 
     Integer maxLen = Objects.nonNull(constraint) ? constraint.maxLength() : null;
-    if (Objects.isNull(maxLen) || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
+    if (Objects.isNull(maxLen) || maxLen <= 0)
+      maxLen = column.length() > 0 ? column.length() : null;
 
     return generateDefaultValue(column, rowIndex, maxLen);
   }
@@ -212,7 +214,8 @@ public final class ValueGenerator {
       case Types.DATE ->
           Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, DATE_RANGE_DAYS)));
       case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
-          Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
+          Timestamp.from(
+              Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
       case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
       case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
       default -> index;
@@ -224,7 +227,9 @@ public final class ValueGenerator {
     final int len = (Objects.nonNull(maxLen) && maxLen > 0) ? maxLen : DEFAULT_STRING_LENGTH;
     if (len == ISO_COUNTRY_CODE_2_LEN) return faker.country().countryCode2();
     if (len == ISO_COUNTRY_CODE_3_LEN) return faker.country().countryCode3();
-    if (len == IBAN_ES_LEN) return normalizeToLength(IBAN_ES_PREFIX + faker.number().digits(IBAN_ES_DIGITS), len, jdbcType);
+    if (len == IBAN_ES_LEN)
+      return normalizeToLength(
+          IBAN_ES_PREFIX + faker.number().digits(IBAN_ES_DIGITS), len, jdbcType);
 
     boolean useDictionary = !dictionaryWords.isEmpty();
     if (useDictionary && useLatinDictionary) {
@@ -233,14 +238,20 @@ public final class ValueGenerator {
 
     if (useDictionary) {
       final int numWords =
-          ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), MAX_DICTIONARY_WORDS));
+          ThreadLocalRandom.current()
+              .nextInt(1, Math.min(dictionaryWords.size(), MAX_DICTIONARY_WORDS));
       final StringBuilder phraseBuilder = new StringBuilder();
       for (int i = 0; i < numWords; i++) {
         phraseBuilder.append(pickRandom(dictionaryWords, Types.VARCHAR)).append(" ");
       }
       return normalizeToLength(phraseBuilder.toString().trim(), len, jdbcType);
     } else {
-      final int numWords = ThreadLocalRandom.current().nextInt(MIN_FAKER_WORDS, Math.clamp(len / FAKER_WORDS_DIVISOR, MIN_FAKER_WORDS_CLAMP, MAX_FAKER_WORDS_CLAMP));
+      final int numWords =
+          ThreadLocalRandom.current()
+              .nextInt(
+                  MIN_FAKER_WORDS,
+                  Math.clamp(
+                      len / FAKER_WORDS_DIVISOR, MIN_FAKER_WORDS_CLAMP, MAX_FAKER_WORDS_CLAMP));
       final String phrase = String.join(" ", faker.lorem().words(numWords));
       return normalizeToLength(phrase, len, jdbcType);
     }

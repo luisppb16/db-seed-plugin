@@ -23,7 +23,6 @@ import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
-import java.sql.Types;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -31,6 +30,7 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
+import java.sql.Types;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -132,6 +132,33 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     initDefaults();
     setOKButtonText("Generate");
     init();
+  }
+
+  private static boolean isStringType(int jdbcType) {
+    return jdbcType == Types.VARCHAR
+        || jdbcType == Types.CHAR
+        || jdbcType == Types.LONGVARCHAR
+        || jdbcType == Types.CLOB;
+  }
+
+  private static boolean isDefaultAiCandidate(String columnName) {
+    String name = columnName.toLowerCase(Locale.ROOT);
+    return name.contains("description")
+        || name.contains("bio")
+        || name.contains("comment")
+        || name.equals("product_name")
+        || name.contains("title")
+        || name.contains("summary")
+        || name.contains("notes")
+        || name.contains("content")
+        || name.equals("full_name")
+        || name.equals("role_name")
+        || name.equals("username")
+        || name.equals("email")
+        || name.equals("status")
+        || name.equals("carrier")
+        || name.equals("method")
+        || name.equals("country");
   }
 
   private void initDefaults() {
@@ -699,33 +726,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       }
     }
     return columnBoxes;
-  }
-
-  private static boolean isStringType(int jdbcType) {
-    return jdbcType == Types.VARCHAR
-        || jdbcType == Types.CHAR
-        || jdbcType == Types.LONGVARCHAR
-        || jdbcType == Types.CLOB;
-  }
-
-  private static boolean isDefaultAiCandidate(String columnName) {
-    String name = columnName.toLowerCase(Locale.ROOT);
-    return name.contains("description")
-        || name.contains("bio")
-        || name.contains("comment")
-        || name.equals("product_name")
-        || name.contains("title")
-        || name.contains("summary")
-        || name.contains("notes")
-        || name.contains("content")
-        || name.equals("full_name")
-        || name.equals("role_name")
-        || name.equals("username")
-        || name.equals("email")
-        || name.equals("status")
-        || name.equals("carrier")
-        || name.equals("method")
-        || name.equals("country");
   }
 
   private JComponent createAiColumnSelectionPanel() {

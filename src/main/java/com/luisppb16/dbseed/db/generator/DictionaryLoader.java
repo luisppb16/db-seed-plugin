@@ -7,12 +7,12 @@ package com.luisppb16.dbseed.db.generator;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Objects;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**

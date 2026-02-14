@@ -172,19 +172,22 @@ public class DataGenerator {
               .forEach(
                   c -> {
                     final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
-                    if (forceUuid && !c.uuid()) {
-                      newCols.add(
-                          new Column(
-                              c.name(),
-                              c.jdbcType(),
-                              c.nullable(),
-                              c.primaryKey(),
-                              true,
-                              c.length(),
-                              c.scale(),
-                              c.minValue(),
-                              c.maxValue(),
-                              c.allowedValues()));
+                    final boolean isIntegerType = c.jdbcType() == java.sql.Types.INTEGER
+                        || c.jdbcType() == java.sql.Types.BIGINT
+                        || c.jdbcType() == java.sql.Types.SMALLINT
+                        || c.jdbcType() == java.sql.Types.TINYINT;
+                    if (forceUuid && !c.uuid() && !isIntegerType) {
+                      newCols.add(new Column(
+                          c.name(),
+                          c.jdbcType(),
+                          c.nullable(),
+                          c.primaryKey(),
+                          true,
+                          c.length(),
+                          c.scale(),
+                          c.minValue(),
+                          c.maxValue(),
+                          c.allowedValues()));
                     } else {
                       newCols.add(c);
                     }

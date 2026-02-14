@@ -37,6 +37,9 @@ public interface DatabaseDialect {
   /** Formats a value for inclusion in an SQL statement. */
   void formatValue(Object value, StringBuilder sb);
 
+  /** Returns a dialect property value, or the default if not found. */
+  String getProperty(String key, String defaultValue);
+
   /** Appends a batch of INSERT statements to the StringBuilder. */
   void appendBatch(
       StringBuilder sb,

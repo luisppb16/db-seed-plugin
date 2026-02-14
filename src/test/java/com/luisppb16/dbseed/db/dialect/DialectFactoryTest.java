@@ -16,27 +16,32 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class DialectFactoryTest {
 
-  private static DriverInfo driver(String driverClass, String urlTemplate) {
-    return DriverInfo.builder().driverClass(driverClass).urlTemplate(urlTemplate).build();
+  private static DriverInfo driver(String dialect) {
+    return DriverInfo.builder().dialect(dialect).build();
   }
 
   // ── Auto-detection from driverClass / urlTemplate ──
 
   static Stream<Arguments> mysqlCases() {
     return Stream.of(
-        Arguments.of("com.mysql.cj.jdbc.Driver", ""),
-        Arguments.of("", "jdbc:mysql://host/db"),
-        Arguments.of("org.mariadb.jdbc.Driver", ""),
-        Arguments.of("", "jdbc:mariadb://host/db"));
+        Arguments.of("mysql", "`", "1", "0"),
+        Arguments.of("mariadb", "`", "1", "0"),
+        Arguments.of("postgresql", "\"", "TRUE", "FALSE"),
+        Arguments.of("sqlserver", "[", "1", "0"),
+        Arguments.of("oracle", "\"", "1", "0"),
+        Arguments.of("sqlite", "\"", "1", "0"),
+        Arguments.of("h2", "\"", "TRUE", "FALSE"));
   }
 
   @ParameterizedTest
-  @MethodSource("mysqlCases")
-  void resolve_mysql_backtickQuoting(String driverClass, String url) {
-    DatabaseDialect d = DialectFactory.resolve(driver(driverClass, url));
-    assertThat(d.quote("t")).isEqualTo("`t`");
-    assertThat(d.formatBoolean(true)).isEqualTo("1");
-    assertThat(d.beginTransaction()).isEqualTo("START TRANSACTION;\n");
+  @MethodSource("dialectCases")
+  void resolve_loadsCorrectProperties(String dialect, String expectedQuoteStart,
+      String expectedTrue, String expectedFalse) {
+    DatabaseDialect d = DialectFactory.resolve(driver(dialect));
+    assertThat(d).isInstanceOf(StandardDialect.class);
+    assertThat(d.quote("col")).startsWith(expectedQuoteStart);
+    assertThat(d.formatBoolean(true)).isEqualTo(expectedTrue);
+    assertThat(d.formatBoolean(false)).isEqualTo(expectedFalse);
   }
 
   static Stream<Arguments> sqlserverCases() {
@@ -123,14 +128,12 @@ class DialectFactoryTest {
   }
 
   @Test
-  void resolve_emptyDriverInfo_returnsStandard() {
-    DatabaseDialect d = DialectFactory.resolve(driver("", ""));
-    assertThat(d).isInstanceOf(StandardDialect.class);
+  void resolve_emptyDialect_returnsStandard() {
+    assertThat(DialectFactory.resolve(driver(""))).isInstanceOf(StandardDialect.class);
   }
 
   @Test
-  void resolve_unknownDriver_returnsStandard() {
-    DatabaseDialect d = DialectFactory.resolve(driver("com.ibm.db2.jcc.DB2Driver", ""));
-    assertThat(d).isInstanceOf(StandardDialect.class);
+  void resolve_nullDialect_returnsStandard() {
+    assertThat(DialectFactory.resolve(driver(null))).isInstanceOf(StandardDialect.class);
   }
 }

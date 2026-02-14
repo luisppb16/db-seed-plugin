@@ -77,37 +77,8 @@ public final class ValueGenerator {
     this.numericScale = numericScale;
   }
 
-  public static boolean isNumericJdbc(final int jdbcType) {
-    return switch (jdbcType) {
-      case Types.INTEGER,
-          Types.SMALLINT,
-          Types.TINYINT,
-          Types.BIGINT,
-          Types.DECIMAL,
-          Types.NUMERIC,
-          Types.FLOAT,
-          Types.DOUBLE,
-          Types.REAL ->
-          true;
-      default -> false;
-    };
-  }
-
-  public static boolean isNumericOutsideBounds(final Object value, final ParsedConstraint pc) {
-    if (Objects.isNull(value) || Objects.isNull(pc)) return false;
-    try {
-      final double v;
-      if (value instanceof Number n) v = n.doubleValue();
-      else v = Double.parseDouble(value.toString());
-      return (Objects.nonNull(pc.min()) && v < pc.min()) || (Objects.nonNull(pc.max()) && v > pc.max());
-    } catch (final NumberFormatException e) {
-      return true;
-    }
-  }
-
-  public Object generateValue(
-      final Column column, final ParsedConstraint constraint, final int rowIndex) {
-    if (column.nullable() && ThreadLocalRandom.current().nextDouble() < NULL_PROBABILITY) {
+  public Object generateValue(final Column column, final ParsedConstraint constraint, final int rowIndex) {
+    if (column.nullable() && !column.primaryKey() && ThreadLocalRandom.current().nextDouble() < 0.3) {
       return null;
     }
 

@@ -26,6 +26,7 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
+import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.RepetitionRule;
@@ -165,7 +166,7 @@ public final class SeedDatabaseAction extends AnAction {
                         config.url(),
                         Objects.requireNonNullElse(config.user(), ""),
                         Objects.requireNonNullElse(config.password(), ""))) {
-                  tablesRef.set(SchemaIntrospector.introspect(conn, config.schema()));
+                  tablesRef.set(SchemaIntrospector.introspect(conn, config.schema(), DialectFactory.resolve(chosenDriver)));
                   log.info("Schema introspection successful for schema: {}", config.schema());
                 } catch (final Exception ex) {
                   errorRef.set(ex);

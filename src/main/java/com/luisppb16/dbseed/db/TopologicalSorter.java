@@ -24,32 +24,55 @@ import lombok.experimental.UtilityClass;
 
 /**
  * Advanced topological sorting algorithm for database table dependency resolution in the DBSeed plugin.
- * <p>
- * This utility class implements sophisticated algorithms for determining the correct order
- * in which database tables should be processed during data generation, taking into account
- * foreign key dependencies. It uses Tarjan's algorithm to detect strongly connected components
- * (cycles) and applies topological sorting to determine a valid processing order. The class
- * handles complex scenarios including circular dependencies and provides mechanisms for
- * identifying tables that require deferred constraint processing due to non-nullable foreign keys.
- * </p>
- * <p>
- * Key responsibilities include:
+ *
+ * <p>This utility class implements sophisticated graph algorithms for determining the correct order in
+ * which database tables should be processed during data generation, taking into account foreign key
+ * dependencies. It combines Tarjan's algorithm for strongly connected components detection with
+ * Kahn's algorithm for topological sorting to handle complex scenarios including circular dependencies.
+ * The class provides mechanisms for identifying tables that require deferred constraint processing
+ * due to non-nullable foreign key relationships.
+ *
+ * <p>Key responsibilities include:
+ *
  * <ul>
- *   <li>Computing topological order of tables based on foreign key dependencies</li>
- *   <li>Detecting and identifying cyclic dependencies in the table graph</li>
- *   <li>Determining when deferred constraint processing is required</li>
- *   <li>Providing efficient algorithms for dependency resolution</li>
- *   <li>Returning both ordered tables and detected cycles for further processing</li>
- *   <li>Optimizing for performance with large numbers of tables and complex relationships</li>
+ *   <li>Computing topological order of tables based on foreign key dependencies using Kahn's algorithm
+ *   <li>Detecting and identifying cyclic dependencies in the table dependency graph using Tarjan's algorithm
+ *   <li>Determining when deferred constraint processing is required for non-nullable foreign key cycles
+ *   <li>Providing efficient algorithms for dependency resolution with O(V+E) complexity
+ *   <li>Returning both ordered tables and detected cycles for further processing and analysis
+ *   <li>Optimizing for performance with large numbers of tables and complex relationship graphs
+ *   <li>Identifying strongly connected components that represent mutually dependent table groups
+ *   <li>Ensuring referential integrity during data generation by respecting dependency orders
+ *   <li>Providing detailed information about cycles requiring special handling during generation
  * </ul>
- * </p>
- * <p>
- * The implementation uses Tarjan's algorithm for strongly connected components detection
- * combined with Kahn's algorithm for topological sorting. It handles complex scenarios
- * where tables have mutual dependencies and provides detailed information about cycles
- * that may require special handling during data generation. The class is designed to be
- * efficient even with large schemas containing numerous tables and complex relationships.
- * </p>
+ *
+ * <p>The implementation uses Tarjan's algorithm for strongly connected components detection
+ * combined with Kahn's algorithm for topological sorting. It handles complex scenarios where tables
+ * have mutual dependencies and provides detailed information about cycles that may require special
+ * handling during data generation. The class is designed to be efficient even with large schemas
+ * containing numerous tables and complex relationships, achieving O(V+E) time complexity.
+ *
+ * <p>Advanced features include cycle detection and classification, with special handling for
+ * self-referencing tables and multi-table cycles. The algorithm identifies when non-nullable
+ * foreign key constraints in cycles require deferred constraint processing to allow data
+ * insertion. The implementation includes optimizations for memory usage and performance,
+ * using efficient data structures such as LinkedHashMap for predictable iteration order
+ * and HashSet for fast lookups.
+ *
+ * <p>The class handles edge cases such as isolated tables with no dependencies, self-referencing
+ * foreign keys, and complex multi-table dependency chains. It provides deterministic ordering
+ * through lexicographic sorting of tables within strongly connected components, ensuring
+ * reproducible results across multiple executions. The algorithm is resilient to schema changes
+ * and adapts to varying dependency structures dynamically.
+ *
+ * @author Luis Paolo Pepe Barra (@LuisPPB16)
+ * @version 1.3.0
+ * @since 2024.1
+ * @see Tarjan
+ * @see SortResult
+ * @see java.util.Map
+ * @see java.util.Set
+ * @see java.util.List
  */
 @UtilityClass
 public class TopologicalSorter {
@@ -125,9 +148,7 @@ public class TopologicalSorter {
                 g ->
                     g.size() > 1
                         || graph
-                            .getOrDefault(
-                                g.iterator().next(),
-                                Collections.emptySet())
+                            .getOrDefault(g.iterator().next(), Collections.emptySet())
                             .contains(g.iterator().next()))
             .map(Collections::unmodifiableSet)
             .toList();
@@ -168,8 +189,7 @@ public class TopologicalSorter {
     private int index = 0;
 
     Tarjan(Map<String, Set<String>> graph) {
-      this.graph =
-          Objects.requireNonNull(graph, "Graph cannot be null");
+      this.graph = Objects.requireNonNull(graph, "Graph cannot be null");
     }
 
     List<Set<String>> run() {

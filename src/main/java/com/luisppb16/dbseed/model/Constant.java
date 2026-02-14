@@ -11,8 +11,8 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum Constant {
-  APP_NAME("Seed4SQL"),
-  NOTIFICATION_ID("DB Seed Generator");
+  APP_NAME("DBSeed4SQL"),
+  NOTIFICATION_ID("Database Seed Generator");
 
   private final String value;
 }

@@ -5,50 +5,40 @@
 
 package com.luisppb16.dbseed.config;
 
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.ui.ComboBox;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
+import com.intellij.util.ui.AsyncProcessIcon;
 import com.intellij.util.ui.FormBuilder;
-import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
+import com.luisppb16.dbseed.ai.OllamaClient;
+import java.awt.BorderLayout;
+import java.util.Objects;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 
 /**
  * UI component for configuring global settings of the DBSeed plugin in IntelliJ.
- * <p>
- * This class provides a comprehensive user interface for managing the global configuration
- * settings of the DBSeed plugin. It includes controls for dictionary preferences, output
- * directory configuration, UI behavior settings, and advanced features like soft-delete
- * column handling. The component integrates seamlessly with IntelliJ's settings framework
- * and provides intuitive controls for users to customize the plugin's behavior according
- * to their specific needs and preferences.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Providing UI controls for dictionary selection (Latin, English, Spanish)</li>
- *   <li>Managing default output directory configuration with file browser integration</li>
- *   <li>Configuring UI behavior parameters like spinner step increments</li>
- *   <li>Handling soft-delete column configuration and value settings</li>
- *   <li>Implementing proper data binding between UI components and settings state</li>
- *   <li>Ensuring proper validation and error handling for user inputs</li>
- * </ul>
- * </p>
- * <p>
- * The implementation follows IntelliJ's UI guidelines and uses standard components
- * from the IntelliJ platform UI toolkit. It provides proper accessibility support
- * and integrates with the IDE's look and feel. The component handles file system
- * interactions through IntelliJ's VFS layer and provides appropriate error handling
- * for file operations.
- * </p>
  */
 public class DbSeedSettingsComponent {
 
@@ -67,6 +57,17 @@ public class DbSeedSettingsComponent {
       new JBCheckBox("Use schema default value");
   private final JBTextField mySoftDeleteValue = new JBTextField();
 
+  private final JBCheckBox myUseAiGeneration = new JBCheckBox("Enable AI-based data generation");
+  private final JBTextArea myAiApplicationContext = new JBTextArea(3, 20);
+  private final JSpinner myAiWordCount = new JSpinner(new SpinnerNumberModel(1, 1, 500, 1));
+  private final JSpinner myAiRequestTimeout =
+      new JSpinner(new SpinnerNumberModel(120, 10, 600, 10));
+  private final JBTextField myOllamaUrl = new JBTextField();
+  private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
+  private final JButton myRefreshModelsButton = new JButton("Get models");
+  private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("OllamaLoading");
+  private volatile boolean disposed = false;
+
   public DbSeedSettingsComponent() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.getColumnSpinnerStep());
@@ -80,31 +81,60 @@ public class DbSeedSettingsComponent {
     mySoftDeleteValue.setText(settings.getSoftDeleteValue());
     mySoftDeleteValue.setEnabled(!settings.isSoftDeleteUseSchemaDefault());
 
+    myUseAiGeneration.setSelected(settings.isUseAiGeneration());
+    myAiApplicationContext.setText(settings.getAiApplicationContext());
+    myAiWordCount.setValue(settings.getAiWordCount());
+    myAiRequestTimeout.setValue(settings.getAiRequestTimeoutSeconds());
+    myAiApplicationContext.setLineWrap(true);
+    myAiApplicationContext.setWrapStyleWord(true);
+    myOllamaUrl.setText(settings.getOllamaUrl());
+    
+    if (Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isEmpty()) {
+        myOllamaModelDropdown.addItem(settings.getOllamaModel());
+        myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
+    }
+
     mySoftDeleteUseSchemaDefault.addActionListener(
         e -> mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected()));
 
-    final FileChooserDescriptor folderDescriptor =
-        FileChooserDescriptorFactory.createSingleFolderDescriptor()
-            .withTitle("Select Default Output Directory");
-    myDefaultOutputDirectory.addActionListener(
-        e -> {
-          final String currentPath = myDefaultOutputDirectory.getText();
-          final VirtualFile currentFile =
-              currentPath.isEmpty()
-                  ? null
-                  : LocalFileSystem.getInstance().findFileByPath(currentPath);
-          FileChooser.chooseFile(
-              folderDescriptor,
-              null,
-              currentFile,
-              file -> {
-                if (file != null) {
-                  myDefaultOutputDirectory.setText(file.getPath());
-                }
-              });
-        });
+    myRefreshModelsButton.addActionListener(e -> refreshModels());
+    myLoadingIcon.setVisible(false);
 
-    myMainPanel =
+    configureFolderChooser(myDefaultOutputDirectory, "Select Default Output Directory");
+
+    JBLabel aiDescription = new JBLabel(
+        "<html>AI generation uses an external Ollama instance to generate "
+        + "context-aware data. Ensure Ollama is running and accessible at the specified URL.</html>");
+    aiDescription.setForeground(UIUtil.getContextHelpForeground());
+    aiDescription.setBorder(JBUI.Borders.emptyBottom(5));
+
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    buttonPanel.add(myRefreshModelsButton);
+    buttonPanel.add(myLoadingIcon);
+
+    JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
+    urlPanel.add(myOllamaUrl, BorderLayout.CENTER);
+    urlPanel.add(buttonPanel, BorderLayout.EAST);
+
+    JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
+    contextScrollPane.setPreferredSize(new Dimension(0, 80));
+    contextScrollPane.setMinimumSize(new Dimension(0, 60));
+
+    JBLabel wordCountDescription = new JBLabel(
+        "<html>Number of words the AI model should generate per column value"
+        + " (1 = single word, higher = sentences/paragraphs).</html>");
+    wordCountDescription.setForeground(UIUtil.getContextHelpForeground());
+    wordCountDescription.setFont(JBUI.Fonts.smallFont());
+    wordCountDescription.setBorder(JBUI.Borders.emptyLeft(16));
+
+    JBLabel timeoutDescription = new JBLabel(
+        "<html>Max wait time per AI request. Increase for slow hardware"
+        + " (e.g. Raspberry Pi). If exceeded, the plugin will fill the values instead.</html>");
+    timeoutDescription.setForeground(UIUtil.getContextHelpForeground());
+    timeoutDescription.setFont(JBUI.Fonts.smallFont());
+    timeoutDescription.setBorder(JBUI.Borders.emptyLeft(16));
+
+    JPanel formContent =
         FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("Column spinner step:"), myColumnSpinnerStep, 1, false)
             .addLabeledComponent(
@@ -114,15 +144,124 @@ public class DbSeedSettingsComponent {
             .addComponent(myUseSpanishDictionary, 1)
             .addComponent(new TitledSeparator("Soft Delete Configuration"))
             .addLabeledComponent(
-                new JBLabel("Soft delete columns (comma separated):"),
+                new JBLabel("Columns (comma separated):"),
                 mySoftDeleteColumns,
                 1,
                 false)
             .addComponent(mySoftDeleteUseSchemaDefault, 1)
             .addLabeledComponent(
-                new JBLabel("Soft delete value (if not default):"), mySoftDeleteValue, 1, false)
+                new JBLabel("Value (if not default):"), mySoftDeleteValue, 1, false)
+            .addComponent(new TitledSeparator("AI Contextual Generation (External Ollama)"))
+            .addComponent(aiDescription)
+            .addComponent(myUseAiGeneration, 1)
+            .addLabeledComponent(new JBLabel("Application context:"), contextScrollPane, 1, false)
+            .addLabeledComponent(new JBLabel("Words per AI value:"), myAiWordCount, 1, false)
+            .addComponent(wordCountDescription, 0)
+            .addLabeledComponent(new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
+            .addComponent(timeoutDescription, 0)
+            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
+
+    JBScrollPane scrollPane = new JBScrollPane(formContent);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+
+    myMainPanel = new JPanel(new BorderLayout());
+    myMainPanel.add(scrollPane, BorderLayout.CENTER);
+    myMainPanel.setPreferredSize(new Dimension(480, 550));
+  }
+
+  private void refreshModels() {
+    String url = myOllamaUrl.getText().trim();
+    if (url.isEmpty()) {
+        Messages.showErrorDialog(myMainPanel, "Please enter a valid Ollama URL.", "Invalid URL");
+        return;
+    }
+
+    myRefreshModelsButton.setEnabled(false);
+    myLoadingIcon.setVisible(true);
+    myLoadingIcon.resume();
+    myOllamaModelDropdown.setEnabled(false);
+
+    ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
+
+    OllamaClient client = new OllamaClient(url, "", 10);
+    client.ping().whenComplete((ignored, pingEx) -> {
+        if (disposed) return;
+        if (Objects.nonNull(pingEx)) {
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (disposed) return;
+                Throwable cause = Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
+                Messages.showErrorDialog(myMainPanel,
+                    "No Ollama server found at " + url + ".\n"
+                        + "Ensure Ollama is running and the URL is correct.\n\n"
+                        + "Error: " + cause.getMessage(),
+                    "Server Not Reachable");
+                resetRefreshButton();
+            }, currentModality);
+            return;
+        }
+        client.listModels().whenComplete((models, ex) -> {
+            if (disposed) return;
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (disposed) return;
+                if (Objects.nonNull(ex)) {
+                    Throwable cause = Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
+                    Messages.showErrorDialog(myMainPanel,
+                        "Could not fetch models from Ollama at " + url + ".\n"
+                            + "Error: " + cause.getMessage(),
+                        "Connection Error");
+                } else {
+                    String currentSelection = (String) myOllamaModelDropdown.getSelectedItem();
+                    myOllamaModelDropdown.removeAllItems();
+                    if (models.isEmpty()) {
+                        Messages.showWarningDialog(myMainPanel,
+                            "No models found in Ollama. Ensure you have pulled at least one model.",
+                            "No Models Found");
+                    } else {
+                        for (String model : models) {
+                            myOllamaModelDropdown.addItem(model);
+                        }
+                        if (Objects.nonNull(currentSelection) && models.contains(currentSelection)) {
+                            myOllamaModelDropdown.setSelectedItem(currentSelection);
+                        }
+                    }
+                }
+                resetRefreshButton();
+            }, currentModality);
+        });
+    });
+  }
+
+  private void resetRefreshButton() {
+    myRefreshModelsButton.setEnabled(true);
+    myLoadingIcon.suspend();
+    myLoadingIcon.setVisible(false);
+    myOllamaModelDropdown.setEnabled(true);
+  }
+
+  private void configureFolderChooser(TextFieldWithBrowseButton field, String title) {
+    final FileChooserDescriptor folderDescriptor =
+        FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle(title);
+    field.addActionListener(
+        e -> {
+          final String currentPath = field.getText();
+          final VirtualFile currentFile =
+              currentPath.isEmpty()
+                  ? null
+                  : LocalFileSystem.getInstance().findFileByPath(currentPath);
+          FileChooser.chooseFile(
+              folderDescriptor,
+              null,
+              currentFile,
+              file -> {
+                if (Objects.nonNull(file)) {
+                  field.setText(file.getPath());
+                }
+              });
+        });
   }
 
   public JPanel getPanel() {
@@ -196,5 +335,70 @@ public class DbSeedSettingsComponent {
 
   public void setSoftDeleteValue(String value) {
     mySoftDeleteValue.setText(value);
+  }
+
+  public boolean getUseAiGeneration() {
+    return myUseAiGeneration.isSelected();
+  }
+
+  public void setUseAiGeneration(boolean use) {
+    myUseAiGeneration.setSelected(use);
+  }
+
+  public String getAiApplicationContext() {
+    return myAiApplicationContext.getText();
+  }
+
+  public void setAiApplicationContext(String text) {
+    myAiApplicationContext.setText(text);
+  }
+
+  public int getAiWordCount() {
+    return (int) myAiWordCount.getValue();
+  }
+
+  public void setAiWordCount(int value) {
+    myAiWordCount.setValue(value);
+  }
+
+  public int getAiRequestTimeout() {
+    return (int) myAiRequestTimeout.getValue();
+  }
+
+  public void setAiRequestTimeout(int value) {
+    myAiRequestTimeout.setValue(value);
+  }
+
+  public String getOllamaUrl() {
+    return myOllamaUrl.getText();
+  }
+
+  public void setOllamaUrl(String url) {
+    myOllamaUrl.setText(url);
+  }
+
+  public String getOllamaModel() {
+    return (String) myOllamaModelDropdown.getSelectedItem();
+  }
+
+  public void setOllamaModel(String model) {
+    if (Objects.nonNull(model) && !model.isEmpty()) {
+        boolean exists = false;
+        for (int i = 0; i < myOllamaModelDropdown.getItemCount(); i++) {
+            if (model.equals(myOllamaModelDropdown.getItemAt(i))) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            myOllamaModelDropdown.addItem(model);
+        }
+        myOllamaModelDropdown.setSelectedItem(model);
+    }
+  }
+
+  public void dispose() {
+    disposed = true;
+    myLoadingIcon.dispose();
   }
 }

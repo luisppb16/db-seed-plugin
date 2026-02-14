@@ -20,6 +20,8 @@ class DialectFactoryTest {
     return DriverInfo.builder().dialect(dialect).build();
   }
 
+  // ── Auto-detection from driverClass / urlTemplate ──
+
   static Stream<Arguments> dialectCases() {
     return Stream.of(
         Arguments.of("mysql", "`", "1", "0"),
@@ -42,9 +44,26 @@ class DialectFactoryTest {
     assertThat(d.formatBoolean(false)).isEqualTo(expectedFalse);
   }
 
+  // ── Explicit dialect field takes priority ──
+
+  @Test
+  void resolve_explicitDialect_overridesAutoDetection() {
+    DriverInfo info =
+        DriverInfo.builder()
+            .driverClass("com.mysql.cj.jdbc.Driver")
+            .dialect("oracle")
+            .build();
+    DatabaseDialect d = DialectFactory.resolve(info);
+    assertThat(d.quote("col")).isEqualTo("\"COL\"");
+  }
+
+  // ── Fallback to standard ──
+
   @Test
   void resolve_nullDriverInfo_returnsStandard() {
-    assertThat(DialectFactory.resolve(null)).isInstanceOf(StandardDialect.class);
+    DatabaseDialect d = DialectFactory.resolve(null);
+    assertThat(d).isInstanceOf(StandardDialect.class);
+    assertThat(d.quote("t")).isEqualTo("\"t\"");
   }
 
   @Test

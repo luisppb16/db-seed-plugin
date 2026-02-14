@@ -34,6 +34,7 @@ import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
+import com.intellij.ui.components.JBTextField;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
@@ -42,34 +43,7 @@ import javax.swing.border.CompoundBorder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Interactive database connection configuration wizard for the DBSeed plugin.
- * <p>
- * This sophisticated UI component guides users through the critical process of establishing
- * database connections for the seeding operation. The dialog provides an intuitive interface
- * for specifying connection parameters, authentication credentials, and generation options
- * while intelligently handling database-specific URL formats and default values. It integrates
- * seamlessly with IntelliJ's project management system to provide context-aware configuration
- * persistence and intelligent defaults based on previous usage patterns.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Managing database-specific connection parameter inputs (URL, credentials, schema)</li>
- *   <li>Providing intelligent URL parsing and construction for different database systems</li>
- *   <li>Implementing secure password handling with optional visibility toggling</li>
- *   <li>Integrating with the configuration persistence system for automatic value recall</li>
- *   <li>Validating connection parameters and providing user feedback</li>
- *   <li>Coordinating with the multi-step seeding workflow process</li>
- * </ul>
- * </p>
- * <p>
- * The implementation follows security best practices by properly handling sensitive credential
- * information and implements adaptive UI behaviors based on the selected database driver type.
- * The dialog maintains state consistency across sessions and provides intelligent defaults
- * derived from both global settings and project-specific configurations.
- * </p>
- */
+/** Interactive database connection configuration wizard for the DBSeed plugin. */
 public final class SeedDialog extends DialogWrapper {
 
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
@@ -79,7 +53,7 @@ public final class SeedDialog extends DialogWrapper {
 
   private final DriverInfo driverInfo;
 
-  private final JTextField urlField;
+  private final JBTextField urlField;
   private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
   private final JPasswordField passwordField = new JPasswordField();
@@ -97,9 +71,9 @@ public final class SeedDialog extends DialogWrapper {
     this.driverInfo = driverInfo;
     setTitle("Connection Settings - Step 2/3");
 
-    urlField =
-        new JTextField(
-            driverInfo.urlTemplate() != null ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL);
+    String template = Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL;
+    urlField = new JBTextField(template);
+    urlField.getEmptyText().setText(extractBaseUrl(template));
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner =
@@ -144,7 +118,7 @@ public final class SeedDialog extends DialogWrapper {
   protected void doOKAction() {
     try {
       rowsSpinner.commitEdit();
-    } catch (ParseException e) {
+    } catch (ParseException ignored) {
     }
     super.doOKAction();
     saveConfiguration();
@@ -152,7 +126,7 @@ public final class SeedDialog extends DialogWrapper {
 
   private void loadConfiguration(@Nullable final String urlTemplate) {
     final Project project = getCurrentProject();
-    if (project == null) {
+    if (Objects.isNull(project)) {
       return;
     }
 
@@ -244,18 +218,30 @@ public final class SeedDialog extends DialogWrapper {
     String urlToUse = urlTemplate;
     boolean usingSavedConfig = false;
 
-    if (urlToUse == null) {
+    if (Objects.isNull(urlToUse)) {
       urlToUse = Objects.requireNonNullElse(savedConfig.url(), DEFAULT_POSTGRES_URL);
       usingSavedConfig = true;
-    } else if (savedConfig.url() != null && isSameDriverType(urlTemplate, savedConfig.url())) {
+    } else if (Objects.nonNull(savedConfig.url()) && isSameDriverType(urlTemplate, savedConfig.url())) {
       urlToUse = savedConfig.url();
       usingSavedConfig = true;
     }
     return new UrlResolution(urlToUse, usingSavedConfig);
   }
 
+  private String extractBaseUrl(String url) {
+    if (url.startsWith("jdbc:sqlserver")) {
+      String stripped = url.replaceAll("databaseName=[^;]+;?", "").replace(";;", ";");
+      return stripped.endsWith(";") ? stripped.substring(0, stripped.length() - 1) : stripped;
+    }
+    int lastSlash = url.lastIndexOf('/');
+    if (lastSlash > 0 && lastSlash < url.length() - 1) {
+      return url.substring(0, lastSlash + 1);
+    }
+    return url;
+  }
+
   private boolean isSameDriverType(String template, String savedUrl) {
-    if (template == null || savedUrl == null) return false;
+    if (Objects.isNull(template) || Objects.isNull(savedUrl)) return false;
     int firstColon = template.indexOf(':');
     int secondColon = template.indexOf(':', firstColon + 1);
     if (secondColon > 0) {
@@ -267,7 +253,7 @@ public final class SeedDialog extends DialogWrapper {
 
   private void saveConfiguration() {
     final Project project = getCurrentProject();
-    if (project != null) {
+    if (Objects.nonNull(project)) {
       final GenerationConfig config = getConfiguration();
       ConnectionConfigPersistence.save(project, config);
     }
@@ -317,6 +303,7 @@ public final class SeedDialog extends DialogWrapper {
     c.gridy = row;
     c.gridwidth = 2;
     c.anchor = GridBagConstraints.WEST;
+    c.fill = GridBagConstraints.HORIZONTAL;
     panel.add(deferredBox, c);
 
     return panel;

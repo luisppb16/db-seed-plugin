@@ -16,31 +16,7 @@ import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Persistent state component for managing global configuration settings of the DBSeed plugin.
- * <p>
- * This class implements IntelliJ's PersistentStateComponent interface to provide persistent
- * storage of user preferences across IDE sessions. It manages various configuration aspects
- * including dictionary selection, output directory paths, and soft-delete column settings.
- * The state is serialized to an XML file named "DbSeedPlugin.xml" and follows IntelliJ's
- * recommended practices for plugin state persistence.
- * </p>
- * <p>
- * Key responsibilities include:
- * <ul>
- *   <li>Maintaining user preferences for dictionary languages (Latin, English, Spanish)</li>
- *   <li>Storing configurable output directory paths for generated seed files</li>
- *   <li>Managing soft-delete column configurations with default values and validation</li>
- *   <li>Providing singleton access pattern through getInstance() method</li>
- *   <li>Ensuring data integrity during state serialization/deserialization</li>
- * </ul>
- * </p>
- * <p>
- * The class implements proper null-safety mechanisms and defensive programming practices
- * to prevent configuration corruption during state transitions. Default values are enforced
- * during the loadState operation to maintain backward compatibility with older configurations.
- * </p>
- */
+/** Persistent state component for managing global configuration settings of the DBSeed plugin. */
 @Getter
 @Setter
 @State(
@@ -53,6 +29,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final String DEFAULT_SOFT_DELETE_VALUE = "NULL";
   private static final boolean DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT = true;
   private static final String DEFAULT_SOFT_DELETE_COLUMNS = "deleted_at,is_deleted";
+  private static final String DEFAULT_OLLAMA_URL = "http://localhost:11434";
+  private static final String DEFAULT_OLLAMA_MODEL = "";
 
   private boolean useLatinDictionary = true;
   private boolean useEnglishDictionary = false;
@@ -63,6 +41,14 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private String softDeleteColumns = DEFAULT_SOFT_DELETE_COLUMNS;
   private boolean softDeleteUseSchemaDefault = DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT;
   private String softDeleteValue = DEFAULT_SOFT_DELETE_VALUE;
+
+  private String ollamaUrl = DEFAULT_OLLAMA_URL;
+  private String ollamaModel = DEFAULT_OLLAMA_MODEL;
+
+  private boolean useAiGeneration = false;
+  private String aiApplicationContext = "";
+  private int aiWordCount = 1;
+  private int aiRequestTimeoutSeconds = 120;
 
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
@@ -94,5 +80,14 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.softDeleteValue =
         Objects.requireNonNullElse(state.softDeleteValue, DEFAULT_SOFT_DELETE_VALUE);
     this.softDeleteUseSchemaDefault = state.softDeleteUseSchemaDefault;
+
+    this.ollamaUrl = Objects.requireNonNullElse(state.ollamaUrl, DEFAULT_OLLAMA_URL);
+    this.ollamaModel = Objects.requireNonNullElse(state.ollamaModel, DEFAULT_OLLAMA_MODEL);
+
+    this.useAiGeneration = state.useAiGeneration;
+    this.aiApplicationContext = Objects.requireNonNullElse(state.aiApplicationContext, "");
+    this.aiWordCount = state.aiWordCount > 0 ? state.aiWordCount : 1;
+    this.aiRequestTimeoutSeconds =
+        state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
   }
 }

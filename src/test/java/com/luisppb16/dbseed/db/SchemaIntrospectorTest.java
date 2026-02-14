@@ -52,7 +52,9 @@ class SchemaIntrospectorTest {
 
   private Column findColumn(Table table, String name) {
     return table.columns().stream()
-        .filter(c -> c.name().equalsIgnoreCase(name)).findFirst().orElse(null);
+        .filter(c -> c.name().equalsIgnoreCase(name))
+        .findFirst()
+        .orElse(null);
   }
 
   // ── Basic ──
@@ -239,8 +241,79 @@ class SchemaIntrospectorTest {
   void compositeUnique() throws SQLException {
     exec("CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, UNIQUE(a, b))");
     Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    assertThat(t.uniqueKeys().stream()
-        .anyMatch(uk -> uk.containsAll(List.of("A", "B")))).isTrue();
+    assertThat(t.uniqueKeys().stream().anyMatch(uk -> uk.containsAll(List.of("A", "B")))).isTrue();
+  }
+
+  // ── UUID detection ──
+
+  @Test
+  void column_uuidByTypeName_detected() throws SQLException {
+    exec("CREATE TABLE t (id UUID)");
+    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    Column c = findColumn(t, "ID");
+    assertThat(c.uuid()).isTrue();
+  }
+
+  @Test
+  void column_regularVarchar_notUuid() throws SQLException {
+    exec("CREATE TABLE t (name VARCHAR(100))");
+    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    Column c = findColumn(t, "NAME");
+    assertThat(c.uuid()).isFalse();
+  }
+
+  @Test
+  void column_intType_notUuid() throws SQLException {
+    exec("CREATE TABLE t (id INT)");
+    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    Column c = findColumn(t, "ID");
+    assertThat(c.uuid()).isFalse();
+  }
+
+  @Test
+  void column_booleanType_notUuid() throws SQLException {
+    exec("CREATE TABLE t (active BOOLEAN)");
+    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    Column c = findColumn(t, "ACTIVE");
+    assertThat(c.uuid()).isFalse();
+  }
+
+  // ── Integer overflow protection in check constraints ──
+
+  @Test
+  void checkConstraint_largeBoundsStillWorks() throws SQLException {
+    exec("CREATE TABLE t (val INT CHECK (val BETWEEN 0 AND 2147483647))");
+    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    Column c = findColumn(t, "VAL");
+    assertThat(c.minValue()).isEqualTo(0);
+    assertThat(c.maxValue()).isEqualTo(2147483647);
+  }
+
+  @Test
+  void checkConstraint_noExceptionOnExtremeValues() throws SQLException {
+    exec("CREATE TABLE t (val BIGINT CHECK (val >= -100 AND val <= 100))");
+    List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
+    assertThat(tables).isNotEmpty();
+  }
+
+  // ── Multiple tables with mixed types ──
+
+  @Test
+  void mixedColumnTypes_allDetected() throws SQLException {
+    exec(
+        "CREATE TABLE t ("
+            + "id INT PRIMARY KEY, "
+            + "name VARCHAR(50), "
+            + "price DECIMAL(10,2), "
+            + "active BOOLEAN, "
+            + "created TIMESTAMP, "
+            + "uid UUID"
+            + ")");
+    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    assertThat(t.columns()).hasSize(6);
+    assertThat(findColumn(t, "ID").jdbcType()).isEqualTo(Types.INTEGER);
+    assertThat(findColumn(t, "NAME").jdbcType()).isEqualTo(Types.VARCHAR);
+    assertThat(findColumn(t, "UID").uuid()).isTrue();
   }
 
   // ── Schema filter ──

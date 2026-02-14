@@ -32,7 +32,62 @@ import lombok.Builder;
 import lombok.experimental.UtilityClass;
 import net.datafaker.Faker;
 
-/** Centralized data generation orchestration engine for the DBSeed plugin ecosystem. */
+/**
+ * Advanced data generation orchestration engine for the DBSeed plugin ecosystem.
+ *
+ * <p>This utility class serves as the central hub for synthetic data generation, implementing
+ * sophisticated algorithms for creating realistic test data that respects database schema
+ * constraints and relationships. It coordinates multiple data generation strategies including
+ * dictionary-based content, AI-powered generation, and constraint-aware value creation.
+ * The class handles complex scenarios such as foreign key dependencies, check constraints,
+ * and numeric bounds validation.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Orchestrating the multi-phase data generation process across all tables
+ *   <li>Applying primary key UUID overrides and exclusion rules to table configurations
+ *   <li>Managing dictionary loading and selection for realistic string content generation
+ *   <li>Coordinating AI-powered content generation through Ollama integration
+ *   <li>Validating generated data against check constraints and numeric bounds
+ *   <li>Resolving foreign key dependencies through the ForeignKeyResolver component
+ *   <li>Handling soft-delete column configurations and values
+ *   <li>Managing repetition rules for consistent test data patterns
+ *   <li>Tracking and validating UUID uniqueness across the generated dataset
+ *   <li>Coordinating with progress indicators for user feedback during generation
+ * </ul>
+ *
+ * <p>The class implements advanced constraint validation algorithms to ensure generated data
+ * complies with database check constraints, including numeric bounds and allowed value sets.
+ * It features intelligent fallback mechanisms when AI generation fails, gracefully degrading
+ * to traditional dictionary-based approaches. The implementation includes sophisticated
+ * algorithms for handling numeric constraints, ensuring values fall within specified ranges
+ * and meet custom check constraint requirements.
+ *
+ * <p>Thread safety is maintained through immutable data structures and careful coordination
+ * between concurrent AI requests and sequential data validation. The class leverages the
+ * builder pattern for configuration parameters and implements efficient caching mechanisms
+ * for dictionary words and constraint parsing results. Memory efficiency is achieved through
+ * streaming operations and lazy evaluation where possible.
+ *
+ * <p>The data generation process includes multiple validation phases to ensure referential
+ * integrity and constraint compliance. Foreign key relationships are resolved in a post-processing
+ * phase using the ForeignKeyResolver, which handles complex scenarios involving deferred
+ * constraint processing for circular dependencies. The class also implements retry mechanisms
+ * for constraint-bound numeric values, ensuring generated data meets all specified criteria.
+ *
+ * @author Luis Paolo Pepe Barra (@LuisPPB16)
+ * @version 1.3.0
+ * @since 2024.1
+ * @see RowGenerator
+ * @see ValueGenerator
+ * @see ForeignKeyResolver
+ * @see DictionaryLoader
+ * @see OllamaClient
+ * @see ConstraintParser
+ * @see GenerationParameters
+ * @see GenerationResult
+ */
 @UtilityClass
 public class DataGenerator {
 

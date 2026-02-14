@@ -25,8 +25,62 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * REST client for interacting with the Ollama API.
- * Provides methods to ping the server, list available models, and generate seed data values.
+ * Advanced REST client for interacting with the Ollama API in the DBSeed plugin ecosystem.
+ *
+ * <p>This class provides a comprehensive interface for integrating AI-powered content generation
+ * into the database seeding process. It implements sophisticated communication protocols with
+ * external Ollama LLM servers, handling connection management, request/response processing,
+ * and intelligent content sanitization. The client supports both single-value and batch
+ * generation operations, with robust error handling and response validation mechanisms.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Establishing and managing HTTP connections to external Ollama servers
+ *   <li>Providing health check functionality through server ping operations
+ *   <li>Listing available AI models on the target Ollama server
+ *   <li>Generating single and batch database column values using AI models
+ *   <li>Implementing intelligent prompt engineering for database context
+ *   <li>Sanitizing AI responses to remove unwanted prefixes and formatting
+ *   <li>Handling application context injection for domain-specific generation
+ *   <li>Managing request timeouts and connection pooling for performance
+ *   <li>Implementing retry mechanisms and fallback strategies for resilience
+ *   <li>Processing and validating AI-generated content for database compatibility
+ *   <li>Filtering out AI preambles, refusals, and irrelevant content
+ *   <li>Managing word count limitations and content length controls
+ * </ul>
+ *
+ * <p>The class implements advanced content sanitization algorithms to clean AI responses,
+ * removing common AI artifacts such as introductory phrases, numbering, and explanations.
+ * It includes sophisticated pattern matching to identify and strip column name prefixes,
+ * surrounding quotes, and numbered list formats. The implementation handles various AI
+ * refusal patterns and preamble indicators to ensure only relevant content is returned.
+ *
+ * <p>Thread safety is maintained through asynchronous request handling with CompletableFuture
+ * and dedicated executor services. The class implements efficient JSON serialization and
+ * deserialization with proper escaping and unescaping of special characters. Memory
+ * efficiency is achieved through streaming response processing and minimal intermediate
+ * object allocation.
+ *
+ * <p>Security considerations include careful handling of application context information,
+ * ensuring that only relevant column and table names are sent to the AI model without
+ * exposing sensitive data. The class implements robust input validation and sanitization
+ * to prevent injection attacks and malformed requests. Response validation ensures that
+ * only properly formatted content is accepted from the AI service.
+ *
+ * <p>Performance optimizations include connection pooling, configurable timeouts, and
+ * batch processing capabilities for efficient generation of multiple values. The class
+ * implements adaptive request sizing based on word count requirements and handles
+ * server-side rate limiting gracefully through appropriate error handling.
+ *
+ * @author Luis Paolo Pepe Barra (@LuisPPB16)
+ * @version 1.3.0
+ * @since 2025.1
+ * @see java.net.http.HttpClient
+ * @see java.net.http.HttpRequest
+ * @see java.util.concurrent.CompletableFuture
+ * @see java.util.regex.Pattern
+ * @see OllamaException
  */
 @Slf4j
 public class OllamaClient {

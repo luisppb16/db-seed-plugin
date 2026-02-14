@@ -53,7 +53,57 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
-/** Comprehensive database seeding workflow orchestrator for the DBSeed plugin ecosystem. */
+/**
+ * Advanced database seeding workflow orchestrator for the DBSeed plugin ecosystem.
+ *
+ * <p>This action class serves as the primary entry point for the DBSeed plugin functionality,
+ * providing a comprehensive solution for generating synthetic database seed data. It orchestrates
+ * the entire seeding process from initial database connection establishment through final SQL
+ * script generation and file output. The class integrates seamlessly with the IntelliJ platform
+ * action system and provides a sophisticated user interface workflow for configuring seeding
+ * parameters.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Initiating the database connection workflow and driver selection process
+ *   <li>Managing the multi-stage configuration dialog sequence (connection, table selection, PK/UUID configuration)
+ *   <li>Performing schema introspection to analyze database structure and relationships
+ *   <li>Coordinating data generation with advanced features like AI-powered content creation
+ *   <li>Handling complex dependency resolution for tables with foreign key relationships
+ *   <li>Generating optimized SQL scripts with proper insertion order and constraint management
+ *   <li>Managing file output and integration with the IntelliJ editor environment
+ *   <li>Providing progress tracking and error handling throughout the workflow
+ *   <li>Implementing safeguards for large-scale data generation operations
+ * </ul>
+ *
+ * <p>The class implements a robust error handling mechanism with appropriate user feedback
+ * through IntelliJ's notification system. It supports various database systems through
+ * dynamic driver loading and dialect-specific SQL generation. The workflow includes
+ * intelligent cycle detection and resolution for circular foreign key dependencies,
+ * ensuring that data can be generated even in complex schema scenarios.
+ *
+ * <p>Advanced features include AI-powered data generation using external Ollama LLM servers,
+ * configurable dictionary-based content generation, soft-delete column handling, and
+ * repetition rule support for consistent test data. The class also provides extensive
+ * configuration options for numeric precision, UUID generation, and exclusion rules.
+ *
+ * <p>Thread safety is maintained through proper use of IntelliJ's application threading
+ * model, with background tasks executed through the progress manager and UI updates
+ * performed on the EDT as appropriate. The class follows the builder pattern for
+ * configuration objects and leverages functional programming concepts for data processing.
+ *
+ * @author Luis Paolo Pepe Barra (@LuisPPB16)
+ * @version 1.3.0
+ * @since 2024.1
+ * @see AnAction
+ * @see SeedDialog
+ * @see PkUuidSelectionDialog
+ * @see SchemaIntrospector
+ * @see DataGenerator
+ * @see SqlGenerator
+ * @see DriverLoader
+ */
 @Slf4j
 public final class SeedDatabaseAction extends AnAction {
 

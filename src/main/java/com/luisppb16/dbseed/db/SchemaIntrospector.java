@@ -33,6 +33,59 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Advanced database schema introspection engine for the DBSeed plugin ecosystem.
+ *
+ * <p>This utility class provides comprehensive database schema analysis capabilities,
+ * extracting detailed metadata about tables, columns, constraints, and relationships
+ * through JDBC DatabaseMetaData interfaces. It implements sophisticated algorithms
+ * for inferring business logic constraints from database metadata, including check
+ * constraints, allowed value sets, and numeric bounds. The class supports multiple
+ * database vendors with vendor-specific introspection strategies.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Extracting comprehensive table metadata including names, schemas, and descriptions
+ *   <li>Retrieving detailed column information such as data types, nullability, sizes, and scales
+ *   <li>Identifying primary key columns and composite key relationships
+ *   <li>Analyzing foreign key relationships and mapping column dependencies
+ *   <li>Inferring check constraints from database metadata and remarks
+ *   <li>Detecting unique key constraints and candidate key relationships
+ *   <li>Extracting allowed value sets from check constraints and business rules
+ *   <li>Infering numeric bounds from BETWEEN and comparison operators in constraints
+ *   <li>Identifying UUID/GUID columns based on naming conventions and type information
+ *   <li>Implementing vendor-specific introspection strategies for optimal performance
+ *   <li>Optimizing database queries to minimize round trips and improve performance
+ *   <li>Handling complex scenarios with multiple schemas and cross-schema references
+ * </ul>
+ *
+ * <p>The class implements advanced constraint parsing algorithms to extract meaningful
+ * business rules from database check constraints. It supports multiple database systems
+ * including PostgreSQL, H2, MySQL, Oracle, SQL Server, and SQLite, with vendor-specific
+ * optimizations for metadata retrieval. The implementation includes sophisticated
+ * pattern matching for extracting allowed values from IN clauses, ANY array expressions,
+ * and equality constraints.
+ *
+ * <p>Performance optimizations include bulk loading strategies where supported by the
+ * database vendor, with fallback to N+1 query patterns when bulk operations fail.
+ * The class implements efficient caching mechanisms and concurrent data structures
+ * to handle large schemas with thousands of tables and columns. Memory efficiency
+ * is achieved through streaming result set processing and lazy evaluation.
+ *
+ * <p>Error handling includes graceful degradation when certain metadata queries fail,
+ * with fallback strategies to extract as much information as possible from the database.
+ * The class handles edge cases such as quoted identifiers, special characters in names,
+ * and database-specific quirks in metadata representation. It also includes robust
+ * null-safety and handles various database collation settings appropriately.
+ *
+ * @author Luis Paolo Pepe Barra (@LuisPPB16)
+ * @version 1.3.0
+ * @since 2024.1
+ * @see java.sql.DatabaseMetaData
+ * @see java.sql.Connection
+ * @see com.luisppb16.dbseed.model.Table
+ * @see com.luisppb16.dbseed.model.Column
+ * @see com.luisppb16.dbseed.model.ForeignKey
+ * @see java.util.regex.Pattern
  */
 @Slf4j
 @UtilityClass

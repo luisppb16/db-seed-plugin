@@ -5,7 +5,7 @@ It automatically introspects a schema, analyzes dependencies between tables, and
 foreign keys, and complex cycles. It is ideal for developers who need realistic and repeatable seeds for testing, demos, or development
 environments.
 
-This project is developed in **Java 17** with **Gradle 8.14**, applying a modern programming style: `record`, `switch` with `yield`, pattern
+This project is developed in **Java 25** with **Gradle 9.3.0**, applying a modern programming style: `record`, `switch` with `yield`, pattern
 matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (`@Builder`, `@Slf4j`,
 `@UtilityClass`), and Javadoc documentation in Spanish. The architecture is organized into clear layers:
 
@@ -125,7 +125,7 @@ The build is done with Gradle:
 The plugin is packaged as a `.zip` in `build/distributions/`, which is the installable artifact in IntelliJ via **Settings → Plugins →
 Install plugin from disk...**.
 
-The **GitHub Actions** pipeline compiles the project on JDK 17/21, runs the tests, and automatically attaches the `.zip` as a downloadable
+The **GitHub Actions** pipeline compiles the project on JDK 25, runs the tests, and automatically attaches the `.zip` as a downloadable
 artifact in each published release.
 
 ---

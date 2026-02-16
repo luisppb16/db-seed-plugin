@@ -84,6 +84,11 @@ test {
     testLogging {
         events "passed", "skipped", "failed"
     }
+
+    // Configure test task to use Java 25 toolchain
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
 tasks.named('jacocoTestReport', JacocoReport) {

@@ -64,7 +64,7 @@ dependencies {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
     withSourcesJar()
     withJavadocJar()
@@ -72,7 +72,7 @@ java {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-    options.release = 25  // Ensures compatibility with Java 25 features
+    options.release = 21
     options.compilerArgs << "-Xlint:deprecation"
     options.compilerArgs << "-Xlint:unchecked"
 }
@@ -85,9 +85,8 @@ test {
         events "passed", "skipped", "failed"
     }
 
-    // Configure test task to use Java 25 toolchain
     javaLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
 }
 

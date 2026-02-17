@@ -27,7 +27,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
   @Nls(capitalization = Nls.Capitalization.Title)
   @Override
   public String getDisplayName() {
-    return "DB Seed Plugin";
+    return "DBSeed4SQL";
   }
 
   @Override

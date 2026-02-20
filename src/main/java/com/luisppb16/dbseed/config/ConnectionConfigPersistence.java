@@ -85,8 +85,7 @@ public class ConnectionConfigPersistence {
     final String legacyPassword = properties.getValue(PASSWORD_KEY);
     if (Objects.nonNull(legacyPassword)) {
       password = legacyPassword;
-      PasswordSafe.getInstance()
-          .set(credAttributes, new Credentials(user, legacyPassword));
+      PasswordSafe.getInstance().set(credAttributes, new Credentials(user, legacyPassword));
       properties.unsetValue(PASSWORD_KEY);
     }
     final int rows = properties.getInt(ROWS_KEY, DEFAULT_ROWS);

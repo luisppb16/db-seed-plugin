@@ -34,6 +34,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
@@ -148,47 +149,59 @@ public final class RowGenerator {
   }
 
   private void processRepetitionRules() {
-    repetitionRules.forEach(rule -> {
-      final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
+    repetitionRules.forEach(
+        rule -> {
+          final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
 
-      baseValues.entrySet().forEach(entry -> {
-        if (entry.getValue() instanceof String strValue) {
-          final Column col = table.column(entry.getKey());
-          entry.setValue(parseValue(strValue, col));
-        }
-      });
+          baseValues
+              .entrySet()
+              .forEach(
+                  entry -> {
+                    if (entry.getValue() instanceof String strValue) {
+                      final Column col = table.column(entry.getKey());
+                      entry.setValue(parseValue(strValue, col));
+                    }
+                  });
 
-      rule.randomConstantColumns().forEach(colName -> {
-        final Column col = table.column(colName);
-        final Object val =
-            valueGenerator.generateValue(col, constraints.get(colName), generatedCount.get());
-        baseValues.put(colName, val);
-      });
+          rule.randomConstantColumns()
+              .forEach(
+                  colName -> {
+                    final Column col = table.column(colName);
+                    final Object val =
+                        valueGenerator.generateValue(
+                            col, constraints.get(colName), generatedCount.get());
+                    baseValues.put(colName, val);
+                  });
 
-      for (int i = 0; i < rule.count(); i++) {
-        int attempts = 0;
-        while (attempts < MAX_GENERATE_ATTEMPTS) {
-          final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
-          if (generatedRow.isPresent()) {
-            rows.add(generatedRow.get());
-            generatedCount.incrementAndGet();
-            break;
-          }
-          attempts++;
-        }
-      }
-    });
+          IntStream.range(0, rule.count())
+              .forEach(
+                  i -> {
+                    int attempts = 0;
+                    while (attempts < MAX_GENERATE_ATTEMPTS) {
+                      final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
+                      if (generatedRow.isPresent()) {
+                        rows.add(generatedRow.get());
+                        generatedCount.incrementAndGet();
+                        break;
+                      }
+                      attempts++;
+                    }
+                  });
+        });
   }
 
   private void fillRemainingRows() {
-    int attempts = 0;
-    while (generatedCount.get() < rowsPerTable && attempts < rowsPerTable * MAX_GENERATE_ATTEMPTS) {
-      generateAndValidateRow().ifPresent(row -> {
-        rows.add(row);
-        generatedCount.incrementAndGet();
-      });
-      attempts++;
-    }
+    final int maxAttempts = rowsPerTable * MAX_GENERATE_ATTEMPTS;
+    IntStream.range(0, maxAttempts)
+        .takeWhile(i -> generatedCount.get() < rowsPerTable)
+        .forEach(
+            i ->
+                generateAndValidateRow()
+                    .ifPresent(
+                        row -> {
+                          rows.add(row);
+                          generatedCount.incrementAndGet();
+                        }));
   }
 
   private Optional<Row> generateAndValidateRow() {
@@ -208,8 +221,7 @@ public final class RowGenerator {
 
     generateRemainingColumnValues(values);
 
-    if (!validateMultiColumnConstraintValues(values)
-        && !reconcileMultiColumnConstraints(values)) {
+    if (!validateMultiColumnConstraintValues(values) && !reconcileMultiColumnConstraints(values)) {
       return Optional.empty();
     }
 
@@ -265,10 +277,9 @@ public final class RowGenerator {
                                   return true;
                                 }
                                 final Object actualVal = values.get(colName);
-                                if (Objects.isNull(actualVal)) {
-                                  return "NULL".equalsIgnoreCase(expectedVal);
-                                }
-                                return String.valueOf(actualVal).equals(expectedVal);
+                                return Objects.isNull(actualVal)
+                                    ? "NULL".equalsIgnoreCase(expectedVal)
+                                    : String.valueOf(actualVal).equals(expectedVal);
                               }))
               .toList();
 
@@ -280,23 +291,27 @@ public final class RowGenerator {
           compatibleCombinations.get(
               ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
-      selectedCombination.forEach((key, valStr) -> {
-        final String colName = resolveColumnName(key);
-        if (!values.containsKey(colName)) {
-          final Column col = table.column(colName);
-          values.put(colName, parseValue(valStr, col));
-        }
-      });
+      selectedCombination.forEach(
+          (key, valStr) -> {
+            final String colName = resolveColumnName(key);
+            if (!values.containsKey(colName)) {
+              final Column col = table.column(colName);
+              values.put(colName, parseValue(valStr, col));
+            }
+          });
     }
     return true;
   }
 
   private void generateRemainingColumnValues(final Map<String, Object> values) {
-    table.columns().forEach(column -> {
-      if (!values.containsKey(column.name())) {
-        values.put(column.name(), generateColumnValue(column));
-      }
-    });
+    table
+        .columns()
+        .forEach(
+            column -> {
+              if (!values.containsKey(column.name())) {
+                values.put(column.name(), generateColumnValue(column));
+              }
+            });
   }
 
   private void batchGenerateAiValues() {
@@ -306,92 +321,112 @@ public final class RowGenerator {
 
     final int wordCount = DbSeedSettingsState.getInstance().getAiWordCount();
 
-    aiColumns.forEach(colName -> {
-      if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
-
-      final Column col = table.column(colName);
-      if (Objects.isNull(col) || excludedColumns.contains(colName)) return;
-
-      final String sqlType = getSqlTypeName(col);
-      final int totalRows = rows.size();
-      final Set<String> seenAiValues = new HashSet<>();
-      final boolean isArray = isArrayType(col);
-
-      for (int batchStart = 0; batchStart < totalRows; batchStart += AI_BATCH_SIZE) {
-        if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
-
-        final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
-        final int batchCount = batchEnd - batchStart;
-
-        if (Objects.nonNull(indicator)) {
-          indicator.setText2(
-              String.format(
-                  "AI generating %s.%s (%d-%d/%d)",
-                  table.name(), colName, batchStart + 1, batchEnd, totalRows));
-        }
-
-        final List<String> allValues = new ArrayList<>();
-        int retries = 0;
-
-        while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+    aiColumns.forEach(
+        colName -> {
           if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
 
-          final int remaining = batchCount - allValues.size();
-          try {
-            final List<String> batchValues =
-                ollamaClient
-                    .generateBatchValues(
-                        applicationContext, table.name(), colName, sqlType, wordCount, remaining)
-                    .join();
+          final Column col = table.column(colName);
+          if (Objects.isNull(col) || excludedColumns.contains(colName)) return;
 
-            if (batchValues.isEmpty()) {
-              retries++;
-              continue;
-            }
-            boolean addedAny = false;
-            for (final String v : batchValues) {
-              if (seenAiValues.add(v)) {
-                allValues.add(v);
-                addedAny = true;
-              }
-            }
-            if (!addedAny) {
-              retries++;
-            }
-          } catch (final Exception ex) {
-            log.warn(
-                "Batch AI generation failed for {}.{}: {}",
-                table.name(),
-                colName,
-                ex.getMessage());
-            retries++;
-          }
-        }
+          final String sqlType = getSqlTypeName(col);
+          final int totalRows = rows.size();
+          final Set<String> seenAiValues = new HashSet<>();
+          final boolean isArray = isArrayType(col);
 
-        for (int i = 0; i < Math.min(allValues.size(), batchCount); i++) {
-          final String val = allValues.get(i);
-          if (Objects.nonNull(val) && !val.isBlank()) {
-            String finalTrimmed = val.trim();
-            Object finalValue;
+          IntStream.iterate(0, i -> i + AI_BATCH_SIZE)
+              .limit((totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE)
+              .forEach(
+                  batchStart -> {
+                    if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
 
-            if (isArray) {
-              finalValue = parseAiArray(finalTrimmed);
-            } else {
-              if (col.length() > 0 && finalTrimmed.length() > col.length()) {
-                finalTrimmed = finalTrimmed.substring(0, col.length());
-              }
-              finalValue = finalTrimmed;
-            }
-            rows.get(batchStart + i).values().put(colName, finalValue);
-          }
-        }
-      }
-    });
+                    final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
+                    final int batchCount = batchEnd - batchStart;
+
+                    if (Objects.nonNull(indicator)) {
+                      indicator.setText2(
+                          "AI generating "
+                              .concat(table.name())
+                              .concat(".")
+                              .concat(colName)
+                              .concat(" (")
+                              .concat(String.valueOf(batchStart + 1))
+                              .concat("-")
+                              .concat(String.valueOf(batchEnd))
+                              .concat("/")
+                              .concat(String.valueOf(totalRows))
+                              .concat(")"));
+                    }
+
+                    final List<String> allValues = new ArrayList<>();
+                    int retries = 0;
+
+                    while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+                      if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
+
+                      final int remaining = batchCount - allValues.size();
+                      try {
+                        final List<String> batchValues =
+                            ollamaClient
+                                .generateBatchValues(
+                                    applicationContext,
+                                    table.name(),
+                                    colName,
+                                    sqlType,
+                                    wordCount,
+                                    remaining)
+                                .join();
+
+                        if (batchValues.isEmpty()) {
+                          retries++;
+                          continue;
+                        }
+                        boolean addedAny = false;
+                        for (final String v : batchValues) {
+                          if (seenAiValues.add(v)) {
+                            allValues.add(v);
+                            addedAny = true;
+                          }
+                        }
+                        if (!addedAny) {
+                          retries++;
+                        }
+                      } catch (final Exception ex) {
+                        log.warn(
+                            "Batch AI generation failed for {}.{}: {}",
+                            table.name(),
+                            colName,
+                            ex.getMessage());
+                        retries++;
+                      }
+                    }
+
+                    IntStream.range(0, Math.min(allValues.size(), batchCount))
+                        .forEach(
+                            i -> {
+                              final String val = allValues.get(i);
+                              if (Objects.nonNull(val) && !val.isBlank()) {
+                                String finalTrimmed = val.trim();
+                                final Object finalValue;
+
+                                if (isArray) {
+                                  finalValue = parseAiArray(finalTrimmed);
+                                } else {
+                                  if (col.length() > 0 && finalTrimmed.length() > col.length()) {
+                                    finalTrimmed = finalTrimmed.substring(0, col.length());
+                                  }
+                                  finalValue = finalTrimmed;
+                                }
+                                rows.get(batchStart + i).values().put(colName, finalValue);
+                              }
+                            });
+                  });
+        });
   }
 
   private boolean isArrayType(final Column col) {
     return col.jdbcType() == Types.ARRAY
-        || (Objects.nonNull(col.typeName()) && col.typeName().toLowerCase(Locale.ROOT).endsWith("[]"));
+        || (Objects.nonNull(col.typeName())
+            && col.typeName().toLowerCase(Locale.ROOT).endsWith("[]"));
   }
 
   private Object[] parseAiArray(final String val) {
@@ -408,11 +443,12 @@ public final class RowGenerator {
 
     return Arrays.stream(cleaned.split(","))
         .map(String::trim)
-        .map(s -> {
-          if (s.startsWith("\"") && s.endsWith("\"")) return s.substring(1, s.length() - 1);
-          if (s.startsWith("'") && s.endsWith("'")) return s.substring(1, s.length() - 1);
-          return s;
-        })
+        .map(
+            s -> {
+              if (s.startsWith("\"") && s.endsWith("\"")) return s.substring(1, s.length() - 1);
+              if (s.startsWith("'") && s.endsWith("'")) return s.substring(1, s.length() - 1);
+              return s;
+            })
         .toArray(String[]::new);
   }
 
@@ -528,13 +564,14 @@ public final class RowGenerator {
         final Map<String, String> selectedCombination =
             compatibleCombinations.get(
                 ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
-        selectedCombination.forEach((key, valStr) -> {
-          final String colName = resolveColumnName(key);
-          if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
-            final Column col = table.column(colName);
-            values.put(colName, parseValue(valStr, col));
-          }
-        });
+        selectedCombination.forEach(
+            (key, valStr) -> {
+              final String colName = resolveColumnName(key);
+              if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
+                final Column col = table.column(colName);
+                values.put(colName, parseValue(valStr, col));
+              }
+            });
       }
     }
     return true;
@@ -544,12 +581,13 @@ public final class RowGenerator {
       final Map<String, String> combination,
       final Set<String> resolvedColumns,
       final Map<String, Object> values) {
-    combination.forEach((key, valStr) -> {
-      final String colName = resolveColumnName(key);
-      if (resolvedColumns.contains(colName)) {
-        final Column col = table.column(colName);
-        values.put(colName, parseValue(valStr, col));
-      }
-    });
+    combination.forEach(
+        (key, valStr) -> {
+          final String colName = resolveColumnName(key);
+          if (resolvedColumns.contains(colName)) {
+            final Column col = table.column(colName);
+            values.put(colName, parseValue(valStr, col));
+          }
+        });
   }
 }

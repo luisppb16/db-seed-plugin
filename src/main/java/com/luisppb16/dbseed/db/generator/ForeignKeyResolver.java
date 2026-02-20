@@ -113,14 +113,10 @@ public final class ForeignKeyResolver {
     final Set<String> usedCombinations = new HashSet<>();
     final int maxAttempts = MAX_UNIQUE_FK_ATTEMPTS_FACTOR * rows.size();
 
-    for (final Row row : rows) {
-      final Optional<Map<String, Object>> resolvedFkValues =
-          findUniqueFkCombination(table, uniqueKeysOnFks, usedCombinations, maxAttempts);
-
-      if (resolvedFkValues.isPresent()) {
-        row.values().putAll(resolvedFkValues.get());
-      }
-    }
+    rows.forEach(
+        row ->
+            findUniqueFkCombination(table, uniqueKeysOnFks, usedCombinations, maxAttempts)
+                .ifPresent(fkValues -> row.values().putAll(fkValues)));
   }
 
   private Optional<Map<String, Object>> findUniqueFkCombination(
@@ -142,51 +138,56 @@ public final class ForeignKeyResolver {
   }
 
   private Map<String, Object> generatePotentialFkValues(final Table table) {
-    final Map<String, Object> potentialFkValues = new HashMap<>();
-    for (final ForeignKey fk : table.foreignKeys()) {
-      final Table parent = tableMap.get(fk.pkTable());
-      final List<Row> parentRows = Objects.nonNull(parent) ? data.get(parent) : null;
+    return table.foreignKeys().stream()
+        .map(
+            fk -> {
+              final Table parent = tableMap.get(fk.pkTable());
+              final List<Row> parentRows = Objects.nonNull(parent) ? data.get(parent) : null;
 
-      if (Objects.nonNull(parent) && Objects.nonNull(parentRows) && !parentRows.isEmpty()) {
-        final Row parentRow =
-            getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), false);
-        if (Objects.nonNull(parentRow)) {
-          fk.columnMapping()
-              .forEach(
-                  (fkCol, pkCol) -> potentialFkValues.put(fkCol, parentRow.values().get(pkCol)));
-        }
-      }
-    }
-    return potentialFkValues;
+              if (Objects.isNull(parent) || Objects.isNull(parentRows) || parentRows.isEmpty()) {
+                return Map.<String, Object>of();
+              }
+
+              final Row parentRow =
+                  getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), false);
+              if (Objects.isNull(parentRow)) {
+                return Map.<String, Object>of();
+              }
+
+              Map<String, Object> values = new HashMap<>();
+              fk.columnMapping()
+                  .forEach((fkCol, pkCol) -> values.put(fkCol, parentRow.values().get(pkCol)));
+              return values;
+            })
+        .filter(m -> !m.isEmpty())
+        .flatMap(m -> m.entrySet().stream())
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
   }
 
   private boolean isUniqueFkCollision(
       final List<List<String>> uniqueKeysOnFks,
       final Map<String, Object> potentialFkValues,
       final Set<String> usedCombinations) {
-    for (final List<String> ukColumns : uniqueKeysOnFks) {
-      final String combination =
-          ukColumns.stream()
-              .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
-              .collect(Collectors.joining(COMBINATION_DELIMITER));
-      if (usedCombinations.contains(combination)) {
-        return true;
-      }
-    }
-    return false;
+    return uniqueKeysOnFks.stream()
+        .map(
+            ukColumns ->
+                ukColumns.stream()
+                    .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
+                    .collect(Collectors.joining(COMBINATION_DELIMITER)))
+        .anyMatch(usedCombinations::contains);
   }
 
   private void addUniqueCombinationsToSet(
       final List<List<String>> uniqueKeysOnFks,
       final Map<String, Object> potentialFkValues,
       final Set<String> usedCombinations) {
-    for (final List<String> ukColumns : uniqueKeysOnFks) {
-      final String combination =
-          ukColumns.stream()
-              .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
-              .collect(Collectors.joining(COMBINATION_DELIMITER));
-      usedCombinations.add(combination);
-    }
+    uniqueKeysOnFks.stream()
+        .map(
+            ukColumns ->
+                ukColumns.stream()
+                    .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
+                    .collect(Collectors.joining(COMBINATION_DELIMITER)))
+        .forEach(usedCombinations::add);
   }
 
   private void resolveSingleForeignKey(

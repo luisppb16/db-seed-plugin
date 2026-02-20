@@ -11,14 +11,14 @@ import java.util.Objects;
 import lombok.experimental.UtilityClass;
 
 /**
- * Advanced factory for resolving appropriate SQL dialects from driver information in the DBSeed plugin ecosystem.
+ * Advanced factory for resolving appropriate SQL dialects from driver information in the DBSeed
+ * plugin ecosystem.
  *
- * <p>This utility class implements sophisticated dialect resolution algorithms,
- * automatically detecting and applying the correct SQL dialect based on database
- * driver characteristics. It provides intelligent fallback mechanisms and supports
- * both explicit dialect configuration and automatic detection from driver metadata.
- * The factory manages dialect-specific properties files and ensures optimal SQL
- * generation for various database systems.
+ * <p>This utility class implements sophisticated dialect resolution algorithms, automatically
+ * detecting and applying the correct SQL dialect based on database driver characteristics. It
+ * provides intelligent fallback mechanisms and supports both explicit dialect configuration and
+ * automatic detection from driver metadata. The factory manages dialect-specific properties files
+ * and ensures optimal SQL generation for various database systems.
  *
  * <p>Key responsibilities include:
  *
@@ -28,7 +28,8 @@ import lombok.experimental.UtilityClass;
  *   <li>Implementing comprehensive vendor detection algorithms for major database systems
  *   <li>Providing fallback mechanisms to standard dialect when detection fails
  *   <li>Managing dialect-specific properties file loading and initialization
- *   <li>Supporting multiple database vendors including MySQL, PostgreSQL, Oracle, SQL Server, SQLite, and H2
+ *   <li>Supporting multiple database vendors including MySQL, PostgreSQL, Oracle, SQL Server,
+ *       SQLite, and H2
  *   <li>Optimizing detection algorithms for performance and accuracy
  *   <li>Handling edge cases and unusual driver configurations gracefully
  *   <li>Ensuring consistent dialect behavior across different database connection methods
@@ -37,29 +38,27 @@ import lombok.experimental.UtilityClass;
  *   <li>Managing dialect-specific SQL generation rules and formatting preferences
  * </ul>
  *
- * <p>The class implements advanced detection algorithms that analyze both driver class
- * names and JDBC URL patterns to determine the appropriate SQL dialect. It includes
- * comprehensive support for major database vendors with vendor-specific SQL syntax
- * and formatting requirements. The detection logic handles various driver naming
- * conventions and URL formats, ensuring accurate dialect identification across
- * different database connection configurations.
+ * <p>The class implements advanced detection algorithms that analyze both driver class names and
+ * JDBC URL patterns to determine the appropriate SQL dialect. It includes comprehensive support for
+ * major database vendors with vendor-specific SQL syntax and formatting requirements. The detection
+ * logic handles various driver naming conventions and URL formats, ensuring accurate dialect
+ * identification across different database connection configurations.
  *
- * <p>Thread safety is maintained through immutable factory methods and thread-safe
- * singleton dialect instances. The class implements efficient string matching and
- * case-insensitive comparisons for optimal performance. Memory efficiency is
- * achieved through static detection patterns and cached dialect instances.
+ * <p>Thread safety is maintained through immutable factory methods and thread-safe singleton
+ * dialect instances. The class implements efficient string matching and case-insensitive
+ * comparisons for optimal performance. Memory efficiency is achieved through static detection
+ * patterns and cached dialect instances.
  *
- * <p>Advanced features include intelligent fallback mechanisms that gracefully
- * degrade to standard SQL syntax when specific dialect information is unavailable.
- * The factory handles both explicit dialect specifications and automatic detection
- * scenarios, providing consistent behavior regardless of the configuration method.
- * The implementation includes comprehensive validation to ensure detected dialects
- * are valid and properly configured.
+ * <p>Advanced features include intelligent fallback mechanisms that gracefully degrade to standard
+ * SQL syntax when specific dialect information is unavailable. The factory handles both explicit
+ * dialect specifications and automatic detection scenarios, providing consistent behavior
+ * regardless of the configuration method. The implementation includes comprehensive validation to
+ * ensure detected dialects are valid and properly configured.
  *
- * <p>Error handling includes robust null-safety checks and graceful degradation
- * when driver information is incomplete or malformed. The class handles edge
- * cases such as custom drivers, embedded databases, and unusual connection
- * configurations while maintaining reliable dialect resolution.
+ * <p>Error handling includes robust null-safety checks and graceful degradation when driver
+ * information is incomplete or malformed. The class handles edge cases such as custom drivers,
+ * embedded databases, and unusual connection configurations while maintaining reliable dialect
+ * resolution.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
  * @version 1.3.0
@@ -95,8 +94,10 @@ public class DialectFactory {
     String url =
         Objects.nonNull(driver.urlTemplate()) ? driver.urlTemplate().toLowerCase(Locale.ROOT) : "";
 
-    if (driverClass.contains("mysql") || driverClass.contains("mariadb")
-        || url.contains("jdbc:mysql") || url.contains("jdbc:mariadb")) {
+    if (driverClass.contains("mysql")
+        || driverClass.contains("mariadb")
+        || url.contains("jdbc:mysql")
+        || url.contains("jdbc:mariadb")) {
       return "mysql";
     }
     if (driverClass.contains("sqlserver") || url.contains("jdbc:sqlserver")) {
@@ -108,8 +109,10 @@ public class DialectFactory {
     if (driverClass.contains("sqlite") || url.contains("jdbc:sqlite")) {
       return "sqlite";
     }
-    if (driverClass.contains("postgresql") || url.contains("jdbc:postgresql")
-        || url.contains("jdbc:redshift") || url.contains("jdbc:cockroach")
+    if (driverClass.contains("postgresql")
+        || url.contains("jdbc:postgresql")
+        || url.contains("jdbc:redshift")
+        || url.contains("jdbc:cockroach")
         || driverClass.contains("h2")) {
       return "postgresql";
     }

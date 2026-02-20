@@ -26,9 +26,9 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
-import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
+import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
@@ -68,7 +68,8 @@ import org.jetbrains.annotations.NotNull;
  *
  * <ul>
  *   <li>Initiating the database connection workflow and driver selection process
- *   <li>Managing the multi-stage configuration dialog sequence (connection, table selection, PK/UUID configuration)
+ *   <li>Managing the multi-stage configuration dialog sequence (connection, table selection,
+ *       PK/UUID configuration)
  *   <li>Performing schema introspection to analyze database structure and relationships
  *   <li>Coordinating data generation with advanced features like AI-powered content creation
  *   <li>Handling complex dependency resolution for tables with foreign key relationships
@@ -78,21 +79,21 @@ import org.jetbrains.annotations.NotNull;
  *   <li>Implementing safeguards for large-scale data generation operations
  * </ul>
  *
- * <p>The class implements a robust error handling mechanism with appropriate user feedback
- * through IntelliJ's notification system. It supports various database systems through
- * dynamic driver loading and dialect-specific SQL generation. The workflow includes
- * intelligent cycle detection and resolution for circular foreign key dependencies,
- * ensuring that data can be generated even in complex schema scenarios.
+ * <p>The class implements a robust error handling mechanism with appropriate user feedback through
+ * IntelliJ's notification system. It supports various database systems through dynamic driver
+ * loading and dialect-specific SQL generation. The workflow includes intelligent cycle detection
+ * and resolution for circular foreign key dependencies, ensuring that data can be generated even in
+ * complex schema scenarios.
  *
  * <p>Advanced features include AI-powered data generation using external Ollama LLM servers,
- * configurable dictionary-based content generation, soft-delete column handling, and
- * repetition rule support for consistent test data. The class also provides extensive
- * configuration options for numeric precision, UUID generation, and exclusion rules.
+ * configurable dictionary-based content generation, soft-delete column handling, and repetition
+ * rule support for consistent test data. The class also provides extensive configuration options
+ * for numeric precision, UUID generation, and exclusion rules.
  *
- * <p>Thread safety is maintained through proper use of IntelliJ's application threading
- * model, with background tasks executed through the progress manager and UI updates
- * performed on the EDT as appropriate. The class follows the builder pattern for
- * configuration objects and leverages functional programming concepts for data processing.
+ * <p>Thread safety is maintained through proper use of IntelliJ's application threading model, with
+ * background tasks executed through the progress manager and UI updates performed on the EDT as
+ * appropriate. The class follows the builder pattern for configuration objects and leverages
+ * functional programming concepts for data processing.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
  * @version 1.3.0
@@ -166,7 +167,9 @@ public final class SeedDatabaseAction extends AnAction {
                         config.url(),
                         Objects.requireNonNullElse(config.user(), ""),
                         Objects.requireNonNullElse(config.password(), ""))) {
-                  tablesRef.set(SchemaIntrospector.introspect(conn, config.schema(), DialectFactory.resolve(chosenDriver)));
+                  tablesRef.set(
+                      SchemaIntrospector.introspect(
+                          conn, config.schema(), DialectFactory.resolve(chosenDriver)));
                   log.info("Schema introspection successful for schema: {}", config.schema());
                 } catch (final Exception ex) {
                   errorRef.set(ex);
@@ -273,17 +276,12 @@ public final class SeedDatabaseAction extends AnAction {
         }
 
         final GenerationConfig finalConfig =
-            new GenerationConfig(
-                config.url(),
-                config.user(),
-                config.password(),
-                config.schema(),
-                config.rowsPerTable(),
-                config.deferred(),
-                pkDialog.getSoftDeleteColumns(),
-                pkDialog.getSoftDeleteUseSchemaDefault(),
-                pkDialog.getSoftDeleteValue(),
-                pkDialog.getNumericScale());
+            config.toBuilder()
+                .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+                .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+                .softDeleteValue(pkDialog.getSoftDeleteValue())
+                .numericScale(pkDialog.getNumericScale())
+                .build();
 
         ConnectionConfigPersistence.save(project, finalConfig);
 

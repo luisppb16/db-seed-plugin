@@ -207,8 +207,8 @@ public final class SchemaDesigner extends AnAction {
                     "Error",
                     JOptionPane.ERROR_MESSAGE);
               } catch (final ExecutionException e) {
-                final String errorMsg = Objects.nonNull(e.getCause())
-                    ? e.getCause().getMessage() : e.getMessage();
+                final String errorMsg =
+                    Objects.nonNull(e.getCause()) ? e.getCause().getMessage() : e.getMessage();
                 JOptionPane.showMessageDialog(
                     SchemaDesignerFrame.this,
                     "Error generating SQL: " + errorMsg,

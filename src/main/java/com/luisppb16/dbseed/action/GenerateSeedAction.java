@@ -26,9 +26,9 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
-import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
+import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
@@ -92,7 +92,9 @@ public final class GenerateSeedAction extends AnAction {
                           config.url(),
                           Objects.requireNonNullElse(config.user(), ""),
                           Objects.requireNonNullElse(config.password(), ""))) {
-                    List<Table> tables = SchemaIntrospector.introspect(conn, config.schema(), DialectFactory.resolve(chosenDriver));
+                    List<Table> tables =
+                        SchemaIntrospector.introspect(
+                            conn, config.schema(), DialectFactory.resolve(chosenDriver));
                     tablesRef.set(tables);
                   } catch (Exception ex) {
                     errorRef.set(ex);
@@ -126,17 +128,12 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getAiColumnsByTable());
 
       final GenerationConfig finalConfig =
-          new GenerationConfig(
-              config.url(),
-              config.user(),
-              config.password(),
-              config.schema(),
-              config.rowsPerTable(),
-              config.deferred(),
-              pkDialog.getSoftDeleteColumns(),
-              pkDialog.getSoftDeleteUseSchemaDefault(),
-              pkDialog.getSoftDeleteValue(),
-              pkDialog.getNumericScale());
+          config.toBuilder()
+              .softDeleteColumns(pkDialog.getSoftDeleteColumns())
+              .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
+              .softDeleteValue(pkDialog.getSoftDeleteValue())
+              .numericScale(pkDialog.getNumericScale())
+              .build();
 
       ConnectionConfigPersistence.save(project, finalConfig);
 

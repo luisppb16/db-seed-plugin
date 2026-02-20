@@ -16,7 +16,7 @@ import com.luisppb16.dbseed.db.generator.ValueGenerator;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
-import java.util.ArrayList;
+import java.sql.Types;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.Builder;
 import lombok.experimental.UtilityClass;
 import net.datafaker.Faker;
@@ -38,9 +39,9 @@ import net.datafaker.Faker;
  * <p>This utility class serves as the central hub for synthetic data generation, implementing
  * sophisticated algorithms for creating realistic test data that respects database schema
  * constraints and relationships. It coordinates multiple data generation strategies including
- * dictionary-based content, AI-powered generation, and constraint-aware value creation.
- * The class handles complex scenarios such as foreign key dependencies, check constraints,
- * and numeric bounds validation.
+ * dictionary-based content, AI-powered generation, and constraint-aware value creation. The class
+ * handles complex scenarios such as foreign key dependencies, check constraints, and numeric bounds
+ * validation.
  *
  * <p>Key responsibilities include:
  *
@@ -58,23 +59,23 @@ import net.datafaker.Faker;
  * </ul>
  *
  * <p>The class implements advanced constraint validation algorithms to ensure generated data
- * complies with database check constraints, including numeric bounds and allowed value sets.
- * It features intelligent fallback mechanisms when AI generation fails, gracefully degrading
- * to traditional dictionary-based approaches. The implementation includes sophisticated
- * algorithms for handling numeric constraints, ensuring values fall within specified ranges
- * and meet custom check constraint requirements.
+ * complies with database check constraints, including numeric bounds and allowed value sets. It
+ * features intelligent fallback mechanisms when AI generation fails, gracefully degrading to
+ * traditional dictionary-based approaches. The implementation includes sophisticated algorithms for
+ * handling numeric constraints, ensuring values fall within specified ranges and meet custom check
+ * constraint requirements.
  *
- * <p>Thread safety is maintained through immutable data structures and careful coordination
- * between concurrent AI requests and sequential data validation. The class leverages the
- * builder pattern for configuration parameters and implements efficient caching mechanisms
- * for dictionary words and constraint parsing results. Memory efficiency is achieved through
- * streaming operations and lazy evaluation where possible.
+ * <p>Thread safety is maintained through immutable data structures and careful coordination between
+ * concurrent AI requests and sequential data validation. The class leverages the builder pattern
+ * for configuration parameters and implements efficient caching mechanisms for dictionary words and
+ * constraint parsing results. Memory efficiency is achieved through streaming operations and lazy
+ * evaluation where possible.
  *
  * <p>The data generation process includes multiple validation phases to ensure referential
  * integrity and constraint compliance. Foreign key relationships are resolved in a post-processing
- * phase using the ForeignKeyResolver, which handles complex scenarios involving deferred
- * constraint processing for circular dependencies. The class also implements retry mechanisms
- * for constraint-bound numeric values, ensuring generated data meets all specified criteria.
+ * phase using the ForeignKeyResolver, which handles complex scenarios involving deferred constraint
+ * processing for circular dependencies. The class also implements retry mechanisms for
+ * constraint-bound numeric values, ensuring generated data meets all specified criteria.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
  * @version 1.3.0
@@ -167,36 +168,23 @@ public class DataGenerator {
             overridden.put(t.name(), t);
             return;
           }
-          final List<Column> newCols = new ArrayList<>();
-          t.columns()
-              .forEach(
-                  c -> {
-                    final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
-                    final boolean isIntegerType = c.jdbcType() == java.sql.Types.INTEGER
-                        || c.jdbcType() == java.sql.Types.BIGINT
-                        || c.jdbcType() == java.sql.Types.SMALLINT
-                        || c.jdbcType() == java.sql.Types.TINYINT;
-                    if (forceUuid && !c.uuid() && !isIntegerType) {
-                      newCols.add(new Column(
-                          c.name(),
-                          c.jdbcType(),
-                          c.typeName(),
-                          c.nullable(),
-                          c.primaryKey(),
-                          true,
-                          c.length(),
-                          c.scale(),
-                          c.minValue(),
-                          c.maxValue(),
-                          c.allowedValues()));
-                    } else {
-                      newCols.add(c);
-                    }
-                  });
-          overridden.put(
-              t.name(),
-              new Table(
-                  t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
+          final List<Column> newCols =
+              t.columns().stream()
+                  .map(
+                      c -> {
+                        final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
+                        final boolean isIntegerType =
+                            c.jdbcType() == Types.INTEGER
+                                || c.jdbcType() == Types.BIGINT
+                                || c.jdbcType() == Types.SMALLINT
+                                || c.jdbcType() == Types.TINYINT;
+                        if (forceUuid && !c.uuid() && !isIntegerType) {
+                          return c.toBuilder().uuid(true).build();
+                        }
+                        return c;
+                      })
+                  .toList();
+          overridden.put(t.name(), t.toBuilder().columns(newCols).build());
         });
     return List.copyOf(overridden.values());
   }
@@ -233,54 +221,56 @@ public class DataGenerator {
       final ProgressIndicator indicator) {
 
     final int totalTables = orderedTables.size();
-    for (int i = 0; i < totalTables; i++) {
-      final Table table = orderedTables.get(i);
-      if (Objects.nonNull(indicator)) {
-        indicator.setText(
-            "Generating data for table: "
-                + table.name()
-                + " ("
-                + (i + 1)
-                + "/"
-                + totalTables
-                + ")");
-        indicator.setFraction((double) i / totalTables);
-      }
+    IntStream.range(0, totalTables)
+        .forEach(
+            i -> {
+              final Table table = orderedTables.get(i);
+              if (Objects.nonNull(indicator)) {
+                indicator.setText(
+                    "Generating data for table: "
+                        .concat(table.name())
+                        .concat(" (")
+                        .concat(String.valueOf(i + 1))
+                        .concat("/")
+                        .concat(String.valueOf(totalTables))
+                        .concat(")"));
+                indicator.setFraction((double) i / totalTables);
+              }
 
-      if (table.columns().isEmpty()) {
-        data.put(table, Collections.emptyList());
-        continue;
-      }
+              if (table.columns().isEmpty()) {
+                data.put(table, Collections.emptyList());
+                return;
+              }
 
-      final RowGenerator rowGenerator =
-          new RowGenerator(
-              table,
-              rowsPerTable,
-              excludedColumns.getOrDefault(table.name(), Set.of()),
-              Objects.nonNull(repetitionRules)
-                  ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
-                  : Collections.emptyList(),
-              faker,
-              usedUuids,
-              dictionaryWords,
-              useLatinDictionary,
-              softDeleteCols,
-              softDeleteUseSchemaDefault,
-              softDeleteValue,
-              numericScale,
-              aiColumns.getOrDefault(table.name(), Set.of()),
-              ollamaClient,
-              applicationContext,
-              indicator);
+              final RowGenerator rowGenerator =
+                  new RowGenerator(
+                      table,
+                      rowsPerTable,
+                      excludedColumns.getOrDefault(table.name(), Set.of()),
+                      Objects.nonNull(repetitionRules)
+                          ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
+                          : Collections.emptyList(),
+                      faker,
+                      usedUuids,
+                      dictionaryWords,
+                      useLatinDictionary,
+                      softDeleteCols,
+                      softDeleteUseSchemaDefault,
+                      softDeleteValue,
+                      numericScale,
+                      aiColumns.getOrDefault(table.name(), Set.of()),
+                      ollamaClient,
+                      applicationContext,
+                      indicator);
 
-      final List<Row> rows = rowGenerator.generate();
-      data.put(table, rows);
-      tableConstraints.put(table.name(), rowGenerator.getConstraints());
+              final List<Row> rows = rowGenerator.generate();
+              data.put(table, rows);
+              tableConstraints.put(table.name(), rowGenerator.getConstraints());
 
-      if (Objects.nonNull(indicator)) {
-        indicator.setFraction((double) (i + 1) / totalTables);
-      }
-    }
+              if (Objects.nonNull(indicator)) {
+                indicator.setFraction((double) (i + 1) / totalTables);
+              }
+            });
   }
 
   private static void validateNumericConstraints(
@@ -289,15 +279,14 @@ public class DataGenerator {
       final Map<Table, List<Row>> data,
       final int numericScale) {
 
-    for (final Table table : orderedTables) {
-      final Map<String, ConstraintParser.ParsedConstraint> constraints =
-          tableConstraints.getOrDefault(table.name(), Map.of());
-      final List<Row> rows = data.get(table);
-      if (Objects.isNull(rows)) continue;
-      for (final Row row : rows) {
-        validateRowNumericConstraints(table, row, constraints, numericScale);
-      }
-    }
+    orderedTables.forEach(
+        table -> {
+          final Map<String, ConstraintParser.ParsedConstraint> constraints =
+              tableConstraints.getOrDefault(table.name(), Map.of());
+          final List<Row> rows = data.get(table);
+          if (Objects.isNull(rows)) return;
+          rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, numericScale));
+        });
   }
 
   private static void validateRowNumericConstraints(
@@ -309,26 +298,30 @@ public class DataGenerator {
     final Faker faker = new Faker();
     final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
 
-    for (final Column col : table.columns()) {
-      final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
-      Object val = row.values().get(col.name());
-      if (ValueGenerator.isNumericJdbc(col.jdbcType())
-          && Objects.nonNull(pc)
-          && (Objects.nonNull(pc.min()) || Objects.nonNull(pc.max()))) {
-        if (Objects.nonNull(val)
-            && Objects.nonNull(pc.allowedValues())
-            && !pc.allowedValues().isEmpty()
-            && pc.allowedValues().contains(String.valueOf(val))) {
-          continue;
-        }
-        int attempts = 0;
-        while (ValueGenerator.isNumericOutsideBounds(val, pc) && attempts < MAX_GENERATE_ATTEMPTS) {
-          val = vg.generateNumericWithinBounds(col, pc);
-          attempts++;
-        }
-        row.values().put(col.name(), val);
-      }
-    }
+    table
+        .columns()
+        .forEach(
+            col -> {
+              final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
+              Object val = row.values().get(col.name());
+              if (ValueGenerator.isNumericJdbc(col.jdbcType())
+                  && Objects.nonNull(pc)
+                  && (Objects.nonNull(pc.min()) || Objects.nonNull(pc.max()))) {
+                if (Objects.nonNull(val)
+                    && Objects.nonNull(pc.allowedValues())
+                    && !pc.allowedValues().isEmpty()
+                    && pc.allowedValues().contains(String.valueOf(val))) {
+                  return;
+                }
+                int attempts = 0;
+                while (ValueGenerator.isNumericOutsideBounds(val, pc)
+                    && attempts < MAX_GENERATE_ATTEMPTS) {
+                  val = vg.generateNumericWithinBounds(col, pc);
+                  attempts++;
+                }
+                row.values().put(col.name(), val);
+              }
+            });
   }
 
   @Builder

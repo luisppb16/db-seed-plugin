@@ -11,12 +11,10 @@ import com.luisppb16.dbseed.model.SqlKeyword;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
-import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -24,6 +22,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import net.datafaker.Faker;
 
 /**
@@ -101,7 +101,8 @@ public final class ValueGenerator {
       final double v;
       if (value instanceof Number n) v = n.doubleValue();
       else v = Double.parseDouble(value.toString());
-      return (Objects.nonNull(pc.min()) && v < pc.min()) || (Objects.nonNull(pc.max()) && v > pc.max());
+      return (Objects.nonNull(pc.min()) && v < pc.min())
+          || (Objects.nonNull(pc.max()) && v > pc.max());
     } catch (final NumberFormatException e) {
       return true;
     }
@@ -134,7 +135,8 @@ public final class ValueGenerator {
     }
 
     Integer maxLen = Objects.nonNull(constraint) ? constraint.maxLength() : null;
-    if (Objects.isNull(maxLen) || maxLen <= 0) maxLen = column.length() > 0 ? column.length() : null;
+    if (Objects.isNull(maxLen) || maxLen <= 0)
+      maxLen = column.length() > 0 ? column.length() : null;
 
     return generateDefaultValue(column, rowIndex, maxLen);
   }
@@ -164,24 +166,34 @@ public final class ValueGenerator {
   }
 
   private UUID tryParseUuidFromAllowedValues(final Set<String> allowedValues) {
-    for (final String s : allowedValues) {
-      try {
-        final UUID u = UUID.fromString(s.trim());
-        if (usedUuids.add(u)) return u;
-      } catch (final IllegalArgumentException ignored) {
-      }
-    }
-    return null;
+    return allowedValues.stream()
+        .map(String::trim)
+        .map(
+            s -> {
+              try {
+                return UUID.fromString(s);
+              } catch (final IllegalArgumentException e) {
+                return null;
+              }
+            })
+        .filter(Objects::nonNull)
+        .filter(usedUuids::add)
+        .findFirst()
+        .orElse(null);
   }
 
   @SuppressWarnings("java:S2245")
   private UUID generateUuid() {
-    for (int i = 0; i < UUID_GENERATION_LIMIT; i++) {
-      final UUID u = UUID.randomUUID();
-      if (usedUuids.add(u)) return u;
-    }
-    throw new IllegalStateException(
-        "Unable to generate a unique UUID after " + UUID_GENERATION_LIMIT + " attempts");
+    return IntStream.range(0, UUID_GENERATION_LIMIT)
+        .mapToObj(i -> UUID.randomUUID())
+        .filter(usedUuids::add)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "Unable to generate a unique UUID after "
+                        + UUID_GENERATION_LIMIT
+                        + " attempts"));
   }
 
   private ParsedConstraint determineEffectiveNumericConstraint(
@@ -214,7 +226,8 @@ public final class ValueGenerator {
       case Types.DATE ->
           Date.valueOf(LocalDate.now().minusDays(faker.number().numberBetween(0, DATE_RANGE_DAYS)));
       case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE ->
-          Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
+          Timestamp.from(
+              Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
       case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
       case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
       case Types.ARRAY -> generateArray(column);
@@ -224,19 +237,20 @@ public final class ValueGenerator {
 
   private Object generateArray(final Column column) {
     final int size = ThreadLocalRandom.current().nextInt(1, 4);
-    final String[] array = new String[size];
-    for (int i = 0; i < size; i++) {
-      array[i] = generateString(column.length() > 0 ? column.length() : 20, Types.VARCHAR);
-    }
-    return array;
+    final int colLength = column.length() > 0 ? column.length() : 20;
+    return IntStream.range(0, size)
+        .mapToObj(i -> generateString(colLength, Types.VARCHAR))
+        .toArray(String[]::new);
   }
 
   @SuppressWarnings("java:S2245")
   private String generateString(final Integer maxLen, final int jdbcType) {
-    final int len = (Objects.nonNull(maxLen) && maxLen > 0) ? maxLen : DEFAULT_STRING_LENGTH;
+    final int len = Objects.nonNull(maxLen) && maxLen > 0 ? maxLen : DEFAULT_STRING_LENGTH;
     if (len == ISO_COUNTRY_CODE_2_LEN) return faker.country().countryCode2();
     if (len == ISO_COUNTRY_CODE_3_LEN) return faker.country().countryCode3();
-    if (len == IBAN_ES_LEN) return normalizeToLength(IBAN_ES_PREFIX + faker.number().digits(IBAN_ES_DIGITS), len, jdbcType);
+    if (len == IBAN_ES_LEN)
+      return normalizeToLength(
+          IBAN_ES_PREFIX.concat(faker.number().digits(IBAN_ES_DIGITS)), len, jdbcType);
 
     boolean useDictionary = !dictionaryWords.isEmpty();
     if (useDictionary && useLatinDictionary) {
@@ -245,14 +259,20 @@ public final class ValueGenerator {
 
     if (useDictionary) {
       final int numWords =
-          ThreadLocalRandom.current().nextInt(1, Math.min(dictionaryWords.size(), MAX_DICTIONARY_WORDS));
-      final StringBuilder phraseBuilder = new StringBuilder();
-      for (int i = 0; i < numWords; i++) {
-        phraseBuilder.append(pickRandom(dictionaryWords, Types.VARCHAR)).append(" ");
-      }
-      return normalizeToLength(phraseBuilder.toString().trim(), len, jdbcType);
+          ThreadLocalRandom.current()
+              .nextInt(1, Math.min(dictionaryWords.size(), MAX_DICTIONARY_WORDS));
+      final String phrase =
+          IntStream.range(0, numWords)
+              .mapToObj(i -> (String) pickRandom(dictionaryWords, Types.VARCHAR))
+              .collect(Collectors.joining(" "));
+      return normalizeToLength(phrase, len, jdbcType);
     } else {
-      final int numWords = ThreadLocalRandom.current().nextInt(MIN_FAKER_WORDS, Math.clamp(len / FAKER_WORDS_DIVISOR, MIN_FAKER_WORDS_CLAMP, MAX_FAKER_WORDS_CLAMP));
+      final int numWords =
+          ThreadLocalRandom.current()
+              .nextInt(
+                  MIN_FAKER_WORDS,
+                  Math.clamp(
+                      len / FAKER_WORDS_DIVISOR, MIN_FAKER_WORDS_CLAMP, MAX_FAKER_WORDS_CLAMP));
       final String phrase = String.join(" ", faker.lorem().words(numWords));
       return normalizeToLength(phrase, len, jdbcType);
     }
@@ -260,21 +280,21 @@ public final class ValueGenerator {
 
   @SuppressWarnings("java:S2245")
   private Object pickRandom(final List<String> vals, final int jdbcType) {
-    String v = vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
+    final String v = vals.get(ThreadLocalRandom.current().nextInt(vals.size()));
     if (Objects.isNull(v)) return null;
-    v = v.trim();
-    if (v.isEmpty()) return "";
+    final String trimmed = v.trim();
+    if (trimmed.isEmpty()) return "";
     try {
       return switch (jdbcType) {
-        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(v);
-        case Types.BIGINT -> Long.parseLong(v);
-        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(v);
-        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(v);
-        case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(v);
-        default -> v;
+        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(trimmed);
+        case Types.BIGINT -> Long.parseLong(trimmed);
+        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(trimmed);
+        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(trimmed);
+        case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(trimmed);
+        default -> trimmed;
       };
     } catch (final NumberFormatException e) {
-      return v;
+      return trimmed;
     }
   }
 
@@ -284,7 +304,7 @@ public final class ValueGenerator {
       return value.substring(0, length);
     }
     if (jdbcType == Types.CHAR && value.length() < length) {
-      return value + " ".repeat(length - value.length());
+      return value.concat(" ".repeat(length - value.length()));
     }
     return value;
   }
@@ -348,7 +368,7 @@ public final class ValueGenerator {
 
   @SuppressWarnings("java:S2245")
   public Object generateNumericWithinBounds(final Column column, final ParsedConstraint pc) {
-    switch (column.jdbcType()) {
+    return switch (column.jdbcType()) {
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> {
         int min = getIntMinWithConstraint(column, pc);
         int max = getIntMaxWithConstraint(column, pc);
@@ -357,7 +377,7 @@ public final class ValueGenerator {
           min = max;
           max = t;
         }
-        return ThreadLocalRandom.current().nextInt(min, max + 1);
+        yield ThreadLocalRandom.current().nextInt(min, max + 1);
       }
       case Types.BIGINT -> {
         long min = getLongMinWithConstraint(column, pc);
@@ -367,18 +387,16 @@ public final class ValueGenerator {
           min = max;
           max = t;
         }
-        return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
+        yield ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
       }
       case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL -> {
         final double[] bounds = getNumericBoundsWithConstraint(column, pc);
         final double val = generateRandomDouble(bounds[0], bounds[1]);
         final int scale = getEffectiveScale(column);
-        return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
+        yield BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
       }
-      default -> {
-        return null;
-      }
-    }
+      default -> null;
+    };
   }
 
   private int getIntMin(final Column column) {
@@ -442,8 +460,8 @@ public final class ValueGenerator {
   }
 
   private double[] getNumericBounds(final Column column) {
-    double min = getDoubleMin(column);
-    double max = getDoubleMax(column);
+    final double min = getDoubleMin(column);
+    final double max = getDoubleMax(column);
     if (min > max) {
       return new double[] {max, min};
     }
@@ -453,8 +471,8 @@ public final class ValueGenerator {
   private double[] getNumericBoundsWithConstraint(final Column column, final ParsedConstraint pc) {
     final boolean hasMin = Objects.nonNull(pc) && Objects.nonNull(pc.min());
     final boolean hasMax = Objects.nonNull(pc) && Objects.nonNull(pc.max());
-    double min = hasMin ? pc.min() : getDoubleMin(column);
-    double max = hasMax ? pc.max() : getDoubleMax(column);
+    final double min = hasMin ? pc.min() : getDoubleMin(column);
+    final double max = hasMax ? pc.max() : getDoubleMax(column);
     if (min > max) {
       return new double[] {max, min};
     }

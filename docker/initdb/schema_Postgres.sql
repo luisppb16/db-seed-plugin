@@ -94,7 +94,6 @@ CREATE TABLE public.shipments
     order_id        UUID,
     shipped_date    TIMESTAMP,
     carrier         VARCHAR(50),
-    carrier_tags    TEXT[],
     tracking_number VARCHAR(100),
     CONSTRAINT fk_shipment_order FOREIGN KEY (order_id) REFERENCES public.orders (id)
 );

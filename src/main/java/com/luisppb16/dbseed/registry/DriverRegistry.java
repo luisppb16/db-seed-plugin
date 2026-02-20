@@ -11,9 +11,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.luisppb16.dbseed.config.DriverInfo;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Objects;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 

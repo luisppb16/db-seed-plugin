@@ -9,6 +9,7 @@ import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
@@ -34,7 +35,6 @@ import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
-import com.intellij.ui.components.JBTextField;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
@@ -71,7 +71,8 @@ public final class SeedDialog extends DialogWrapper {
     this.driverInfo = driverInfo;
     setTitle("Connection Settings - Step 2/3");
 
-    String template = Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL;
+    String template =
+        Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL;
     urlField = new JBTextField(template);
     urlField.getEmptyText().setText(extractBaseUrl(template));
 
@@ -221,7 +222,8 @@ public final class SeedDialog extends DialogWrapper {
     if (Objects.isNull(urlToUse)) {
       urlToUse = Objects.requireNonNullElse(savedConfig.url(), DEFAULT_POSTGRES_URL);
       usingSavedConfig = true;
-    } else if (Objects.nonNull(savedConfig.url()) && isSameDriverType(urlTemplate, savedConfig.url())) {
+    } else if (Objects.nonNull(savedConfig.url())
+        && isSameDriverType(urlTemplate, savedConfig.url())) {
       urlToUse = savedConfig.url();
       usingSavedConfig = true;
     }

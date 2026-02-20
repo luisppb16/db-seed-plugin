@@ -354,9 +354,18 @@ public class OllamaClient {
                   Format: {element1,element2,element3} with %d elements. Each element up to %d words. \
                   Use PostgreSQL array syntax with curly braces and comma-separated values. Single line only.
                   Value:"""
-                  .formatted(contextLine, columnName, tableName, sqlType, elementCount, effectiveWordCount);
+                  .formatted(
+                      contextLine,
+                      columnName,
+                      tableName,
+                      sqlType,
+                      elementCount,
+                      effectiveWordCount);
         }
-        numPredict = Math.max(DEFAULT_NUM_PREDICT * 2, elementCount * effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+        numPredict =
+            Math.max(
+                DEFAULT_NUM_PREDICT * 2,
+                elementCount * effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
       } else {
         if (effectiveWordCount == 1) {
           prompt =
@@ -446,9 +455,20 @@ public class OllamaClient {
                   Format each array as: {element1,element2,element3} with %d elements per array. Each element up to %d words. \
                   Use PostgreSQL array syntax with curly braces and comma-separated values. \
                   One array per line. No duplicates. No numbering. No explanations. Raw array values only."""
-                  .formatted(contextLine, count, columnName, tableName, sqlType, elementCount, effectiveWordCount);
+                  .formatted(
+                      contextLine,
+                      count,
+                      columnName,
+                      tableName,
+                      sqlType,
+                      elementCount,
+                      effectiveWordCount);
         }
-        numPredict = count * elementCount * Math.max(BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+        numPredict =
+            count
+                * elementCount
+                * Math.max(
+                    BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
       } else {
         if (effectiveWordCount == 1) {
           prompt =
@@ -462,7 +482,8 @@ public class OllamaClient {
               """
                   %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
                   Each value up to %d words. One value per line. No duplicates. No numbering. No explanations. Raw values only."""
-                  .formatted(contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
+                  .formatted(
+                      contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
           numPredict =
               count
                   * Math.max(

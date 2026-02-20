@@ -17,17 +17,17 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
 
 /**
  * Advanced SQL generation engine for the DBSeed plugin ecosystem.
  *
- * <p>This utility class provides sophisticated SQL script generation capabilities,
- * transforming in-memory data representations into optimized SQL INSERT and UPDATE
- * statements. It implements dialect-aware SQL generation with proper identifier
- * quoting, value formatting, and constraint management. The class handles both
- * immediate and deferred constraint processing modes, supporting complex scenarios
- * with circular foreign key dependencies.
+ * <p>This utility class provides sophisticated SQL script generation capabilities, transforming
+ * in-memory data representations into optimized SQL INSERT and UPDATE statements. It implements
+ * dialect-aware SQL generation with proper identifier quoting, value formatting, and constraint
+ * management. The class handles both immediate and deferred constraint processing modes, supporting
+ * complex scenarios with circular foreign key dependencies.
  *
  * <p>Key responsibilities include:
  *
@@ -46,30 +46,26 @@ import lombok.experimental.UtilityClass;
  *   <li>Implementing proper SQL statement termination and formatting
  * </ul>
  *
- * <p>The class implements advanced batching algorithms to optimize SQL generation
- * performance, grouping INSERT statements into manageable chunks to avoid database
- * limitations. It includes sophisticated identifier qualification logic that
- * automatically detects when quoting is required based on reserved keywords and
- * naming conventions. The implementation handles various data types with appropriate
- * formatting and escaping for the target SQL dialect.
+ * <p>The class implements advanced batching algorithms to optimize SQL generation performance,
+ * grouping INSERT statements into manageable chunks to avoid database limitations. It includes
+ * sophisticated identifier qualification logic that automatically detects when quoting is required
+ * based on reserved keywords and naming conventions. The implementation handles various data types
+ * with appropriate formatting and escaping for the target SQL dialect.
  *
- * <p>Thread safety is maintained through StringBuilder-based construction and
- * immutable input parameters. The class leverages the DialectFactory and
- * DatabaseDialect implementations to provide vendor-specific SQL generation
- * capabilities. Memory efficiency is achieved through direct string building
- * without intermediate collections, and the implementation includes optimizations
- * for large datasets through batch processing.
+ * <p>Thread safety is maintained through StringBuilder-based construction and immutable input
+ * parameters. The class leverages the DialectFactory and DatabaseDialect implementations to provide
+ * vendor-specific SQL generation capabilities. Memory efficiency is achieved through direct string
+ * building without intermediate collections, and the implementation includes optimizations for
+ * large datasets through batch processing.
  *
- * <p>Advanced features include automatic constraint management for deferred
- * processing scenarios, where foreign key constraints are temporarily disabled
- * during data insertion and re-enabled afterward. The class handles complex
- * scenarios involving circular dependencies that require UPDATE statements to
- * establish foreign key relationships after initial data insertion.
+ * <p>Advanced features include automatic constraint management for deferred processing scenarios,
+ * where foreign key constraints are temporarily disabled during data insertion and re-enabled
+ * afterward. The class handles complex scenarios involving circular dependencies that require
+ * UPDATE statements to establish foreign key relationships after initial data insertion.
  *
- * <p>Error handling includes validation of input data and graceful handling of
- * edge cases such as null values, empty datasets, and malformed identifiers.
- * The implementation is resilient to schema changes and adapts to varying table
- * structures dynamically.
+ * <p>Error handling includes validation of input data and graceful handling of edge cases such as
+ * null values, empty datasets, and malformed identifiers. The implementation is resilient to schema
+ * changes and adapts to varying table structures dynamically.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
  * @version 1.3.0
@@ -148,10 +144,13 @@ public class SqlGenerator {
                   .map(col -> qualified(opts, col, dialect))
                   .collect(Collectors.joining(SQL_COMMA_SPACE));
 
-          for (int i = 0; i < rows.size(); i += BATCH_SIZE) {
-            final List<Row> batch = rows.subList(i, Math.min(i + BATCH_SIZE, rows.size()));
-            dialect.appendBatch(sb, tableName, columnList, batch, columnOrder);
-          }
+          IntStream.iterate(0, i -> i + BATCH_SIZE)
+              .limit((rows.size() + BATCH_SIZE - 1) / BATCH_SIZE)
+              .forEach(
+                  i -> {
+                    final List<Row> batch = rows.subList(i, Math.min(i + BATCH_SIZE, rows.size()));
+                    dialect.appendBatch(sb, tableName, columnList, batch, columnOrder);
+                  });
         });
   }
 
@@ -161,41 +160,42 @@ public class SqlGenerator {
       final SqlOptions opts,
       final DatabaseDialect dialect) {
     if (Objects.nonNull(updates) && !updates.isEmpty()) {
-      for (final PendingUpdate update : updates) {
-        final String tableName = qualified(opts, update.table(), dialect);
+      updates.forEach(
+          update -> {
+            final String tableName = qualified(opts, update.table(), dialect);
 
-        final String setPart =
-            update.fkValues().entrySet().stream()
-                .map(
-                    e -> {
-                      StringBuilder valSb = new StringBuilder();
-                      dialect.formatValue(e.getValue(), valSb);
-                      return qualified(opts, e.getKey(), dialect)
-                          .concat(SQL_EQUALS)
-                          .concat(valSb.toString());
-                    })
-                .collect(Collectors.joining(SQL_COMMA_SPACE));
+            final String setPart =
+                update.fkValues().entrySet().stream()
+                    .map(
+                        e -> {
+                          StringBuilder valSb = new StringBuilder();
+                          dialect.formatValue(e.getValue(), valSb);
+                          return qualified(opts, e.getKey(), dialect)
+                              .concat(SQL_EQUALS)
+                              .concat(valSb.toString());
+                        })
+                    .collect(Collectors.joining(SQL_COMMA_SPACE));
 
-        final String wherePart =
-            update.pkValues().entrySet().stream()
-                .map(
-                    e -> {
-                      StringBuilder valSb = new StringBuilder();
-                      dialect.formatValue(e.getValue(), valSb);
-                      return qualified(opts, e.getKey(), dialect)
-                          .concat(SQL_EQUALS)
-                          .concat(valSb.toString());
-                    })
-                .collect(Collectors.joining(SQL_AND));
+            final String wherePart =
+                update.pkValues().entrySet().stream()
+                    .map(
+                        e -> {
+                          StringBuilder valSb = new StringBuilder();
+                          dialect.formatValue(e.getValue(), valSb);
+                          return qualified(opts, e.getKey(), dialect)
+                              .concat(SQL_EQUALS)
+                              .concat(valSb.toString());
+                        })
+                    .collect(Collectors.joining(SQL_AND));
 
-        sb.append(SQL_UPDATE)
-            .append(tableName)
-            .append(SQL_SET)
-            .append(setPart)
-            .append(SQL_WHERE)
-            .append(wherePart)
-            .append(SQL_STATEMENT_END);
-      }
+            sb.append(SQL_UPDATE)
+                .append(tableName)
+                .append(SQL_SET)
+                .append(setPart)
+                .append(SQL_WHERE)
+                .append(wherePart)
+                .append(SQL_STATEMENT_END);
+          });
     }
   }
 

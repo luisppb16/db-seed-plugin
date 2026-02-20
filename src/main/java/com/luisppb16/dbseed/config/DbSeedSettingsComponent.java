@@ -27,9 +27,9 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import java.awt.BorderLayout;
-import java.util.Objects;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.util.Objects;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
@@ -37,9 +37,7 @@ import javax.swing.JSpinner;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 
-/**
- * UI component for configuring global settings of the DBSeed plugin in IntelliJ.
- */
+/** UI component for configuring global settings of the DBSeed plugin in IntelliJ. */
 public class DbSeedSettingsComponent {
 
   private final JPanel myMainPanel;
@@ -88,10 +86,10 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
     myOllamaUrl.setText(settings.getOllamaUrl());
-    
+
     if (Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isEmpty()) {
-        myOllamaModelDropdown.addItem(settings.getOllamaModel());
-        myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
+      myOllamaModelDropdown.addItem(settings.getOllamaModel());
+      myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
     }
 
     mySoftDeleteUseSchemaDefault.addActionListener(
@@ -102,9 +100,10 @@ public class DbSeedSettingsComponent {
 
     configureFolderChooser(myDefaultOutputDirectory, "Select Default Output Directory");
 
-    JBLabel aiDescription = new JBLabel(
-        "<html>AI generation uses an external Ollama instance to generate "
-        + "context-aware data. Ensure Ollama is running and accessible at the specified URL.</html>");
+    JBLabel aiDescription =
+        new JBLabel(
+            "<html>AI generation uses an external Ollama instance to generate "
+                + "context-aware data. Ensure Ollama is running and accessible at the specified URL.</html>");
     aiDescription.setForeground(UIUtil.getContextHelpForeground());
     aiDescription.setBorder(JBUI.Borders.emptyBottom(5));
 
@@ -120,16 +119,18 @@ public class DbSeedSettingsComponent {
     contextScrollPane.setPreferredSize(new Dimension(0, 80));
     contextScrollPane.setMinimumSize(new Dimension(0, 60));
 
-    JBLabel wordCountDescription = new JBLabel(
-        "<html>Number of words the AI model should generate per column value"
-        + " (1 = single word, higher = sentences/paragraphs).</html>");
+    JBLabel wordCountDescription =
+        new JBLabel(
+            "<html>Number of words the AI model should generate per column value"
+                + " (1 = single word, higher = sentences/paragraphs).</html>");
     wordCountDescription.setForeground(UIUtil.getContextHelpForeground());
     wordCountDescription.setFont(JBUI.Fonts.smallFont());
     wordCountDescription.setBorder(JBUI.Borders.emptyLeft(16));
 
-    JBLabel timeoutDescription = new JBLabel(
-        "<html>Max wait time per AI request. Increase for slow hardware"
-        + " (e.g. Raspberry Pi). If exceeded, the plugin will fill the values instead.</html>");
+    JBLabel timeoutDescription =
+        new JBLabel(
+            "<html>Max wait time per AI request. Increase for slow hardware"
+                + " (e.g. Raspberry Pi). If exceeded, the plugin will fill the values instead.</html>");
     timeoutDescription.setForeground(UIUtil.getContextHelpForeground());
     timeoutDescription.setFont(JBUI.Fonts.smallFont());
     timeoutDescription.setBorder(JBUI.Borders.emptyLeft(16));
@@ -144,10 +145,7 @@ public class DbSeedSettingsComponent {
             .addComponent(myUseSpanishDictionary, 1)
             .addComponent(new TitledSeparator("Soft Delete Configuration"))
             .addLabeledComponent(
-                new JBLabel("Columns (comma separated):"),
-                mySoftDeleteColumns,
-                1,
-                false)
+                new JBLabel("Columns (comma separated):"), mySoftDeleteColumns, 1, false)
             .addComponent(mySoftDeleteUseSchemaDefault, 1)
             .addLabeledComponent(
                 new JBLabel("Value (if not default):"), mySoftDeleteValue, 1, false)
@@ -157,7 +155,8 @@ public class DbSeedSettingsComponent {
             .addLabeledComponent(new JBLabel("Application context:"), contextScrollPane, 1, false)
             .addLabeledComponent(new JBLabel("Words per AI value:"), myAiWordCount, 1, false)
             .addComponent(wordCountDescription, 0)
-            .addLabeledComponent(new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
+            .addLabeledComponent(
+                new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
             .addComponent(timeoutDescription, 0)
             .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
             .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
@@ -176,8 +175,8 @@ public class DbSeedSettingsComponent {
   private void refreshModels() {
     String url = myOllamaUrl.getText().trim();
     if (url.isEmpty()) {
-        Messages.showErrorDialog(myMainPanel, "Please enter a valid Ollama URL.", "Invalid URL");
-        return;
+      Messages.showErrorDialog(myMainPanel, "Please enter a valid Ollama URL.", "Invalid URL");
+      return;
     }
 
     myRefreshModelsButton.setEnabled(false);
@@ -188,51 +187,76 @@ public class DbSeedSettingsComponent {
     ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
 
     OllamaClient client = new OllamaClient(url, "", 10);
-    client.ping().whenComplete((ignored, pingEx) -> {
-        if (disposed) return;
-        if (Objects.nonNull(pingEx)) {
-            ApplicationManager.getApplication().invokeLater(() -> {
-                if (disposed) return;
-                Throwable cause = Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
-                Messages.showErrorDialog(myMainPanel,
-                    "No Ollama server found at " + url + ".\n"
-                        + "Ensure Ollama is running and the URL is correct.\n\n"
-                        + "Error: " + cause.getMessage(),
-                    "Server Not Reachable");
-                resetRefreshButton();
-            }, currentModality);
-            return;
-        }
-        client.listModels().whenComplete((models, ex) -> {
-            if (disposed) return;
-            ApplicationManager.getApplication().invokeLater(() -> {
-                if (disposed) return;
-                if (Objects.nonNull(ex)) {
-                    Throwable cause = Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
-                    Messages.showErrorDialog(myMainPanel,
-                        "Could not fetch models from Ollama at " + url + ".\n"
-                            + "Error: " + cause.getMessage(),
-                        "Connection Error");
-                } else {
-                    String currentSelection = (String) myOllamaModelDropdown.getSelectedItem();
-                    myOllamaModelDropdown.removeAllItems();
-                    if (models.isEmpty()) {
-                        Messages.showWarningDialog(myMainPanel,
-                            "No models found in Ollama. Ensure you have pulled at least one model.",
-                            "No Models Found");
-                    } else {
-                        for (String model : models) {
-                            myOllamaModelDropdown.addItem(model);
-                        }
-                        if (Objects.nonNull(currentSelection) && models.contains(currentSelection)) {
-                            myOllamaModelDropdown.setSelectedItem(currentSelection);
-                        }
-                    }
-                }
-                resetRefreshButton();
-            }, currentModality);
-        });
-    });
+    client
+        .ping()
+        .whenComplete(
+            (ignored, pingEx) -> {
+              if (disposed) return;
+              if (Objects.nonNull(pingEx)) {
+                ApplicationManager.getApplication()
+                    .invokeLater(
+                        () -> {
+                          if (disposed) return;
+                          Throwable cause =
+                              Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
+                          Messages.showErrorDialog(
+                              myMainPanel,
+                              "No Ollama server found at "
+                                  + url
+                                  + ".\n"
+                                  + "Ensure Ollama is running and the URL is correct.\n\n"
+                                  + "Error: "
+                                  + cause.getMessage(),
+                              "Server Not Reachable");
+                          resetRefreshButton();
+                        },
+                        currentModality);
+                return;
+              }
+              client
+                  .listModels()
+                  .whenComplete(
+                      (models, ex) -> {
+                        if (disposed) return;
+                        ApplicationManager.getApplication()
+                            .invokeLater(
+                                () -> {
+                                  if (disposed) return;
+                                  if (Objects.nonNull(ex)) {
+                                    Throwable cause =
+                                        Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
+                                    Messages.showErrorDialog(
+                                        myMainPanel,
+                                        "Could not fetch models from Ollama at "
+                                            + url
+                                            + ".\n"
+                                            + "Error: "
+                                            + cause.getMessage(),
+                                        "Connection Error");
+                                  } else {
+                                    String currentSelection =
+                                        (String) myOllamaModelDropdown.getSelectedItem();
+                                    myOllamaModelDropdown.removeAllItems();
+                                    if (models.isEmpty()) {
+                                      Messages.showWarningDialog(
+                                          myMainPanel,
+                                          "No models found in Ollama. Ensure you have pulled at least one model.",
+                                          "No Models Found");
+                                    } else {
+                                      for (String model : models) {
+                                        myOllamaModelDropdown.addItem(model);
+                                      }
+                                      if (Objects.nonNull(currentSelection)
+                                          && models.contains(currentSelection)) {
+                                        myOllamaModelDropdown.setSelectedItem(currentSelection);
+                                      }
+                                    }
+                                  }
+                                  resetRefreshButton();
+                                },
+                                currentModality);
+                      });
+            });
   }
 
   private void resetRefreshButton() {
@@ -383,17 +407,17 @@ public class DbSeedSettingsComponent {
 
   public void setOllamaModel(String model) {
     if (Objects.nonNull(model) && !model.isEmpty()) {
-        boolean exists = false;
-        for (int i = 0; i < myOllamaModelDropdown.getItemCount(); i++) {
-            if (model.equals(myOllamaModelDropdown.getItemAt(i))) {
-                exists = true;
-                break;
-            }
+      boolean exists = false;
+      for (int i = 0; i < myOllamaModelDropdown.getItemCount(); i++) {
+        if (model.equals(myOllamaModelDropdown.getItemAt(i))) {
+          exists = true;
+          break;
         }
-        if (!exists) {
-            myOllamaModelDropdown.addItem(model);
-        }
-        myOllamaModelDropdown.setSelectedItem(model);
+      }
+      if (!exists) {
+        myOllamaModelDropdown.addItem(model);
+      }
+      myOllamaModelDropdown.setSelectedItem(model);
     }
   }
 

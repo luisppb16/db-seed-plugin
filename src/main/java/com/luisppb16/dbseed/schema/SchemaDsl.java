@@ -8,6 +8,7 @@ package com.luisppb16.dbseed.schema;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import lombok.Builder;
 import lombok.experimental.UtilityClass;
 
 /**
@@ -40,15 +41,15 @@ import lombok.experimental.UtilityClass;
 public class SchemaDsl {
 
   public static Schema schema(final Table... tables) {
-    return new Schema(List.of(tables));
+    return Schema.builder().tables(List.of(tables)).build();
   }
 
   public static Table table(final String name, final Column... columns) {
-    return new Table(name, List.of(columns));
+    return Table.builder().name(name).columns(List.of(columns)).build();
   }
 
   public static Column column(final String name, final SqlType type) {
-    return new Column(name, type, false, false, null, false);
+    return Column.builder().name(name).type(type).build();
   }
 
   public static Column column(
@@ -57,18 +58,33 @@ public class SchemaDsl {
       final boolean notNull,
       final String defaultValue,
       final boolean unique) {
-    return new Column(name, type, false, notNull, defaultValue, unique);
+    return Column.builder()
+        .name(name)
+        .type(type)
+        .notNull(notNull)
+        .defaultValue(defaultValue)
+        .unique(unique)
+        .build();
   }
 
   public static Column pk(final String name, final SqlType type) {
-    return new Column(name, type, true, true, null, true);
+    return Column.builder()
+        .name(name)
+        .type(type)
+        .primaryKey(true)
+        .notNull(true)
+        .unique(true)
+        .build();
   }
 
   @SuppressWarnings("unused")
   public static Column fk(
       final String name, final SqlType type, final String refTable, final String refColumn) {
-    return new Column(
-        name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
+    return Column.builder()
+        .name(name)
+        .type(type)
+        .foreignKey(new ForeignKeyReference(refTable, refColumn))
+        .build();
   }
 
   public static String toSql(final Schema schema) {
@@ -93,8 +109,7 @@ public class SchemaDsl {
 
   private static String columnSql(final Column column) {
     final StringBuilder sql =
-        new StringBuilder(
-            "%s %s".formatted(quoteIdentifier(column.name()), column.type().toSql()));
+        new StringBuilder("%s %s".formatted(quoteIdentifier(column.name()), column.type().toSql()));
 
     if (column.primaryKey()) {
       sql.append(" PRIMARY KEY");
@@ -117,6 +132,7 @@ public class SchemaDsl {
     return sql.toString();
   }
 
+  @Builder(toBuilder = true)
   public record Schema(List<Table> tables) {
     public Schema {
       Objects.requireNonNull(tables, "The list of tables cannot be null.");
@@ -124,6 +140,7 @@ public class SchemaDsl {
     }
   }
 
+  @Builder(toBuilder = true)
   public record Table(String name, List<Column> columns) {
     public Table {
       Objects.requireNonNull(name, "The table name cannot be null.");
@@ -132,6 +149,7 @@ public class SchemaDsl {
     }
   }
 
+  @Builder(toBuilder = true)
   public record Column(
       String name,
       SqlType type,
@@ -160,6 +178,7 @@ public class SchemaDsl {
     }
   }
 
+  @Builder(toBuilder = true)
   public record ForeignKeyReference(String table, String column) {
     public ForeignKeyReference {
       Objects.requireNonNull(table, "The referenced table name cannot be null.");

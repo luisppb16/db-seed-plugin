@@ -115,6 +115,7 @@ public class AbstractDialect implements DatabaseDialect {
         case BigDecimal bd -> sb.append(bd.toPlainString());
         case Double d -> sb.append(formatDouble(d));
         case Float f -> sb.append(formatDouble(f.doubleValue()));
+        case List<?> arr -> formatArray(arr, sb);
         default -> sb.append(Objects.toString(value, NULL_STR));
       }
     }
@@ -148,6 +149,24 @@ public class AbstractDialect implements DatabaseDialect {
       result = result.replace("\\", "\\\\");
     }
     return result.replace("'", "''");
+  }
+
+  protected void formatArray(List<?> arr, StringBuilder sb) {
+    sb.append("ARRAY[");
+    for (int i = 0; i < arr.size(); i++) {
+      if (i > 0) sb.append(", ");
+      Object element = arr.get(i);
+      if (Objects.isNull(element)) {
+        sb.append(NULL_STR);
+      } else if (element instanceof Number) {
+        sb.append(element);
+      } else if (element instanceof Boolean b) {
+        sb.append(formatBoolean(b));
+      } else {
+        sb.append("'").append(escapeSql(element.toString())).append("'");
+      }
+    }
+    sb.append("]");
   }
 
   @Override

@@ -187,7 +187,8 @@ public class DataGenerator {
                           c.scale(),
                           c.minValue(),
                           c.maxValue(),
-                          c.allowedValues()));
+                          c.allowedValues(),
+                          c.typeName()));
                     } else {
                       newCols.add(c);
                     }

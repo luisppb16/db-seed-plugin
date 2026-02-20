@@ -57,7 +57,8 @@ public record Column(
     int scale,
     int minValue,
     int maxValue,
-    Set<String> allowedValues) {
+    Set<String> allowedValues,
+    String typeName) {
 
   public Column {
     Objects.requireNonNull(name, "Column name cannot be null.");
@@ -66,5 +67,14 @@ public record Column(
 
   public boolean hasAllowedValues() {
     return !allowedValues.isEmpty();
+  }
+
+  /**
+   * Returns whether this column represents a PostgreSQL array type (e.g. TEXT[], INT[], etc.).
+   */
+  public boolean isArrayType() {
+    return jdbcType == java.sql.Types.ARRAY
+        || (Objects.nonNull(typeName) && typeName.endsWith("[]"))
+        || (Objects.nonNull(typeName) && typeName.startsWith("_"));
   }
 }

@@ -215,8 +215,37 @@ public final class ValueGenerator {
           Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
       case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
       case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
+      case Types.ARRAY -> generateArray(column, maxLen);
       default -> index;
     };
+  }
+
+  private static final int MIN_ARRAY_ELEMENTS = 1;
+  private static final int MAX_ARRAY_ELEMENTS = 5;
+
+  @SuppressWarnings("java:S2245")
+  private List<String> generateArray(final Column column, final Integer maxLen) {
+    final int size =
+        ThreadLocalRandom.current().nextInt(MIN_ARRAY_ELEMENTS, MAX_ARRAY_ELEMENTS + 1);
+    final String typeName =
+        Objects.nonNull(column.typeName()) ? column.typeName().toLowerCase(java.util.Locale.ROOT) : "";
+
+    final boolean isNumeric = typeName.contains("int") || typeName.contains("float")
+        || typeName.contains("double") || typeName.contains("numeric")
+        || typeName.contains("decimal");
+    final boolean isBoolean = typeName.contains("bool");
+
+    final List<String> elements = new ArrayList<>(size);
+    for (int i = 0; i < size; i++) {
+      if (isBoolean) {
+        elements.add(String.valueOf(faker.bool().bool()));
+      } else if (isNumeric) {
+        elements.add(String.valueOf(faker.number().numberBetween(0, DEFAULT_INT_MAX)));
+      } else {
+        elements.add(generateString(maxLen, Types.VARCHAR));
+      }
+    }
+    return elements;
   }
 
   @SuppressWarnings("java:S2245")

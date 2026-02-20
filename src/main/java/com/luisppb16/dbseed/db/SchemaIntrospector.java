@@ -234,7 +234,8 @@ public class SchemaIntrospector {
               raw.scale(),
               minValue,
               maxValue,
-              allowedValues));
+              allowedValues,
+              raw.typeName()));
     }
     return columns;
   }

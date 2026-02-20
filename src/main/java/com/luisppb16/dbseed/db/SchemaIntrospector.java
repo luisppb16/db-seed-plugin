@@ -227,6 +227,7 @@ public class SchemaIntrospector {
           new Column(
               raw.name(),
               raw.type(),
+              raw.typeName(),
               isPk ? false : raw.nullable(),
               isPk,
               isUuid,

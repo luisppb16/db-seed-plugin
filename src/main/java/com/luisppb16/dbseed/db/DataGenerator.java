@@ -180,6 +180,7 @@ public class DataGenerator {
                       newCols.add(new Column(
                           c.name(),
                           c.jdbcType(),
+                          c.typeName(),
                           c.nullable(),
                           c.primaryKey(),
                           true,

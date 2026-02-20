@@ -115,6 +115,11 @@ class ValueGeneratorTest {
   }
 
   @Test
+  void array_generatesArray() {
+    assertThat(gen.generateValue(col(Types.ARRAY), noConstraint(), 0)).isInstanceOf(String[].class);
+  }
+
+  @Test
   void uuid_uniqueUuid() {
     Column c = Column.builder().name("c").jdbcType(Types.VARCHAR).uuid(true).build();
     Object v1 = gen.generateValue(c, noConstraint(), 0);

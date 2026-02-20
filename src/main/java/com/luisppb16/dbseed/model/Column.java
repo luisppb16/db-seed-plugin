@@ -37,6 +37,7 @@ import lombok.Builder;
  *
  * @param name The name of the column
  * @param jdbcType The JDBC type identifier for the column
+ * @param typeName The native database type name for the column
  * @param nullable Whether the column allows null values
  * @param primaryKey Whether the column is part of the primary key
  * @param uuid Whether the column should be treated as a UUID
@@ -50,6 +51,7 @@ import lombok.Builder;
 public record Column(
     String name,
     int jdbcType,
+    String typeName,
     boolean nullable,
     boolean primaryKey,
     boolean uuid,

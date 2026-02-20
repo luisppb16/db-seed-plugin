@@ -701,11 +701,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return columnBoxes;
   }
 
-  private static boolean isStringType(int jdbcType) {
-    return jdbcType == Types.VARCHAR
+  private static boolean isStringType(Column column) {
+    final int jdbcType = column.jdbcType();
+    final boolean isBasicStringType = jdbcType == Types.VARCHAR
         || jdbcType == Types.CHAR
         || jdbcType == Types.LONGVARCHAR
-        || jdbcType == Types.CLOB;
+        || jdbcType == Types.CLOB
+        || jdbcType == Types.ARRAY;
+
+    final boolean isArrayType = Objects.nonNull(column.typeName())
+        && column.typeName().toLowerCase(Locale.ROOT).endsWith("[]");
+
+    return isBasicStringType || isArrayType;
   }
 
   private static boolean isDefaultAiCandidate(String columnName) {
@@ -740,7 +747,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
               table.columns().stream()
                   .filter(
                       col ->
-                          isStringType(col.jdbcType())
+                          isStringType(col)
                               && !col.primaryKey()
                               && !fkCols.contains(col.name()))
                   .toList();

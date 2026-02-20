@@ -108,3 +108,15 @@ CREATE TABLE public.reviews
     CONSTRAINT fk_review_user FOREIGN KEY (user_id) REFERENCES public.users (id),
     CONSTRAINT fk_review_product FOREIGN KEY (product_id) REFERENCES public.products (id)
 );
+
+CREATE TABLE public.articles
+(
+    id         UUID PRIMARY KEY,
+    title      VARCHAR(200),
+    content    TEXT,
+    tags       TEXT[],
+    keywords   TEXT[],
+    categories TEXT[],
+    created_at TIMESTAMP DEFAULT now()
+);
+

@@ -115,9 +115,22 @@ public class AbstractDialect implements DatabaseDialect {
         case BigDecimal bd -> sb.append(bd.toPlainString());
         case Double d -> sb.append(formatDouble(d));
         case Float f -> sb.append(formatDouble(f.doubleValue()));
+        case Object[] arr -> formatArray(arr, sb);
+        case List<?> list -> formatArray(list.toArray(), sb);
         default -> sb.append(Objects.toString(value, NULL_STR));
       }
     }
+  }
+
+  protected void formatArray(Object[] array, StringBuilder sb) {
+    sb.append("ARRAY[");
+    for (int i = 0; i < array.length; i++) {
+      formatValue(array[i], sb);
+      if (i < array.length - 1) {
+        sb.append(", ");
+      }
+    }
+    sb.append("]");
   }
 
   protected void formatDate(Date d, StringBuilder sb) {

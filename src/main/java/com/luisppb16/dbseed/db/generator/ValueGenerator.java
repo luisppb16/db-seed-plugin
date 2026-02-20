@@ -11,10 +11,12 @@ import com.luisppb16.dbseed.model.SqlKeyword;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
+import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -215,8 +217,18 @@ public final class ValueGenerator {
           Timestamp.from(Instant.now().minusSeconds(faker.number().numberBetween(0, TIMESTAMP_RANGE_SECONDS)));
       case Types.DECIMAL, Types.NUMERIC -> boundedBigDecimal(column);
       case Types.FLOAT, Types.DOUBLE, Types.REAL -> boundedDouble(column);
+      case Types.ARRAY -> generateArray(column);
       default -> index;
     };
+  }
+
+  private Object generateArray(final Column column) {
+    final int size = ThreadLocalRandom.current().nextInt(1, 4);
+    final String[] array = new String[size];
+    for (int i = 0; i < size; i++) {
+      array[i] = generateString(column.length() > 0 ? column.length() : 20, Types.VARCHAR);
+    }
+    return array;
   }
 
   @SuppressWarnings("java:S2245")

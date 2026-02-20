@@ -234,6 +234,16 @@ public class OllamaClient {
     return text;
   }
 
+  private static boolean isArrayType(String sqlType) {
+    if (Objects.isNull(sqlType) || sqlType.isBlank()) {
+      return false;
+    }
+    String lower = sqlType.toLowerCase(Locale.ROOT);
+    // PostgreSQL array types: TEXT[], _text, INTEGER[], etc.
+    // Also handles ARRAY keyword
+    return lower.endsWith("[]") || lower.startsWith("_") || lower.contains("array");
+  }
+
   /**
    * Pings the Ollama server to check connectivity.
    *
@@ -320,26 +330,50 @@ public class OllamaClient {
     final int effectiveWordCount = Math.max(MIN_WORD_COUNT, wordCount);
     final String contextLine =
         !applicationContext.isBlank() ? "Application context: " + applicationContext + "\n" : "";
+    final boolean isArrayType = isArrayType(sqlType);
 
     try {
       String prompt;
       int numPredict;
 
-      if (effectiveWordCount == 1) {
-        prompt =
-            """
-                %sGenerate one realistic value for column "%s" (table: %s, type: %s). Single line only.
-                Value:"""
-                .formatted(contextLine, columnName, tableName, sqlType);
-        numPredict = DEFAULT_NUM_PREDICT;
+      if (isArrayType) {
+        // For array types, generate in PostgreSQL array format: {element1,element2,element3}
+        final int elementCount = 3; // Default 3 elements per array
+        if (effectiveWordCount == 1) {
+          prompt =
+              """
+                  %sGenerate one realistic array value for column "%s" (table: %s, type: %s). \
+                  Format: {element1,element2,element3} with %d elements. Each element should be a single word. \
+                  Use PostgreSQL array syntax with curly braces and comma-separated values. Single line only.
+                  Value:"""
+                  .formatted(contextLine, columnName, tableName, sqlType, elementCount);
+        } else {
+          prompt =
+              """
+                  %sGenerate one realistic array value for column "%s" (table: %s, type: %s). \
+                  Format: {element1,element2,element3} with %d elements. Each element up to %d words. \
+                  Use PostgreSQL array syntax with curly braces and comma-separated values. Single line only.
+                  Value:"""
+                  .formatted(contextLine, columnName, tableName, sqlType, elementCount, effectiveWordCount);
+        }
+        numPredict = Math.max(DEFAULT_NUM_PREDICT * 2, elementCount * effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
       } else {
-        prompt =
-            """
-                %sGenerate one realistic value for column "%s" (table: %s, type: %s). Up to %d words. Single line only.
-                Value:"""
-                .formatted(contextLine, columnName, tableName, sqlType, effectiveWordCount);
-        numPredict =
-            Math.max(DEFAULT_NUM_PREDICT, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+        if (effectiveWordCount == 1) {
+          prompt =
+              """
+                  %sGenerate one realistic value for column "%s" (table: %s, type: %s). Single line only.
+                  Value:"""
+                  .formatted(contextLine, columnName, tableName, sqlType);
+          numPredict = DEFAULT_NUM_PREDICT;
+        } else {
+          prompt =
+              """
+                  %sGenerate one realistic value for column "%s" (table: %s, type: %s). Up to %d words. Single line only.
+                  Value:"""
+                  .formatted(contextLine, columnName, tableName, sqlType, effectiveWordCount);
+          numPredict =
+              Math.max(DEFAULT_NUM_PREDICT, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+        }
       }
 
       String requestBody =
@@ -388,28 +422,52 @@ public class OllamaClient {
     final int effectiveWordCount = Math.max(MIN_WORD_COUNT, wordCount);
     final String contextLine =
         !applicationContext.isBlank() ? "Application context: " + applicationContext + "\n" : "";
+    final boolean isArrayType = isArrayType(sqlType);
 
     try {
       String prompt;
       int numPredict;
 
-      if (effectiveWordCount == 1) {
-        prompt =
-            """
-                %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
-                One value per line. No duplicates. No numbering. No explanations. Raw values only."""
-                .formatted(contextLine, count, columnName, tableName, sqlType);
-        numPredict = count * BATCH_NUM_PREDICT_FACTOR;
+      if (isArrayType) {
+        // For array types, generate in PostgreSQL array format: {element1,element2,element3}
+        final int elementCount = 3; // Default 3 elements per array
+        if (effectiveWordCount == 1) {
+          prompt =
+              """
+                  %sGenerate exactly %d unique and different array values for column "%s" (table: %s, type: %s). \
+                  Format each array as: {element1,element2,element3} with %d elements per array. Each element should be a single word. \
+                  Use PostgreSQL array syntax with curly braces and comma-separated values. \
+                  One array per line. No duplicates. No numbering. No explanations. Raw array values only."""
+                  .formatted(contextLine, count, columnName, tableName, sqlType, elementCount);
+        } else {
+          prompt =
+              """
+                  %sGenerate exactly %d unique and different array values for column "%s" (table: %s, type: %s). \
+                  Format each array as: {element1,element2,element3} with %d elements per array. Each element up to %d words. \
+                  Use PostgreSQL array syntax with curly braces and comma-separated values. \
+                  One array per line. No duplicates. No numbering. No explanations. Raw array values only."""
+                  .formatted(contextLine, count, columnName, tableName, sqlType, elementCount, effectiveWordCount);
+        }
+        numPredict = count * elementCount * Math.max(BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
       } else {
-        prompt =
-            """
-                %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
-                Each value up to %d words. One value per line. No duplicates. No numbering. No explanations. Raw values only."""
-                .formatted(contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
-        numPredict =
-            count
-                * Math.max(
-                    BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+        if (effectiveWordCount == 1) {
+          prompt =
+              """
+                  %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
+                  One value per line. No duplicates. No numbering. No explanations. Raw values only."""
+                  .formatted(contextLine, count, columnName, tableName, sqlType);
+          numPredict = count * BATCH_NUM_PREDICT_FACTOR;
+        } else {
+          prompt =
+              """
+                  %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
+                  Each value up to %d words. One value per line. No duplicates. No numbering. No explanations. Raw values only."""
+                  .formatted(contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
+          numPredict =
+              count
+                  * Math.max(
+                      BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+        }
       }
 
       String requestBody =

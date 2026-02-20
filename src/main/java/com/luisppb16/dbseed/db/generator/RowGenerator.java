@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.sql.JDBCType;
 import java.sql.Types;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -311,9 +312,10 @@ public final class RowGenerator {
       final Column col = table.column(colName);
       if (Objects.isNull(col) || excludedColumns.contains(colName)) return;
 
-      final String sqlType = getSqlTypeName(col.jdbcType());
+      final String sqlType = getSqlTypeName(col);
       final int totalRows = rows.size();
       final Set<String> seenAiValues = new HashSet<>();
+      final boolean isArray = isArrayType(col);
 
       for (int batchStart = 0; batchStart < totalRows; batchStart += AI_BATCH_SIZE) {
         if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
@@ -369,9 +371,16 @@ public final class RowGenerator {
         for (int i = 0; i < Math.min(allValues.size(), batchCount); i++) {
           final String val = allValues.get(i);
           if (Objects.nonNull(val) && !val.isBlank()) {
-            String finalValue = val.trim();
-            if (col.length() > 0 && finalValue.length() > col.length()) {
-              finalValue = finalValue.substring(0, col.length());
+            String finalTrimmed = val.trim();
+            Object finalValue;
+
+            if (isArray) {
+              finalValue = parseAiArray(finalTrimmed);
+            } else {
+              if (col.length() > 0 && finalTrimmed.length() > col.length()) {
+                finalTrimmed = finalTrimmed.substring(0, col.length());
+              }
+              finalValue = finalTrimmed;
             }
             rows.get(batchStart + i).values().put(colName, finalValue);
           }
@@ -380,9 +389,39 @@ public final class RowGenerator {
     });
   }
 
-  private String getSqlTypeName(final int jdbcType) {
+  private boolean isArrayType(final Column col) {
+    return col.jdbcType() == Types.ARRAY
+        || (Objects.nonNull(col.typeName()) && col.typeName().toLowerCase(Locale.ROOT).endsWith("[]"));
+  }
+
+  private Object[] parseAiArray(final String val) {
+    String cleaned = val.trim();
+    if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+      cleaned = cleaned.substring(1, cleaned.length() - 1);
+    } else if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+      cleaned = cleaned.substring(1, cleaned.length() - 1);
+    }
+
+    if (cleaned.isEmpty()) {
+      return new Object[0];
+    }
+
+    return Arrays.stream(cleaned.split(","))
+        .map(String::trim)
+        .map(s -> {
+          if (s.startsWith("\"") && s.endsWith("\"")) return s.substring(1, s.length() - 1);
+          if (s.startsWith("'") && s.endsWith("'")) return s.substring(1, s.length() - 1);
+          return s;
+        })
+        .toArray(String[]::new);
+  }
+
+  private String getSqlTypeName(final Column column) {
+    if (Objects.nonNull(column.typeName()) && !column.typeName().isBlank()) {
+      return column.typeName();
+    }
     try {
-      return JDBCType.valueOf(jdbcType).getName();
+      return JDBCType.valueOf(column.jdbcType()).getName();
     } catch (final Exception ignored) {
       return "UNKNOWN";
     }
@@ -411,6 +450,9 @@ public final class RowGenerator {
   private Object parseValue(final String value, final Column column) {
     if (Objects.isNull(value) || "NULL".equalsIgnoreCase(value)) return null;
     try {
+      if (isArrayType(column)) {
+        return parseAiArray(value);
+      }
       return switch (column.jdbcType()) {
         case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
         case Types.BIGINT -> Long.parseLong(value);

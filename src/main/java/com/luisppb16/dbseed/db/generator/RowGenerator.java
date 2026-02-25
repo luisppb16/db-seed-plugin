@@ -496,7 +496,7 @@ public final class RowGenerator {
                   finalValue = finalTrimmed;
                 }
                 final Map<String, Object> rowValues = rows.get(batchStart + i).values();
-                synchronized (rowValues) {
+                synchronized (this) {
                   rowValues.put(colName, finalValue);
                 }
               }

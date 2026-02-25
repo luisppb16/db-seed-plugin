@@ -17,6 +17,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,6 +28,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Builder;
@@ -145,7 +149,7 @@ public class DataGenerator {
       }
     }
 
-    generateTableRows(
+    final List<RowGenerator> generators = generateTableRows(
         orderedTables,
         params.rowsPerTable(),
         excludedColumnsSet,
@@ -164,6 +168,9 @@ public class DataGenerator {
         ollamaClient,
         Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
         params.indicator());
+
+    // Phase 2: Run AI generation for ALL tables in parallel
+    generateAiValuesParallel(generators, params.indicator());
 
     if (Objects.nonNull(params.indicator())) {
       params.indicator().setText("Validating constraints...");
@@ -228,7 +235,7 @@ public class DataGenerator {
     return softDeleteCols;
   }
 
-  private static void generateTableRows(
+  private static List<RowGenerator> generateTableRows(
       final List<Table> orderedTables,
       final int rowsPerTable,
       final Map<String, Set<String>> excludedColumns,
@@ -250,6 +257,8 @@ public class DataGenerator {
 
     final int totalTables = orderedTables.size();
     final long startTime = System.currentTimeMillis();
+    final List<RowGenerator> generators = new ArrayList<>();
+
     IntStream.range(0, totalTables)
         .forEach(
             i -> {
@@ -299,6 +308,7 @@ public class DataGenerator {
               final List<Row> rows = rowGenerator.generate();
               data.put(table, rows);
               tableConstraints.put(table.name(), rowGenerator.getConstraints());
+              generators.add(rowGenerator);
 
               if (Objects.nonNull(indicator)) {
                 final long elapsed = System.currentTimeMillis() - startTime;
@@ -310,6 +320,51 @@ public class DataGenerator {
                         + "s elapsed");
               }
             });
+
+    return generators;
+  }
+
+  /** Executor for cross-table AI generation parallelism. */
+  private static final ExecutorService AI_TABLE_EXECUTOR =
+      Executors.newFixedThreadPool(
+          Math.min(8, Runtime.getRuntime().availableProcessors()),
+          r -> {
+            Thread t = new Thread(r, "ai-table-gen");
+            t.setDaemon(true);
+            return t;
+          });
+
+  /**
+   * Phase 2: Runs AI value generation for all tables in parallel.
+   * This is separated from row generation so that all tables can have their
+   * base rows ready before any AI requests are made, enabling maximum parallelism.
+   */
+  private static void generateAiValuesParallel(
+      final List<RowGenerator> generators, final ProgressIndicator indicator) {
+    final List<RowGenerator> aiGenerators =
+        generators.stream().filter(RowGenerator::hasAiColumns).toList();
+
+    if (aiGenerators.isEmpty()) return;
+
+    if (Objects.nonNull(indicator)) {
+      indicator.setText("Generating AI values...");
+      indicator.setText2(aiGenerators.size() + " tables with AI columns");
+    }
+
+    final List<CompletableFuture<Void>> futures =
+        aiGenerators.stream()
+            .map(gen -> CompletableFuture.runAsync(gen::generateAiValues, AI_TABLE_EXECUTOR))
+            .toList();
+
+    try {
+      CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+    } catch (final Exception ex) {
+      log.warn("Some AI table generations failed: {}", ex.getMessage());
+    }
+
+    if (Objects.nonNull(indicator)) {
+      indicator.setText2("AI generation complete");
+    }
   }
 
   private static void validateNumericConstraints(

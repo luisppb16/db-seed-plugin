@@ -130,7 +130,7 @@ public class OllamaClient {
    */
   private static final HttpClient HTTP_CLIENT =
       HttpClient.newBuilder()
-          .version(HttpClient.Version.HTTP_1_1)
+          .version(HttpClient.Version.HTTP_2)
           .connectTimeout(Duration.ofSeconds(DEFAULT_CONNECT_TIMEOUT_SECONDS))
           .executor(HTTP_EXECUTOR)
           .build();
@@ -388,11 +388,11 @@ public class OllamaClient {
         }
       }
 
-      String requestBody = buildRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
+      String requestBody = buildChatRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/generate"))
+              .uri(URI.create(normalizedUrl + "/api/chat"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -485,11 +485,11 @@ public class OllamaClient {
         }
       }
 
-      String requestBody = buildRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
+      String requestBody = buildChatRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/generate"))
+              .uri(URI.create(normalizedUrl + "/api/chat"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -539,25 +539,41 @@ public class OllamaClient {
   private String extractRawResponse(String responseBody) throws IOException {
     try {
       final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
-      if (!json.has("response")) {
-        throw new IOException("Invalid response from Ollama: missing 'response' field");
+      // /api/chat format: { "message": { "content": "..." } }
+      if (json.has("message") && json.getAsJsonObject("message").has("content")) {
+        return json.getAsJsonObject("message").get("content").getAsString();
       }
-      return json.get("response").getAsString();
+      // Fallback for /api/generate format
+      if (json.has("response")) {
+        return json.get("response").getAsString();
+      }
+      throw new IOException("Invalid response from Ollama: missing 'message.content' field");
     } catch (final Exception e) {
       if (e instanceof IOException) throw e;
       throw new IOException("Failed to parse Ollama response: " + e.getMessage(), e);
     }
   }
 
-  private String buildRequestBody(String prompt, double temperature, int numPredict) {
+  private String buildChatRequestBody(String prompt, double temperature, int numPredict) {
     final JsonObject options = new JsonObject();
     options.addProperty("temperature", temperature);
     options.addProperty("num_predict", numPredict);
 
+    final JsonObject systemMessage = new JsonObject();
+    systemMessage.addProperty("role", "system");
+    systemMessage.addProperty("content", SYSTEM_ROLE);
+
+    final JsonObject userMessage = new JsonObject();
+    userMessage.addProperty("role", "user");
+    userMessage.addProperty("content", prompt);
+
+    final com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
+    messages.add(systemMessage);
+    messages.add(userMessage);
+
     final JsonObject body = new JsonObject();
     body.addProperty("model", modelName);
-    body.addProperty("prompt", prompt);
-    body.addProperty("system", SYSTEM_ROLE);
+    body.add("messages", messages);
     body.addProperty("stream", false);
     body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
     body.add("options", options);
@@ -577,16 +593,23 @@ public class OllamaClient {
       final JsonObject options = new JsonObject();
       options.addProperty("num_predict", 1);
 
+      final JsonObject userMessage = new JsonObject();
+      userMessage.addProperty("role", "user");
+      userMessage.addProperty("content", "hi");
+
+      final com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
+      messages.add(userMessage);
+
       final JsonObject body = new JsonObject();
       body.addProperty("model", modelName);
-      body.addProperty("prompt", "hi");
+      body.add("messages", messages);
       body.addProperty("stream", false);
       body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
       body.add("options", options);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/generate"))
+              .uri(URI.create(normalizedUrl + "/api/chat"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))

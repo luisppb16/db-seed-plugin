@@ -146,9 +146,26 @@ public final class RowGenerator {
 
     processRepetitionRules();
     fillRemainingRows();
-    batchGenerateAiValues();
+    // AI values are generated in a separate phase by DataGenerator
+    // to allow cross-table parallelism.
 
     return rows;
+  }
+
+  /**
+   * Generates AI values for all configured AI columns in this table's rows.
+   * Called externally by DataGenerator after all tables have their base rows generated,
+   * enabling cross-table AI parallelism.
+   */
+  public void generateAiValues() {
+    batchGenerateAiValues();
+  }
+
+  /** Returns true if this generator has AI columns that require generation. */
+  public boolean hasAiColumns() {
+    return Objects.nonNull(ollamaClient)
+        && !aiColumns.isEmpty()
+        && !rows.isEmpty();
   }
 
   private void processRepetitionRules() {
@@ -385,95 +402,118 @@ public final class RowGenerator {
     final Set<String> seenAiValues = new HashSet<>();
     final boolean isArray = isArrayType(col);
 
-    IntStream.iterate(0, i -> i + AI_BATCH_SIZE)
-        .limit((totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE)
+    // Calculate all batch ranges upfront
+    final int totalBatches = (totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE;
+
+    for (int b = 0; b < totalBatches; b++) {
+      if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
+
+      final int batchStart = b * AI_BATCH_SIZE;
+      final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
+      final int batchCount = batchEnd - batchStart;
+
+      if (Objects.nonNull(indicator)) {
+        indicator.setText2(
+            "AI generating "
+                .concat(table.name())
+                .concat(".")
+                .concat(colName)
+                .concat(" (")
+                .concat(String.valueOf(batchStart + 1))
+                .concat("-")
+                .concat(String.valueOf(batchEnd))
+                .concat("/")
+                .concat(String.valueOf(totalRows))
+                .concat(")"));
+      }
+
+      // Fire the batch request asynchronously
+      final CompletableFuture<List<String>> currentFuture =
+          ollamaClient.generateBatchValues(
+              applicationContext, table.name(), colName, sqlType, wordCount, batchCount);
+
+
+      // Collect current batch result with retries
+      final List<String> allValues = new ArrayList<>();
+      int retries = 0;
+
+      try {
+        final List<String> batchValues = currentFuture.join();
+        for (final String v : batchValues) {
+          if (seenAiValues.add(v)) {
+            allValues.add(v);
+          }
+        }
+      } catch (final Exception ex) {
+        log.warn("Batch AI generation failed for {}.{}: {}", table.name(), colName, ex.getMessage());
+        retries++;
+      }
+
+      // Retry loop if first attempt didn't yield enough values
+      while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+        if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
+
+        final int remaining = batchCount - allValues.size();
+        try {
+          final List<String> batchValues =
+              ollamaClient
+                  .generateBatchValues(
+                      applicationContext, table.name(), colName, sqlType, wordCount, remaining)
+                  .join();
+
+          if (batchValues.isEmpty()) {
+            retries++;
+            continue;
+          }
+          boolean addedAny = false;
+          for (final String v : batchValues) {
+            if (seenAiValues.add(v)) {
+              allValues.add(v);
+              addedAny = true;
+            }
+          }
+          if (!addedAny) {
+            retries++;
+          }
+        } catch (final Exception ex) {
+          log.warn("Batch AI retry failed for {}.{}: {}", table.name(), colName, ex.getMessage());
+          retries++;
+        }
+      }
+
+
+      applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
+    }
+  }
+
+  private void applyAiValuesToRows(
+      final List<String> allValues,
+      final int batchStart,
+      final int batchCount,
+      final String colName,
+      final Column col,
+      final boolean isArray) {
+    IntStream.range(0, Math.min(allValues.size(), batchCount))
         .forEach(
-            batchStart -> {
-              if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
+            i -> {
+              final String val = allValues.get(i);
+              if (Objects.nonNull(val) && !val.isBlank()) {
+                String finalTrimmed = val.trim();
+                final Object finalValue;
 
-              final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
-              final int batchCount = batchEnd - batchStart;
-
-              if (Objects.nonNull(indicator)) {
-                indicator.setText2(
-                    "AI generating "
-                        .concat(table.name())
-                        .concat(".")
-                        .concat(colName)
-                        .concat(" (")
-                        .concat(String.valueOf(batchStart + 1))
-                        .concat("-")
-                        .concat(String.valueOf(batchEnd))
-                        .concat("/")
-                        .concat(String.valueOf(totalRows))
-                        .concat(")"));
-              }
-
-              final List<String> allValues = new ArrayList<>();
-              int retries = 0;
-
-              while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
-                if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
-
-                final int remaining = batchCount - allValues.size();
-                try {
-                  final List<String> batchValues =
-                      ollamaClient
-                          .generateBatchValues(
-                              applicationContext,
-                              table.name(),
-                              colName,
-                              sqlType,
-                              wordCount,
-                              remaining)
-                          .join();
-
-                  if (batchValues.isEmpty()) {
-                    retries++;
-                    continue;
+                if (isArray) {
+                  finalValue = parseAiArray(finalTrimmed);
+                } else {
+                  if (col.length() > 0 && finalTrimmed.length() > col.length()) {
+                    finalTrimmed = finalTrimmed.substring(0, col.length());
                   }
-                  boolean addedAny = false;
-                  for (final String v : batchValues) {
-                    if (seenAiValues.add(v)) {
-                      allValues.add(v);
-                      addedAny = true;
-                    }
-                  }
-                  if (!addedAny) {
-                    retries++;
-                  }
-                } catch (final Exception ex) {
-                  log.warn(
-                      "Batch AI generation failed for {}.{}: {}",
-                      table.name(),
-                      colName,
-                      ex.getMessage());
-                  retries++;
+                  finalValue = finalTrimmed;
+                }
+                final Map<String, Object> rowValues = rows.get(batchStart + i).values();
+                synchronized (rowValues) {
+                  rowValues.put(colName, finalValue);
                 }
               }
-
-              IntStream.range(0, Math.min(allValues.size(), batchCount))
-                  .forEach(
-                      i -> {
-                        final String val = allValues.get(i);
-                        if (Objects.nonNull(val) && !val.isBlank()) {
-                          String finalTrimmed = val.trim();
-                          final Object finalValue;
-
-                          if (isArray) {
-                            finalValue = parseAiArray(finalTrimmed);
-                          } else {
-                            if (col.length() > 0 && finalTrimmed.length() > col.length()) {
-                              finalTrimmed = finalTrimmed.substring(0, col.length());
-                            }
-                            finalValue = finalTrimmed;
-                          }
-                          final Map<String, Object> rowValues = rows.get(batchStart + i).values();
-                          synchronized (rowValues) {
-                            rowValues.put(colName, finalValue);
-                          }
-                        }
-                      });
             });
   }
 

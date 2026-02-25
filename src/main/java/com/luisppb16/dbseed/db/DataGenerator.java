@@ -137,6 +137,7 @@ public class DataGenerator {
       try {
         if (Objects.nonNull(params.indicator())) {
           params.indicator().setText("Warming up AI model...");
+          params.indicator().setText2("Loading " + settings.getOllamaModel() + " into memory");
         }
         ollamaClient.warmModel().join();
       } catch (final Exception e) {
@@ -164,10 +165,22 @@ public class DataGenerator {
         Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
         params.indicator());
 
+    if (Objects.nonNull(params.indicator())) {
+      params.indicator().setText("Validating constraints...");
+      params.indicator().setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
+    }
     validateNumericConstraints(orderedTables, tableConstraints, data, params.numericScale());
 
+    if (Objects.nonNull(params.indicator())) {
+      params.indicator().setText("Resolving foreign keys...");
+      params.indicator().setText2("Processing deferred FK dependencies");
+    }
     final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
     final List<PendingUpdate> updates = fkResolver.resolve();
+
+    if (Objects.nonNull(params.indicator())) {
+      params.indicator().setText2(updates.size() + " deferred updates created");
+    }
 
     return new GenerationResult(data, updates);
   }
@@ -236,19 +249,24 @@ public class DataGenerator {
       final ProgressIndicator indicator) {
 
     final int totalTables = orderedTables.size();
+    final long startTime = System.currentTimeMillis();
     IntStream.range(0, totalTables)
         .forEach(
             i -> {
               final Table table = orderedTables.get(i);
               if (Objects.nonNull(indicator)) {
                 indicator.setText(
-                    "Generating data for table: "
-                        .concat(table.name())
-                        .concat(" (")
+                    "Generating table "
                         .concat(String.valueOf(i + 1))
                         .concat("/")
                         .concat(String.valueOf(totalTables))
-                        .concat(")"));
+                        .concat(": ")
+                        .concat(table.name()));
+                indicator.setText2(
+                    table.columns().size()
+                        + " columns, "
+                        + rowsPerTable
+                        + " rows to generate");
                 indicator.setFraction((double) i / totalTables);
               }
 
@@ -283,7 +301,13 @@ public class DataGenerator {
               tableConstraints.put(table.name(), rowGenerator.getConstraints());
 
               if (Objects.nonNull(indicator)) {
+                final long elapsed = System.currentTimeMillis() - startTime;
                 indicator.setFraction((double) (i + 1) / totalTables);
+                indicator.setText2(
+                    rows.size()
+                        + " rows generated — "
+                        + (elapsed / 1000)
+                        + "s elapsed");
               }
             });
   }

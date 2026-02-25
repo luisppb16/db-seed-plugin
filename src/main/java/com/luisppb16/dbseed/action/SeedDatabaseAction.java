@@ -299,16 +299,23 @@ public final class SeedDatabaseAction extends AnAction {
                   public void run(@NotNull final ProgressIndicator indicator) {
                     try {
                       indicator.setIndeterminate(false);
-                      indicator.setText("Generating data...");
+                      indicator.setFraction(0.0);
+                      indicator.setText("Preparing generation...");
 
                       final List<Table> filteredTables =
                           ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
+
+                      indicator.setText("Sorting tables...");
+                      indicator.setText2("Resolving dependency order for " + filteredTables.size() + " tables");
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
                               sort, tableByName);
                       final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
                       log.debug("Effective deferred: {}", effectiveDeferred);
+
+                      indicator.setText("Generating data...");
+                      indicator.setText2(filteredTables.size() + " tables, " + finalConfig.rowsPerTable() + " rows each");
 
                       final DataGenerator.GenerationResult gen =
                           DataGenerator.generate(
@@ -341,7 +348,8 @@ public final class SeedDatabaseAction extends AnAction {
                       if (indicator.isCanceled()) return;
 
                       indicator.setText("Building SQL...");
-                      indicator.setText2("");
+                      indicator.setText2("Generating INSERT statements for " + gen.rows().size() + " tables");
+                      indicator.setFraction(0.95);
                       final String sql =
                           SqlGenerator.generate(
                               gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);

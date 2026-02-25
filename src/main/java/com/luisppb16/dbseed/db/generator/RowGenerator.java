@@ -198,13 +198,23 @@ public final class RowGenerator {
     IntStream.range(0, maxAttempts)
         .takeWhile(i -> generatedCount.get() < rowsPerTable)
         .forEach(
-            i ->
+            i -> {
                 generateAndValidateRow()
                     .ifPresent(
                         row -> {
                           rows.add(row);
-                          generatedCount.incrementAndGet();
-                        }));
+                          final int count = generatedCount.incrementAndGet();
+                          if (Objects.nonNull(indicator) && count % 50 == 0) {
+                            indicator.setText2(
+                                "Row "
+                                    + count
+                                    + "/"
+                                    + rowsPerTable
+                                    + " for "
+                                    + table.name());
+                          }
+                        });
+            });
   }
 
   private Optional<Row> generateAndValidateRow() {

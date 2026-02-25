@@ -161,6 +161,10 @@ public final class GenerateSeedAction extends AnAction {
                 @Override
                 public void run(@NotNull final ProgressIndicator indicator) {
                   try {
+                    indicator.setIndeterminate(false);
+                    indicator.setFraction(0.0);
+                    indicator.setText("Preparing generation...");
+                    indicator.setText2(tables.size() + " tables, " + finalConfig.rowsPerTable() + " rows per table");
                     final String sql =
                         generateSeedSql(
                             finalConfig, tables, selections, indicator, settings, chosenDriver);
@@ -196,9 +200,11 @@ public final class GenerateSeedAction extends AnAction {
             .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
     indicator.setText("Sorting tables...");
+    indicator.setText2("Filtering " + tables.size() + " tables");
     final List<Table> filteredTables =
         tables.stream().filter(t -> !selections.excludedTables().contains(t.name())).toList();
 
+    indicator.setText2("Resolving dependency order for " + filteredTables.size() + " tables");
     final TopologicalSorter.SortResult sort = TopologicalSorter.sort(filteredTables);
 
     final Map<String, Table> tableMap =
@@ -214,6 +220,7 @@ public final class GenerateSeedAction extends AnAction {
     log.debug("Effective deferred: {}", effectiveDeferred);
 
     indicator.setText("Generating data...");
+    indicator.setText2(ordered.size() + " tables, " + config.rowsPerTable() + " rows each");
     final DataGenerator.GenerationResult gen =
         DataGenerator.generate(
             DataGenerator.GenerationParameters.builder()
@@ -237,11 +244,15 @@ public final class GenerateSeedAction extends AnAction {
                 .build());
 
     indicator.setText("Building SQL...");
-    indicator.setText2("");
+    indicator.setText2("Generating INSERT statements for " + gen.rows().size() + " tables");
+    indicator.setFraction(0.95);
     final String sql =
         SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
 
     log.info("Seed SQL generated successfully.");
+    indicator.setFraction(1.0);
+    indicator.setText("Done!");
+    indicator.setText2("");
     return sql;
   }
 

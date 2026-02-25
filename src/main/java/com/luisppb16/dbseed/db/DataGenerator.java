@@ -101,6 +101,15 @@ public class DataGenerator {
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final String SOFT_DELETE_DELIMITER = ",";
   private static final String EMPTY_CONTEXT = "";
+  /** Executor for cross-table AI generation parallelism. */
+  private static final ExecutorService AI_TABLE_EXECUTOR =
+      Executors.newFixedThreadPool(
+          Math.min(8, Runtime.getRuntime().availableProcessors()),
+          r -> {
+            Thread t = new Thread(r, "ai-table-gen");
+            t.setDaemon(true);
+            return t;
+          });
 
   public static GenerationResult generate(final GenerationParameters params) {
     final List<Table> orderedTables =
@@ -149,32 +158,35 @@ public class DataGenerator {
       }
     }
 
-    final List<RowGenerator> generators = generateTableRows(
-        orderedTables,
-        params.rowsPerTable(),
-        excludedColumnsSet,
-        params.repetitionRules(),
-        faker,
-        usedUuids,
-        tableConstraints,
-        data,
-        dictionaryWords,
-        params.useLatinDictionary(),
-        softDeleteCols,
-        params.softDeleteUseSchemaDefault(),
-        params.softDeleteValue(),
-        params.numericScale(),
-        aiColumns,
-        ollamaClient,
-        Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
-        params.indicator());
+    final List<RowGenerator> generators =
+        generateTableRows(
+            orderedTables,
+            params.rowsPerTable(),
+            excludedColumnsSet,
+            params.repetitionRules(),
+            faker,
+            usedUuids,
+            tableConstraints,
+            data,
+            dictionaryWords,
+            params.useLatinDictionary(),
+            softDeleteCols,
+            params.softDeleteUseSchemaDefault(),
+            params.softDeleteValue(),
+            params.numericScale(),
+            aiColumns,
+            ollamaClient,
+            Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
+            params.indicator());
 
     // Phase 2: Run AI generation for ALL tables in parallel
     generateAiValuesParallel(generators, params.indicator());
 
     if (Objects.nonNull(params.indicator())) {
       params.indicator().setText("Validating constraints...");
-      params.indicator().setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
+      params
+          .indicator()
+          .setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
     }
     validateNumericConstraints(orderedTables, tableConstraints, data, params.numericScale());
 
@@ -272,10 +284,7 @@ public class DataGenerator {
                         .concat(": ")
                         .concat(table.name()));
                 indicator.setText2(
-                    table.columns().size()
-                        + " columns, "
-                        + rowsPerTable
-                        + " rows to generate");
+                    table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
                 indicator.setFraction((double) i / totalTables);
               }
 
@@ -314,30 +323,17 @@ public class DataGenerator {
                 final long elapsed = System.currentTimeMillis() - startTime;
                 indicator.setFraction((double) (i + 1) / totalTables);
                 indicator.setText2(
-                    rows.size()
-                        + " rows generated — "
-                        + (elapsed / 1000)
-                        + "s elapsed");
+                    rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
               }
             });
 
     return generators;
   }
 
-  /** Executor for cross-table AI generation parallelism. */
-  private static final ExecutorService AI_TABLE_EXECUTOR =
-      Executors.newFixedThreadPool(
-          Math.min(8, Runtime.getRuntime().availableProcessors()),
-          r -> {
-            Thread t = new Thread(r, "ai-table-gen");
-            t.setDaemon(true);
-            return t;
-          });
-
   /**
-   * Phase 2: Runs AI value generation for all tables in parallel.
-   * This is separated from row generation so that all tables can have their
-   * base rows ready before any AI requests are made, enabling maximum parallelism.
+   * Phase 2: Runs AI value generation for all tables in parallel. This is separated from row
+   * generation so that all tables can have their base rows ready before any AI requests are made,
+   * enabling maximum parallelism.
    */
   private static void generateAiValuesParallel(
       final List<RowGenerator> generators, final ProgressIndicator indicator) {

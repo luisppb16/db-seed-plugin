@@ -49,7 +49,15 @@ public final class RowGenerator {
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final int AI_BATCH_SIZE = 50;
   private static final int AI_MAX_RETRIES = 5;
-
+  /** Executor for running AI column generation tasks in parallel. */
+  private static final ExecutorService AI_COLUMN_EXECUTOR =
+      Executors.newFixedThreadPool(
+          Math.min(4, Runtime.getRuntime().availableProcessors()),
+          r -> {
+            Thread t = new Thread(r, "ai-col-gen");
+            t.setDaemon(true);
+            return t;
+          });
   private final Table table;
   private final int rowsPerTable;
   private final Set<String> excludedColumns;
@@ -62,12 +70,10 @@ public final class RowGenerator {
   private final OllamaClient ollamaClient;
   private final String applicationContext;
   private final ProgressIndicator indicator;
-
   @Getter private final Map<String, ParsedConstraint> constraints;
   private final Predicate<Column> isFkColumn;
   private final List<List<String>> relevantUniqueKeys;
   private final List<MultiColumnConstraint> multiColumnConstraints;
-
   private final List<Row> rows = new ArrayList<>();
   private final Set<String> seenPrimaryKeys = new HashSet<>();
   private final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
@@ -153,9 +159,9 @@ public final class RowGenerator {
   }
 
   /**
-   * Generates AI values for all configured AI columns in this table's rows.
-   * Called externally by DataGenerator after all tables have their base rows generated,
-   * enabling cross-table AI parallelism.
+   * Generates AI values for all configured AI columns in this table's rows. Called externally by
+   * DataGenerator after all tables have their base rows generated, enabling cross-table AI
+   * parallelism.
    */
   public void generateAiValues() {
     batchGenerateAiValues();
@@ -163,9 +169,7 @@ public final class RowGenerator {
 
   /** Returns true if this generator has AI columns that require generation. */
   public boolean hasAiColumns() {
-    return Objects.nonNull(ollamaClient)
-        && !aiColumns.isEmpty()
-        && !rows.isEmpty();
+    return Objects.nonNull(ollamaClient) && !aiColumns.isEmpty() && !rows.isEmpty();
   }
 
   private void processRepetitionRules() {
@@ -216,21 +220,16 @@ public final class RowGenerator {
         .takeWhile(i -> generatedCount.get() < rowsPerTable)
         .forEach(
             i -> {
-                generateAndValidateRow()
-                    .ifPresent(
-                        row -> {
-                          rows.add(row);
-                          final int count = generatedCount.incrementAndGet();
-                          if (Objects.nonNull(indicator) && count % 50 == 0) {
-                            indicator.setText2(
-                                "Row "
-                                    + count
-                                    + "/"
-                                    + rowsPerTable
-                                    + " for "
-                                    + table.name());
-                          }
-                        });
+              generateAndValidateRow()
+                  .ifPresent(
+                      row -> {
+                        rows.add(row);
+                        final int count = generatedCount.incrementAndGet();
+                        if (Objects.nonNull(indicator) && count % 50 == 0) {
+                          indicator.setText2(
+                              "Row " + count + "/" + rowsPerTable + " for " + table.name());
+                        }
+                      });
             });
   }
 
@@ -371,9 +370,7 @@ public final class RowGenerator {
             .map(
                 col ->
                     CompletableFuture.runAsync(
-                        () ->
-                            generateAiValuesForColumn(
-                                col, wordCount, totalRows),
+                        () -> generateAiValuesForColumn(col, wordCount, totalRows),
                         AI_COLUMN_EXECUTOR))
             .toList();
 
@@ -384,16 +381,6 @@ public final class RowGenerator {
       log.warn("Some AI column generations failed: {}", ex.getMessage());
     }
   }
-
-  /** Executor for running AI column generation tasks in parallel. */
-  private static final ExecutorService AI_COLUMN_EXECUTOR =
-      Executors.newFixedThreadPool(
-          Math.min(4, Runtime.getRuntime().availableProcessors()),
-          r -> {
-            Thread t = new Thread(r, "ai-col-gen");
-            t.setDaemon(true);
-            return t;
-          });
 
   private void generateAiValuesForColumn(
       final Column col, final int wordCount, final int totalRows) {
@@ -432,7 +419,6 @@ public final class RowGenerator {
           ollamaClient.generateBatchValues(
               applicationContext, table.name(), colName, sqlType, wordCount, batchCount);
 
-
       // Collect current batch result with retries
       final List<String> allValues = new ArrayList<>();
       int retries = 0;
@@ -445,7 +431,8 @@ public final class RowGenerator {
           }
         }
       } catch (final Exception ex) {
-        log.warn("Batch AI generation failed for {}.{}: {}", table.name(), colName, ex.getMessage());
+        log.warn(
+            "Batch AI generation failed for {}.{}: {}", table.name(), colName, ex.getMessage());
         retries++;
       }
 
@@ -480,7 +467,6 @@ public final class RowGenerator {
           retries++;
         }
       }
-
 
       applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
     }

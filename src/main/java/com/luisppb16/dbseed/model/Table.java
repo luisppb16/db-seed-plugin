@@ -59,8 +59,8 @@ public record Table(
 
   /**
    * Lazily-computed caches for column lookup (case-insensitive) and FK column names. Uses a
-   * WeakHashMap so entries are automatically removed when Table instances are GC'd. These caches
-   * do not participate in equals/hashCode (which is correct since they are derived data).
+   * WeakHashMap so entries are automatically removed when Table instances are GC'd. These caches do
+   * not participate in equals/hashCode (which is correct since they are derived data).
    */
   private static final Map<Table, Map<String, Column>> COLUMN_MAP_CACHE =
       Collections.synchronizedMap(new WeakHashMap<>());
@@ -92,8 +92,8 @@ public record Table(
   }
 
   /**
-   * Returns the set of all foreign key column names for this table. The result is cached and
-   * reused across calls since the table is immutable.
+   * Returns the set of all foreign key column names for this table. The result is cached and reused
+   * across calls since the table is immutable.
    */
   public Set<String> fkColumnNames() {
     return FK_COLUMN_NAMES_CACHE.computeIfAbsent(

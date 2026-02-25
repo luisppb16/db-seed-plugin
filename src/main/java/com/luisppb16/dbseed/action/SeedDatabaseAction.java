@@ -306,7 +306,8 @@ public final class SeedDatabaseAction extends AnAction {
                           ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
 
                       indicator.setText("Sorting tables...");
-                      indicator.setText2("Resolving dependency order for " + filteredTables.size() + " tables");
+                      indicator.setText2(
+                          "Resolving dependency order for " + filteredTables.size() + " tables");
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
@@ -315,7 +316,11 @@ public final class SeedDatabaseAction extends AnAction {
                       log.debug("Effective deferred: {}", effectiveDeferred);
 
                       indicator.setText("Generating data...");
-                      indicator.setText2(filteredTables.size() + " tables, " + finalConfig.rowsPerTable() + " rows each");
+                      indicator.setText2(
+                          filteredTables.size()
+                              + " tables, "
+                              + finalConfig.rowsPerTable()
+                              + " rows each");
 
                       final DataGenerator.GenerationResult gen =
                           DataGenerator.generate(
@@ -348,7 +353,8 @@ public final class SeedDatabaseAction extends AnAction {
                       if (indicator.isCanceled()) return;
 
                       indicator.setText("Building SQL...");
-                      indicator.setText2("Generating INSERT statements for " + gen.rows().size() + " tables");
+                      indicator.setText2(
+                          "Generating INSERT statements for " + gen.rows().size() + " tables");
                       indicator.setFraction(0.95);
                       final String sql =
                           SqlGenerator.generate(

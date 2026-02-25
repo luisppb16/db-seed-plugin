@@ -164,7 +164,11 @@ public final class GenerateSeedAction extends AnAction {
                     indicator.setIndeterminate(false);
                     indicator.setFraction(0.0);
                     indicator.setText("Preparing generation...");
-                    indicator.setText2(tables.size() + " tables, " + finalConfig.rowsPerTable() + " rows per table");
+                    indicator.setText2(
+                        tables.size()
+                            + " tables, "
+                            + finalConfig.rowsPerTable()
+                            + " rows per table");
                     final String sql =
                         generateSeedSql(
                             finalConfig, tables, selections, indicator, settings, chosenDriver);

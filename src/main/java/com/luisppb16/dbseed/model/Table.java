@@ -5,9 +5,14 @@
 
 package com.luisppb16.dbseed.model;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 import lombok.Builder;
 
@@ -52,6 +57,17 @@ public record Table(
     List<String> checks,
     List<List<String>> uniqueKeys) {
 
+  /**
+   * Lazily-computed caches for column lookup (case-insensitive) and FK column names. Uses a
+   * WeakHashMap so entries are automatically removed when Table instances are GC'd. These caches
+   * do not participate in equals/hashCode (which is correct since they are derived data).
+   */
+  private static final Map<Table, Map<String, Column>> COLUMN_MAP_CACHE =
+      Collections.synchronizedMap(new WeakHashMap<>());
+
+  private static final Map<Table, Set<String>> FK_COLUMN_NAMES_CACHE =
+      Collections.synchronizedMap(new WeakHashMap<>());
+
   public Table {
     Objects.requireNonNull(name, "Table name cannot be null.");
     Objects.requireNonNull(columns, "Column list cannot be null.");
@@ -67,16 +83,36 @@ public record Table(
     uniqueKeys = uniqueKeys.stream().map(List::copyOf).toList();
   }
 
+  /**
+   * Looks up a column by name (case-insensitive). Uses a cached map for O(1) lookups instead of
+   * scanning the column list on every call.
+   */
   public Column column(final String columnName) {
-    return columns.stream()
-        .filter(c -> c.name().equalsIgnoreCase(columnName))
-        .findFirst()
-        .orElse(null);
+    return columnMap().get(columnName.toLowerCase(Locale.ROOT));
   }
 
+  /**
+   * Returns the set of all foreign key column names for this table. The result is cached and
+   * reused across calls since the table is immutable.
+   */
   public Set<String> fkColumnNames() {
-    return foreignKeys.stream()
-        .flatMap(fk -> fk.columnMapping().keySet().stream())
-        .collect(Collectors.toUnmodifiableSet());
+    return FK_COLUMN_NAMES_CACHE.computeIfAbsent(
+        this,
+        t ->
+            t.foreignKeys.stream()
+                .flatMap(fk -> fk.columnMapping().keySet().stream())
+                .collect(Collectors.toUnmodifiableSet()));
+  }
+
+  private Map<String, Column> columnMap() {
+    return COLUMN_MAP_CACHE.computeIfAbsent(
+        this,
+        t -> {
+          final Map<String, Column> map = new LinkedHashMap<>();
+          for (final Column col : t.columns) {
+            map.put(col.name().toLowerCase(Locale.ROOT), col);
+          }
+          return Collections.unmodifiableMap(map);
+        });
   }
 }

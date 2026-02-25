@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Builder;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
 
 /**
@@ -89,6 +90,7 @@ import net.datafaker.Faker;
  * @see GenerationParameters
  * @see GenerationResult
  */
+@Slf4j
 @UtilityClass
 public class DataGenerator {
 
@@ -128,6 +130,19 @@ public class DataGenerator {
 
     final Map<String, Set<String>> aiColumns =
         Objects.requireNonNullElse(params.aiColumns(), Map.of());
+
+    // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
+    // This eliminates cold-start latency on the first real generation call.
+    if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
+      try {
+        if (Objects.nonNull(params.indicator())) {
+          params.indicator().setText("Warming up AI model...");
+        }
+        ollamaClient.warmModel().join();
+      } catch (final Exception e) {
+        log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
+      }
+    }
 
     generateTableRows(
         orderedTables,
@@ -279,13 +294,16 @@ public class DataGenerator {
       final Map<Table, List<Row>> data,
       final int numericScale) {
 
+    final Faker faker = new Faker();
+    final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
+
     orderedTables.forEach(
         table -> {
           final Map<String, ConstraintParser.ParsedConstraint> constraints =
               tableConstraints.getOrDefault(table.name(), Map.of());
           final List<Row> rows = data.get(table);
           if (Objects.isNull(rows)) return;
-          rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, numericScale));
+          rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
         });
   }
 
@@ -293,10 +311,7 @@ public class DataGenerator {
       final Table table,
       final Row row,
       final Map<String, ConstraintParser.ParsedConstraint> constraints,
-      final int numericScale) {
-
-    final Faker faker = new Faker();
-    final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
+      final ValueGenerator vg) {
 
     table
         .columns()

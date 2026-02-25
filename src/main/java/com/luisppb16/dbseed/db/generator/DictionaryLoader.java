@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Efficient dictionary loading and caching system for multilingual word resources in the DBSeed
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * the singleton pattern through static methods and provides immutable list views to prevent
  * external modification of cached dictionary content.
  */
+@Slf4j
 public final class DictionaryLoader {
 
   private static final String ENGLISH_DICTIONARY_PATH = "/dictionaries/english-words.txt";
@@ -95,6 +97,7 @@ public final class DictionaryLoader {
   private static List<String> readWordsFromFile(final String filePath) {
     try (final InputStream is = DictionaryLoader.class.getResourceAsStream(filePath)) {
       if (Objects.isNull(is)) {
+        log.warn("Dictionary resource not found: {}", filePath);
         return Collections.emptyList();
       }
       return Arrays.stream(new String(is.readAllBytes(), StandardCharsets.UTF_8).split("\\s+"))
@@ -102,6 +105,7 @@ public final class DictionaryLoader {
           .filter(s -> !s.isEmpty())
           .toList();
     } catch (final IOException e) {
+      log.warn("Failed to read dictionary file: {}", filePath, e);
       return Collections.emptyList();
     }
   }

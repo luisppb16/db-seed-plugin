@@ -5,6 +5,9 @@
 
 package com.luisppb16.dbseed.ai;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -18,7 +21,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -90,14 +92,16 @@ public class OllamaClient {
   private static final int LIST_MODELS_TIMEOUT_SECONDS = 5;
 
   private static final double DEFAULT_TEMPERATURE = 0.5;
-  private static final double BATCH_TEMPERATURE = DEFAULT_TEMPERATURE;
+  private static final double BATCH_TEMPERATURE = 0.7;
 
   private static final int DEFAULT_NUM_PREDICT = 30;
   private static final int BATCH_NUM_PREDICT_FACTOR = 15;
   private static final int WORD_COUNT_PREDICT_MULTIPLIER = 3;
   private static final int MIN_WORD_COUNT = 1;
 
-  private static final String RESPONSE_KEY_PREFIX = "\"response\":\"";
+  /** Keep the model loaded in VRAM for 10 minutes between requests to avoid cold-start penalty. */
+  private static final String DEFAULT_KEEP_ALIVE = "10m";
+
   private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)\\-]\\s*");
 
   private static final String SYSTEM_ROLE =
@@ -106,6 +110,12 @@ public class OllamaClient {
           + "Never add introductions, headers, numbering, bullet points, quotes, labels, or explanations. "
           + "Start immediately with the first value.";
 
+  private static final Gson GSON = new Gson();
+
+  /**
+   * Shared executor using daemon threads for HTTP operations. Daemon threads do not prevent JVM
+   * shutdown, so no explicit shutdown is required — the lifecycle is tied to the plugin/JVM.
+   */
   private static final ExecutorService HTTP_EXECUTOR =
       Executors.newCachedThreadPool(
           r -> {
@@ -114,6 +124,10 @@ public class OllamaClient {
             return t;
           });
 
+  /**
+   * Shared HTTP client for all Ollama API operations. Uses {@link #HTTP_EXECUTOR} with daemon
+   * threads, so it does not require explicit close — its lifecycle is tied to the plugin/JVM.
+   */
   private static final HttpClient HTTP_CLIENT =
       HttpClient.newBuilder()
           .version(HttpClient.Version.HTTP_1_1)
@@ -121,7 +135,7 @@ public class OllamaClient {
           .executor(HTTP_EXECUTOR)
           .build();
 
-  private final String ollamaUrl;
+  private final String normalizedUrl;
   private final String modelName;
   private final int requestTimeoutSeconds;
 
@@ -129,7 +143,7 @@ public class OllamaClient {
       @NotNull final String ollamaUrl,
       @NotNull final String modelName,
       final int requestTimeoutSeconds) {
-    this.ollamaUrl = ollamaUrl;
+    this.normalizedUrl = normalizeUrl(ollamaUrl);
     this.modelName = modelName;
     this.requestTimeoutSeconds = Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds);
   }
@@ -143,21 +157,6 @@ public class OllamaClient {
       normalized = normalized.substring(0, normalized.length() - 1);
     }
     return normalized;
-  }
-
-  private static int findClosingQuote(String json, int startIndex) {
-    int i = startIndex;
-    while (i < json.length()) {
-      char c = json.charAt(i);
-      if (c == '\\') {
-        i += 2;
-      } else if (c == '"') {
-        return i;
-      } else {
-        i++;
-      }
-    }
-    return -1;
   }
 
   private static String sanitizeAiOutput(String value, @Nullable String columnName) {
@@ -250,11 +249,10 @@ public class OllamaClient {
    * @return A CompletableFuture that completes when the ping is successful.
    */
   public CompletableFuture<Void> ping() {
-    String url = normalizeUrl(ollamaUrl);
     try {
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(url))
+              .uri(URI.create(normalizedUrl))
               .timeout(Duration.ofSeconds(PING_TIMEOUT_SECONDS))
               .GET()
               .build();
@@ -279,12 +277,10 @@ public class OllamaClient {
    * @return A CompletableFuture containing a list of model names.
    */
   public CompletableFuture<List<String>> listModels() {
-    String url = normalizeUrl(ollamaUrl);
-
     try {
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(url + "/api/tags"))
+              .uri(URI.create(normalizedUrl + "/api/tags"))
               .timeout(Duration.ofSeconds(LIST_MODELS_TIMEOUT_SECONDS))
               .GET()
               .build();
@@ -308,10 +304,18 @@ public class OllamaClient {
   private List<String> parseModelsResponse(String responseBody) {
     List<String> models = new ArrayList<>();
     try {
-      Pattern pattern = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
-      Matcher matcher = pattern.matcher(responseBody);
-      while (matcher.find()) {
-        models.add(matcher.group(1));
+      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
+      if (json.has("models") && json.get("models").isJsonArray()) {
+        json.getAsJsonArray("models")
+            .forEach(
+                element -> {
+                  if (element.isJsonObject()) {
+                    final JsonObject model = element.getAsJsonObject();
+                    if (model.has("name")) {
+                      models.add(model.get("name").getAsString());
+                    }
+                  }
+                });
       }
     } catch (Exception e) {
       log.warn("Failed to parse Ollama models response", e);
@@ -326,7 +330,6 @@ public class OllamaClient {
       @NotNull final String sqlType,
       final int wordCount) {
 
-    String url = normalizeUrl(ollamaUrl);
     final int effectiveWordCount = Math.max(MIN_WORD_COUNT, wordCount);
     final String contextLine =
         !applicationContext.isBlank() ? "Application context: " + applicationContext + "\n" : "";
@@ -385,19 +388,11 @@ public class OllamaClient {
         }
       }
 
-      String requestBody =
-          String.format(
-              Locale.ROOT,
-              "{\"model\": \"%s\", \"prompt\": \"%s\", \"system\": \"%s\", \"stream\": false, \"options\": {\"temperature\": %.1f, \"num_predict\": %d}}",
-              escapeJson(modelName),
-              escapeJson(prompt),
-              escapeJson(SYSTEM_ROLE),
-              DEFAULT_TEMPERATURE,
-              numPredict);
+      String requestBody = buildRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(url + "/api/generate"))
+              .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -427,7 +422,6 @@ public class OllamaClient {
       final int wordCount,
       final int count) {
 
-    String url = normalizeUrl(ollamaUrl);
     final int effectiveWordCount = Math.max(MIN_WORD_COUNT, wordCount);
     final String contextLine =
         !applicationContext.isBlank() ? "Application context: " + applicationContext + "\n" : "";
@@ -491,19 +485,11 @@ public class OllamaClient {
         }
       }
 
-      String requestBody =
-          String.format(
-              Locale.ROOT,
-              "{\"model\": \"%s\", \"prompt\": \"%s\", \"system\": \"%s\", \"stream\": false, \"options\": {\"temperature\": %.1f, \"num_predict\": %d}}",
-              escapeJson(modelName),
-              escapeJson(prompt),
-              escapeJson(SYSTEM_ROLE),
-              BATCH_TEMPERATURE,
-              numPredict);
+      String requestBody = buildRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(url + "/api/generate"))
+              .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -551,37 +537,75 @@ public class OllamaClient {
   }
 
   private String extractRawResponse(String responseBody) throws IOException {
-    int responseKeyIndex = responseBody.indexOf(RESPONSE_KEY_PREFIX);
-    if (responseKeyIndex == -1) {
-      throw new IOException("Invalid response from Ollama: " + responseBody);
+    try {
+      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
+      if (!json.has("response")) {
+        throw new IOException("Invalid response from Ollama: missing 'response' field");
+      }
+      return json.get("response").getAsString();
+    } catch (final Exception e) {
+      if (e instanceof IOException) throw e;
+      throw new IOException("Failed to parse Ollama response: " + e.getMessage(), e);
     }
-    int startIndex = responseKeyIndex + RESPONSE_KEY_PREFIX.length();
-    int endIndex = findClosingQuote(responseBody, startIndex);
-    if (endIndex == -1) {
-      throw new IOException("Invalid response from Ollama: " + responseBody);
-    }
-    return unescapeJson(responseBody.substring(startIndex, endIndex));
   }
 
-  private String escapeJson(String text) {
-    return text.replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\b", "\\b")
-        .replace("\f", "\\f")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t");
+  private String buildRequestBody(String prompt, double temperature, int numPredict) {
+    final JsonObject options = new JsonObject();
+    options.addProperty("temperature", temperature);
+    options.addProperty("num_predict", numPredict);
+
+    final JsonObject body = new JsonObject();
+    body.addProperty("model", modelName);
+    body.addProperty("prompt", prompt);
+    body.addProperty("system", SYSTEM_ROLE);
+    body.addProperty("stream", false);
+    body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
+    body.add("options", options);
+
+    return GSON.toJson(body);
   }
 
-  private String unescapeJson(String text) {
-    return text.replace("\\\\", "\0BACKSLASH\0")
-        .replace("\\n", "\n")
-        .replace("\\\"", "\"")
-        .replace("\\t", "\t")
-        .replace("\\r", "\r")
-        .replace("\\b", "\b")
-        .replace("\\f", "\f")
-        .replace("\0BACKSLASH\0", "\\");
+  /**
+   * Pre-warms the model by sending a minimal generate request. This forces Ollama to load the
+   * model into VRAM before the actual batch generation starts, avoiding the cold-start latency
+   * penalty on the first real request. The response is discarded.
+   *
+   * @return A CompletableFuture that completes when the model is loaded.
+   */
+  public CompletableFuture<Void> warmModel() {
+    try {
+      final JsonObject options = new JsonObject();
+      options.addProperty("num_predict", 1);
+
+      final JsonObject body = new JsonObject();
+      body.addProperty("model", modelName);
+      body.addProperty("prompt", "hi");
+      body.addProperty("stream", false);
+      body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
+      body.add("options", options);
+
+      HttpRequest request =
+          HttpRequest.newBuilder()
+              .uri(URI.create(normalizedUrl + "/api/generate"))
+              .header("Content-Type", "application/json")
+              .timeout(Duration.ofSeconds(requestTimeoutSeconds))
+              .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
+              .build();
+
+      return HTTP_CLIENT
+          .sendAsync(request, HttpResponse.BodyHandlers.discarding())
+          .thenAccept(
+              response -> {
+                if (response.statusCode() == 200) {
+                  log.info("Model '{}' warmed up successfully", modelName);
+                } else {
+                  log.warn("Model warm-up returned status {}", response.statusCode());
+                }
+              });
+    } catch (Exception e) {
+      log.warn("Failed to warm model: {}", e.getMessage());
+      return CompletableFuture.completedFuture(null);
+    }
   }
 
   public static class OllamaException extends RuntimeException {

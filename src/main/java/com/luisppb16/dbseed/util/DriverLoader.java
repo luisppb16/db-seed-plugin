@@ -24,6 +24,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,6 +65,13 @@ public class DriverLoader {
       Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
   private static final Set<String> LOADED_DRIVERS = ConcurrentHashMap.newKeySet();
+
+  /**
+   * Tracks URLClassLoader instances by driver class name. These must remain open for the lifetime
+   * of the loaded driver (DriverManager holds references to them). They are kept here to prevent
+   * garbage collection and to allow potential cleanup if needed in the future.
+   */
+  private static final Map<String, URLClassLoader> LOADED_CLASSLOADERS = new ConcurrentHashMap<>();
 
   static {
     try {
@@ -141,14 +149,16 @@ public class DriverLoader {
   }
 
   private static void loadDriver(final URL jarUrl, final String driverClass)
-      throws ReflectiveOperationException, SQLException {
+      throws ReflectiveOperationException, SQLException, IOException {
     final URLClassLoader cl =
         new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
     final Class<?> clazz = Class.forName(driverClass, true, cl);
     if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
       DriverManager.registerDriver(new DriverShim(driver));
+      LOADED_CLASSLOADERS.put(driverClass, cl);
       log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
     } else {
+      cl.close();
       throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
     }
   }

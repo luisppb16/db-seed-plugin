@@ -17,6 +17,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -27,10 +28,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Builder;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
 
 /**
@@ -89,12 +94,22 @@ import net.datafaker.Faker;
  * @see GenerationParameters
  * @see GenerationResult
  */
+@Slf4j
 @UtilityClass
 public class DataGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final String SOFT_DELETE_DELIMITER = ",";
   private static final String EMPTY_CONTEXT = "";
+  /** Executor for cross-table AI generation parallelism. */
+  private static final ExecutorService AI_TABLE_EXECUTOR =
+      Executors.newFixedThreadPool(
+          Math.min(8, Runtime.getRuntime().availableProcessors()),
+          r -> {
+            Thread t = new Thread(r, "ai-table-gen");
+            t.setDaemon(true);
+            return t;
+          });
 
   public static GenerationResult generate(final GenerationParameters params) {
     final List<Table> orderedTables =
@@ -129,30 +144,62 @@ public class DataGenerator {
     final Map<String, Set<String>> aiColumns =
         Objects.requireNonNullElse(params.aiColumns(), Map.of());
 
-    generateTableRows(
-        orderedTables,
-        params.rowsPerTable(),
-        excludedColumnsSet,
-        params.repetitionRules(),
-        faker,
-        usedUuids,
-        tableConstraints,
-        data,
-        dictionaryWords,
-        params.useLatinDictionary(),
-        softDeleteCols,
-        params.softDeleteUseSchemaDefault(),
-        params.softDeleteValue(),
-        params.numericScale(),
-        aiColumns,
-        ollamaClient,
-        Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
-        params.indicator());
+    // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
+    // This eliminates cold-start latency on the first real generation call.
+    if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
+      try {
+        if (Objects.nonNull(params.indicator())) {
+          params.indicator().setText("Warming up AI model...");
+          params.indicator().setText2("Loading " + settings.getOllamaModel() + " into memory");
+        }
+        ollamaClient.warmModel().join();
+      } catch (final Exception e) {
+        log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
+      }
+    }
 
+    final List<RowGenerator> generators =
+        generateTableRows(
+            orderedTables,
+            params.rowsPerTable(),
+            excludedColumnsSet,
+            params.repetitionRules(),
+            faker,
+            usedUuids,
+            tableConstraints,
+            data,
+            dictionaryWords,
+            params.useLatinDictionary(),
+            softDeleteCols,
+            params.softDeleteUseSchemaDefault(),
+            params.softDeleteValue(),
+            params.numericScale(),
+            aiColumns,
+            ollamaClient,
+            Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
+            params.indicator());
+
+    // Phase 2: Run AI generation for ALL tables in parallel
+    generateAiValuesParallel(generators, params.indicator());
+
+    if (Objects.nonNull(params.indicator())) {
+      params.indicator().setText("Validating constraints...");
+      params
+          .indicator()
+          .setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
+    }
     validateNumericConstraints(orderedTables, tableConstraints, data, params.numericScale());
 
+    if (Objects.nonNull(params.indicator())) {
+      params.indicator().setText("Resolving foreign keys...");
+      params.indicator().setText2("Processing deferred FK dependencies");
+    }
     final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
     final List<PendingUpdate> updates = fkResolver.resolve();
+
+    if (Objects.nonNull(params.indicator())) {
+      params.indicator().setText2(updates.size() + " deferred updates created");
+    }
 
     return new GenerationResult(data, updates);
   }
@@ -200,7 +247,7 @@ public class DataGenerator {
     return softDeleteCols;
   }
 
-  private static void generateTableRows(
+  private static List<RowGenerator> generateTableRows(
       final List<Table> orderedTables,
       final int rowsPerTable,
       final Map<String, Set<String>> excludedColumns,
@@ -221,19 +268,23 @@ public class DataGenerator {
       final ProgressIndicator indicator) {
 
     final int totalTables = orderedTables.size();
+    final long startTime = System.currentTimeMillis();
+    final List<RowGenerator> generators = new ArrayList<>();
+
     IntStream.range(0, totalTables)
         .forEach(
             i -> {
               final Table table = orderedTables.get(i);
               if (Objects.nonNull(indicator)) {
                 indicator.setText(
-                    "Generating data for table: "
-                        .concat(table.name())
-                        .concat(" (")
+                    "Generating table "
                         .concat(String.valueOf(i + 1))
                         .concat("/")
                         .concat(String.valueOf(totalTables))
-                        .concat(")"));
+                        .concat(": ")
+                        .concat(table.name()));
+                indicator.setText2(
+                    table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
                 indicator.setFraction((double) i / totalTables);
               }
 
@@ -266,11 +317,50 @@ public class DataGenerator {
               final List<Row> rows = rowGenerator.generate();
               data.put(table, rows);
               tableConstraints.put(table.name(), rowGenerator.getConstraints());
+              generators.add(rowGenerator);
 
               if (Objects.nonNull(indicator)) {
+                final long elapsed = System.currentTimeMillis() - startTime;
                 indicator.setFraction((double) (i + 1) / totalTables);
+                indicator.setText2(
+                    rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
               }
             });
+
+    return generators;
+  }
+
+  /**
+   * Phase 2: Runs AI value generation for all tables in parallel. This is separated from row
+   * generation so that all tables can have their base rows ready before any AI requests are made,
+   * enabling maximum parallelism.
+   */
+  private static void generateAiValuesParallel(
+      final List<RowGenerator> generators, final ProgressIndicator indicator) {
+    final List<RowGenerator> aiGenerators =
+        generators.stream().filter(RowGenerator::hasAiColumns).toList();
+
+    if (aiGenerators.isEmpty()) return;
+
+    if (Objects.nonNull(indicator)) {
+      indicator.setText("Generating AI values...");
+      indicator.setText2(aiGenerators.size() + " tables with AI columns");
+    }
+
+    final List<CompletableFuture<Void>> futures =
+        aiGenerators.stream()
+            .map(gen -> CompletableFuture.runAsync(gen::generateAiValues, AI_TABLE_EXECUTOR))
+            .toList();
+
+    try {
+      CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+    } catch (final Exception ex) {
+      log.warn("Some AI table generations failed: {}", ex.getMessage());
+    }
+
+    if (Objects.nonNull(indicator)) {
+      indicator.setText2("AI generation complete");
+    }
   }
 
   private static void validateNumericConstraints(
@@ -279,13 +369,16 @@ public class DataGenerator {
       final Map<Table, List<Row>> data,
       final int numericScale) {
 
+    final Faker faker = new Faker();
+    final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
+
     orderedTables.forEach(
         table -> {
           final Map<String, ConstraintParser.ParsedConstraint> constraints =
               tableConstraints.getOrDefault(table.name(), Map.of());
           final List<Row> rows = data.get(table);
           if (Objects.isNull(rows)) return;
-          rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, numericScale));
+          rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
         });
   }
 
@@ -293,10 +386,7 @@ public class DataGenerator {
       final Table table,
       final Row row,
       final Map<String, ConstraintParser.ParsedConstraint> constraints,
-      final int numericScale) {
-
-    final Faker faker = new Faker();
-    final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
+      final ValueGenerator vg) {
 
     table
         .columns()

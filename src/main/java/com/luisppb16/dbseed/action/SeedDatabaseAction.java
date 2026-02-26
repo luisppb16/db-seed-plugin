@@ -120,34 +120,42 @@ public final class SeedDatabaseAction extends AnAction {
     }
 
     try {
-      final Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
+      Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
       if (chosenDriverOpt.isEmpty()) {
         return;
       }
-      final DriverInfo chosenDriver = chosenDriverOpt.get();
-      showSeedDialog(project, chosenDriver);
-    } catch (final Exception ex) {
-      handleException(project, "Error preparing driver: ", ex);
-    }
-  }
 
-  private void showSeedDialog(final Project project, final DriverInfo chosenDriver) {
-    final SeedDialog seedDialog = new SeedDialog(chosenDriver);
-    seedDialog.show();
+      boolean continueLoop = true;
+      while (continueLoop) {
+        final DriverInfo chosenDriver = chosenDriverOpt.get();
+        final SeedDialog seedDialog = new SeedDialog(chosenDriver);
+        seedDialog.show();
 
-    final int exitCode = seedDialog.getExitCode();
-    switch (exitCode) {
-      case DialogWrapper.OK_EXIT_CODE ->
-          runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
-      case SeedDialog.BACK_EXIT_CODE -> {
-        try {
-          DriverLoader.selectAndLoadDriver(project)
-              .ifPresent(driverInfo -> showSeedDialog(project, driverInfo));
-        } catch (final Exception ex) {
-          handleException(project, "Error re-selecting driver: ", ex);
+        final int exitCode = seedDialog.getExitCode();
+        switch (exitCode) {
+          case DialogWrapper.OK_EXIT_CODE -> {
+            runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
+            continueLoop = false;
+          }
+          case SeedDialog.BACK_EXIT_CODE -> {
+            try {
+              chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
+              if (chosenDriverOpt.isEmpty()) {
+                continueLoop = false;
+              }
+            } catch (final Exception ex) {
+              handleException(project, "Error re-selecting driver: ", ex);
+              continueLoop = false;
+            }
+          }
+          default -> {
+            log.debug("Seed generation dialog canceled.");
+            continueLoop = false;
+          }
         }
       }
-      default -> log.debug("Seed generation dialog canceled.");
+    } catch (final Exception ex) {
+      handleException(project, "Error preparing driver: ", ex);
     }
   }
 
@@ -217,8 +225,7 @@ public final class SeedDatabaseAction extends AnAction {
               Messages.getWarningIcon());
 
       if (result == Messages.CANCEL) {
-        log.debug("User canceled large data seeding operation. Returning to previous step.");
-        showSeedDialog(project, chosenDriver);
+        log.debug("User canceled large data seeding operation.");
         return;
       }
     }
@@ -292,16 +299,28 @@ public final class SeedDatabaseAction extends AnAction {
                   public void run(@NotNull final ProgressIndicator indicator) {
                     try {
                       indicator.setIndeterminate(false);
-                      indicator.setText("Generating data...");
+                      indicator.setFraction(0.0);
+                      indicator.setText("Preparing generation...");
 
                       final List<Table> filteredTables =
                           ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
+
+                      indicator.setText("Sorting tables...");
+                      indicator.setText2(
+                          "Resolving dependency order for " + filteredTables.size() + " tables");
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
                               sort, tableByName);
                       final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
                       log.debug("Effective deferred: {}", effectiveDeferred);
+
+                      indicator.setText("Generating data...");
+                      indicator.setText2(
+                          filteredTables.size()
+                              + " tables, "
+                              + finalConfig.rowsPerTable()
+                              + " rows each");
 
                       final DataGenerator.GenerationResult gen =
                           DataGenerator.generate(
@@ -334,7 +353,9 @@ public final class SeedDatabaseAction extends AnAction {
                       if (indicator.isCanceled()) return;
 
                       indicator.setText("Building SQL...");
-                      indicator.setText2("");
+                      indicator.setText2(
+                          "Generating INSERT statements for " + gen.rows().size() + " tables");
+                      indicator.setFraction(0.95);
                       final String sql =
                           SqlGenerator.generate(
                               gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
@@ -348,7 +369,8 @@ public final class SeedDatabaseAction extends AnAction {
                   }
                 });
       }
-      case PkUuidSelectionDialog.BACK_EXIT_CODE -> showSeedDialog(project, chosenDriver);
+      case PkUuidSelectionDialog.BACK_EXIT_CODE ->
+          log.debug("User navigated back from PK UUID selection.");
       default -> log.debug("PK UUID selection canceled.");
     }
   }

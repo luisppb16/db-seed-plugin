@@ -109,11 +109,13 @@ public class DialectFactory {
     if (driverClass.contains("sqlite") || url.contains("jdbc:sqlite")) {
       return "sqlite";
     }
+    if (driverClass.contains("h2") || url.contains("jdbc:h2")) {
+      return "h2";
+    }
     if (driverClass.contains("postgresql")
         || url.contains("jdbc:postgresql")
         || url.contains("jdbc:redshift")
-        || url.contains("jdbc:cockroach")
-        || driverClass.contains("h2")) {
+        || url.contains("jdbc:cockroach")) {
       return "postgresql";
     }
 

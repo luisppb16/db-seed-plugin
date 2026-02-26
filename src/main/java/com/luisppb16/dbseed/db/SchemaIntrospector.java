@@ -226,7 +226,7 @@ public class SchemaIntrospector {
               raw.name(),
               raw.type(),
               raw.typeName(),
-                  !isPk && raw.nullable(),
+              !isPk && raw.nullable(),
               isPk,
               isUuid,
               raw.length(),

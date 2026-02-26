@@ -98,7 +98,11 @@ public class DbSeedSettingsComponent {
     myRefreshModelsButton.addActionListener(e -> refreshModels());
     myLoadingIcon.setVisible(false);
 
-    configureFolderChooser(myDefaultOutputDirectory, "Select Default Output Directory");
+    // Cascade AI field enable/disable based on the AI checkbox
+    updateAiFieldsEnabled(settings.isUseAiGeneration());
+    myUseAiGeneration.addActionListener(e -> updateAiFieldsEnabled(myUseAiGeneration.isSelected()));
+
+    configureFolderChooser(myDefaultOutputDirectory);
 
     JBLabel aiDescription =
         new JBLabel(
@@ -137,6 +141,7 @@ public class DbSeedSettingsComponent {
 
     JPanel formContent =
         FormBuilder.createFormBuilder()
+            .addComponent(new TitledSeparator("General"))
             .addLabeledComponent(new JBLabel("Column spinner step:"), myColumnSpinnerStep, 1, false)
             .addLabeledComponent(
                 new JBLabel("Default output directory:"), myDefaultOutputDirectory, 1, false)
@@ -170,6 +175,15 @@ public class DbSeedSettingsComponent {
     myMainPanel = new JPanel(new BorderLayout());
     myMainPanel.add(scrollPane, BorderLayout.CENTER);
     myMainPanel.setPreferredSize(new Dimension(480, 550));
+  }
+
+  private void updateAiFieldsEnabled(final boolean enabled) {
+    myAiApplicationContext.setEnabled(enabled);
+    myAiWordCount.setEnabled(enabled);
+    myAiRequestTimeout.setEnabled(enabled);
+    myOllamaUrl.setEnabled(enabled);
+    myOllamaModelDropdown.setEnabled(enabled);
+    myRefreshModelsButton.setEnabled(enabled);
   }
 
   private void refreshModels() {
@@ -266,9 +280,10 @@ public class DbSeedSettingsComponent {
     myOllamaModelDropdown.setEnabled(true);
   }
 
-  private void configureFolderChooser(TextFieldWithBrowseButton field, String title) {
+  private void configureFolderChooser(TextFieldWithBrowseButton field) {
     final FileChooserDescriptor folderDescriptor =
-        FileChooserDescriptorFactory.createSingleFolderDescriptor().withTitle(title);
+        FileChooserDescriptorFactory.createSingleFolderDescriptor()
+            .withTitle("Select Default Output Directory");
     field.addActionListener(
         e -> {
           final String currentPath = field.getText();

@@ -17,7 +17,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
 
 /**
@@ -81,7 +80,6 @@ import lombok.experimental.UtilityClass;
 public class SqlGenerator {
 
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
-  private static final int BATCH_SIZE = 1000;
 
   private static final String SQL_UPDATE = "UPDATE ";
   private static final String SQL_SET = " SET ";
@@ -144,13 +142,7 @@ public class SqlGenerator {
                   .map(col -> qualified(opts, col, dialect))
                   .collect(Collectors.joining(SQL_COMMA_SPACE));
 
-          IntStream.iterate(0, i -> i + BATCH_SIZE)
-              .limit((rows.size() + BATCH_SIZE - 1) / BATCH_SIZE)
-              .forEach(
-                  i -> {
-                    final List<Row> batch = rows.subList(i, Math.min(i + BATCH_SIZE, rows.size()));
-                    dialect.appendBatch(sb, tableName, columnList, batch, columnOrder);
-                  });
+          dialect.appendBatch(sb, tableName, columnList, rows, columnOrder);
         });
   }
 

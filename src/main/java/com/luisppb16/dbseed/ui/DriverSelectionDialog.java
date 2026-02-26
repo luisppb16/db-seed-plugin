@@ -8,21 +8,14 @@ package com.luisppb16.dbseed.ui;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.ValidationInfo;
+import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DriverInfo;
-import java.awt.Dimension;
-import java.awt.FontMetrics;
+import java.awt.*;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.DefaultComboBoxModel;
-import javax.swing.JComboBox;
-import javax.swing.JComponent;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JTextField;
-import javax.swing.UIManager;
+import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -58,6 +51,8 @@ import org.jetbrains.annotations.Nullable;
 @Slf4j
 public class DriverSelectionDialog extends DialogWrapper {
 
+  private static final String GOOGLE_BIGQUERY = "Google BigQuery";
+
   private final JComboBox<String> comboBox;
   private final List<DriverInfo> drivers;
   private final JPanel mainPanel;
@@ -78,9 +73,7 @@ public class DriverSelectionDialog extends DialogWrapper {
     bigQueryPanel = createBigQueryPanel(projectIdField);
     mainPanel = createMainPanel(comboBox, bigQueryPanel);
 
-    final FontMetrics fm = mainPanel.getFontMetrics(UIManager.getFont("Label.font"));
-    final int titleWidth = fm.stringWidth(getTitle()) + 120;
-    mainPanel.setPreferredSize(new Dimension(titleWidth, mainPanel.getPreferredSize().height));
+    mainPanel.setPreferredSize(JBUI.size(350, mainPanel.getPreferredSize().height));
 
     comboBox.addActionListener(e -> updateProjectIdVisibility((String) comboBox.getSelectedItem()));
     updateProjectIdVisibility((String) comboBox.getSelectedItem());
@@ -156,6 +149,15 @@ public class DriverSelectionDialog extends DialogWrapper {
     return mainPanel;
   }
 
+  @Override
+  protected @Nullable ValidationInfo doValidate() {
+    if (GOOGLE_BIGQUERY.equalsIgnoreCase((String) comboBox.getSelectedItem())
+        && currentProjectId.isEmpty()) {
+      return new ValidationInfo("Please enter a project ID for Google BigQuery.", projectIdField);
+    }
+    return null;
+  }
+
   public Optional<DriverInfo> getSelectedDriver() {
     if (comboBox.getSelectedIndex() < 0) {
       return Optional.empty();
@@ -163,21 +165,15 @@ public class DriverSelectionDialog extends DialogWrapper {
 
     DriverInfo selected = drivers.get(comboBox.getSelectedIndex());
 
-    if ("Google BigQuery".equalsIgnoreCase(selected.name())) {
-      DriverInfo configured = configureBigQueryDriver(selected);
-      return Optional.ofNullable(configured);
+    if (GOOGLE_BIGQUERY.equalsIgnoreCase(selected.name())) {
+      return Optional.ofNullable(configureBigQueryDriver(selected));
     }
     return Optional.of(selected);
   }
 
   private DriverInfo configureBigQueryDriver(final DriverInfo selectedDriver) {
     if (currentProjectId.isEmpty()) {
-      JOptionPane.showMessageDialog(
-          mainPanel,
-          "Please enter a ProjectId for Google BigQuery.",
-          "Google BigQuery ProjectId",
-          JOptionPane.WARNING_MESSAGE);
-      return null; // Return null to indicate configuration failure
+      return null;
     }
     final String url = selectedDriver.urlTemplate().replace("%your_project_id%", currentProjectId);
     log.info("Generated BigQuery URL: {}", url);
@@ -196,7 +192,7 @@ public class DriverSelectionDialog extends DialogWrapper {
   }
 
   private void updateProjectIdVisibility(final String selected) {
-    final boolean isBigQuery = "Google BigQuery".equalsIgnoreCase(selected);
+    final boolean isBigQuery = GOOGLE_BIGQUERY.equalsIgnoreCase(selected);
     bigQueryPanel.setVisible(isBigQuery);
     mainPanel.revalidate();
     mainPanel.repaint();

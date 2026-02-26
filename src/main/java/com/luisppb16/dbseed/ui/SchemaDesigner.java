@@ -5,37 +5,37 @@
 
 package com.luisppb16.dbseed.ui;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.ui.ValidationInfo;
+import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.schema.SchemaDsl;
 import com.luisppb16.dbseed.schema.SqlType;
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Point;
-import java.awt.Toolkit;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
-import java.util.prefs.Preferences;
+import javax.swing.Action;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
-import javax.swing.JDialog;
-import javax.swing.JFrame;
-import javax.swing.JOptionPane;
+import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingWorker;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Visual database schema designer integration for the DBSeed plugin ecosystem.
@@ -44,69 +44,58 @@ import org.jetbrains.annotations.NotNull;
  * enabling users to create and modify database structures through an intuitive graphical interface.
  * The component bridges the gap between visual schema design and programmatic SQL generation,
  * allowing developers to rapidly prototype database structures and instantly generate corresponding
- * DDL statements. The implementation follows modern UI/UX principles with persistent window
- * positioning and responsive design patterns.
+ * DDL statements. The implementation follows modern UI/UX principles with responsive design
+ * patterns and native IntelliJ integration via {@link DialogWrapper}.
  *
  * <p>Key responsibilities include:
  *
  * <ul>
  *   <li>Providing an intuitive visual interface for database schema creation and modification
  *   <li>Generating syntactically correct SQL DDL statements from visual schema representations
- *   <li>Managing persistent window state and user preferences for optimal workflow continuity
  *   <li>Implementing asynchronous SQL generation to maintain UI responsiveness
  *   <li>Integrating seamlessly with IntelliJ's action system for consistent user experience
  *   <li>Ensuring data integrity through immutable model representations and validation
  * </ul>
  *
  * <p>The implementation utilizes SwingWorker for non-blocking SQL generation and implements proper
- * resource management patterns. The component stores window position preferences using Java's
- * Preferences API to maintain user-customized layouts across IDE sessions. The visual design
- * follows IntelliJ's UI guidelines to ensure consistency with the overall development environment.
+ * resource management patterns. The visual design follows IntelliJ's UI guidelines to ensure
+ * consistency with the overall development environment.
  */
 public final class SchemaDesigner extends AnAction {
 
-  private static final String PREF_NODE = "com/luisppb16/dbseed/ui";
-  private static final String PREF_X = "windowX";
-  private static final String PREF_Y = "windowY";
-  private static final String PREF_DIVIDER_LOCATION = "dividerLocation";
-
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
-    final SchemaDesignerFrame frame = new SchemaDesignerFrame();
-    frame.setVisible(true);
+    new SchemaDesignerDialog(e.getProject()).show();
   }
 
-  private static final class SchemaDesignerFrame extends JFrame {
+  private static final class SchemaDesignerDialog extends DialogWrapper {
 
     private final DefaultListModel<UiTable> model = new DefaultListModel<>();
     private final JTextArea sqlArea = new JTextArea();
-    private JSplitPane mainSplitPane;
 
-    public SchemaDesignerFrame() {
-      super("Schema Designer");
-      setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-      setPreferredSize(new Dimension(800, 600));
-      pack();
-      loadPosition();
-      initLayout();
-
-      addWindowListener(
-          new WindowAdapter() {
-            @Override
-            public void windowClosing(final WindowEvent e) {
-              savePosition();
-            }
-          });
+    SchemaDesignerDialog(@Nullable final Project project) {
+      super(project, true);
+      setTitle("Schema Designer");
+      setOKButtonText("Close");
+      init();
     }
 
-    private void initLayout() {
+    @Override
+    protected Action @NotNull [] createActions() {
+      return new Action[] {getOKAction()};
+    }
+
+    @Override
+    protected @NotNull JComponent createCenterPanel() {
       final JBList<UiTable> tableList = new JBList<>(model);
       final JBScrollPane scroll = new JBScrollPane(tableList);
 
-      final JButton addTableButton = new JButton("Add Table");
+      final JButton addTableButton = new JButton("Add Table", AllIcons.General.Add);
+      addTableButton.setMnemonic('A');
       addTableButton.addActionListener(e -> addTable());
 
-      final JButton generateButton = new JButton("Generate SQL");
+      final JButton generateButton = new JButton("Generate SQL", AllIcons.Actions.Execute);
+      generateButton.setMnemonic('G');
       generateButton.addActionListener(e -> generateSql());
 
       final JPanel buttonsPanel = new JPanel();
@@ -114,70 +103,40 @@ public final class SchemaDesigner extends AnAction {
       buttonsPanel.add(generateButton);
 
       sqlArea.setEditable(false);
-      sqlArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+      sqlArea.setFont(JBUI.Fonts.create(Font.MONOSPACED, 12));
 
-      mainSplitPane =
+      final JSplitPane mainSplitPane =
           new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scroll, new JBScrollPane(sqlArea));
+      mainSplitPane.setDividerLocation(250);
 
-      final Preferences prefs = Preferences.userRoot().node(PREF_NODE);
-      final int dividerLocation = prefs.getInt(PREF_DIVIDER_LOCATION, 250);
-      mainSplitPane.setDividerLocation(dividerLocation);
-
-      add(mainSplitPane, BorderLayout.CENTER);
-      add(buttonsPanel, BorderLayout.SOUTH);
+      final JPanel content = new JPanel(new BorderLayout());
+      content.add(mainSplitPane, BorderLayout.CENTER);
+      content.add(buttonsPanel, BorderLayout.SOUTH);
+      content.setPreferredSize(JBUI.size(800, 600));
+      return content;
     }
 
     private void addTable() {
-      final String tableName = JOptionPane.showInputDialog(this, "Table name:");
-      if (Objects.isNull(tableName) || tableName.isBlank()) {
-        return;
-      }
-      final List<SchemaDsl.Column> columns = collectColumns();
-      if (!columns.isEmpty()) {
-        model.addElement(new UiTable(tableName, columns));
-      }
-    }
-
-    private List<SchemaDsl.Column> collectColumns() {
-      final List<SchemaDsl.Column> columns = new ArrayList<>();
-      String columnName;
-      while (Objects.nonNull(
-              columnName = JOptionPane.showInputDialog(this, "Column name (blank to finish):"))
-          && !columnName.isBlank()) {
-        final Optional<SqlType> type =
-            Optional.ofNullable(
-                (SqlType)
-                    JOptionPane.showInputDialog(
-                        this,
-                        "SQL type:",
-                        "Column Type",
-                        JOptionPane.QUESTION_MESSAGE,
-                        null,
-                        SqlType.values(),
-                        SqlType.INT));
-
-        if (type.isPresent()) {
-          final boolean isPrimaryKey =
-              JOptionPane.showConfirmDialog(this, "Primary key?", "PK", JOptionPane.YES_NO_OPTION)
-                  == JOptionPane.YES_OPTION;
-
-          columns.add(
-              isPrimaryKey
-                  ? SchemaDsl.pk(columnName, type.get())
-                  : SchemaDsl.column(columnName, type.get()));
+      final AddTableDialog dialog = new AddTableDialog(getWindow());
+      if (dialog.showAndGet()) {
+        final String tableName = dialog.getTableName();
+        final List<SchemaDsl.Column> columns = dialog.getColumns();
+        if (Objects.nonNull(tableName) && !tableName.isBlank() && !columns.isEmpty()) {
+          model.addElement(new UiTable(tableName, columns));
         }
       }
-      return columns;
     }
 
     private void generateSql() {
-      final JDialog progressDialog = new JDialog(this, "Generating SQL", true);
+      final javax.swing.JDialog progressDialog = new javax.swing.JDialog();
+      progressDialog.setTitle("Generating SQL");
+      progressDialog.setModal(true);
       final JProgressBar progressBar = new JProgressBar();
       progressBar.setIndeterminate(true);
       progressDialog.add(BorderLayout.CENTER, progressBar);
-      progressDialog.add(BorderLayout.NORTH, new JPanel()); // Margin
-      progressDialog.setSize(300, 75);
-      progressDialog.setLocationRelativeTo(this);
+      progressDialog.add(BorderLayout.NORTH, new JPanel());
+      progressDialog.setSize(JBUI.size(300, 75));
+      progressDialog.setLocationRelativeTo(getWindow());
 
       final SwingWorker<String, Void> worker =
           new SwingWorker<>() {
@@ -201,19 +160,11 @@ public final class SchemaDesigner extends AnAction {
                 sqlArea.setText(get());
               } catch (final InterruptedException e) {
                 Thread.currentThread().interrupt();
-                JOptionPane.showMessageDialog(
-                    SchemaDesignerFrame.this,
-                    "Error generating SQL: " + e.getMessage(),
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
+                Messages.showErrorDialog("Error generating SQL: " + e.getMessage(), "Error");
               } catch (final ExecutionException e) {
                 final String errorMsg =
                     Objects.nonNull(e.getCause()) ? e.getCause().getMessage() : e.getMessage();
-                JOptionPane.showMessageDialog(
-                    SchemaDesignerFrame.this,
-                    "Error generating SQL: " + errorMsg,
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE);
+                Messages.showErrorDialog("Error generating SQL: " + errorMsg, "Error");
               }
             }
           };
@@ -221,30 +172,123 @@ public final class SchemaDesigner extends AnAction {
       worker.execute();
       progressDialog.setVisible(true);
     }
+  }
 
-    private void savePosition() {
-      final Preferences prefs = Preferences.userRoot().node(PREF_NODE);
-      final Point location = getLocation();
-      prefs.putInt(PREF_X, location.x);
-      prefs.putInt(PREF_Y, location.y);
-      prefs.putInt(PREF_DIVIDER_LOCATION, mainSplitPane.getDividerLocation());
+  /**
+   * Dialog for adding a new table with columns via an editable table UI, replacing the old
+   * sequential JOptionPane cascade.
+   */
+  private static final class AddTableDialog extends DialogWrapper {
+
+    private final javax.swing.JTextField tableNameField = new javax.swing.JTextField(20);
+    private final javax.swing.table.DefaultTableModel tableModel;
+
+    AddTableDialog(@Nullable java.awt.Window parent) {
+      super(true);
+      setTitle("Add Table");
+      tableModel =
+          new javax.swing.table.DefaultTableModel(
+              new Object[] {"Column Name", "SQL Type", "Primary Key"}, 0) {
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+              return columnIndex == 2 ? Boolean.class : Object.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int row, int column) {
+              return true;
+            }
+          };
+      // Start with one empty row
+      tableModel.addRow(new Object[] {"", SqlType.INT, Boolean.FALSE});
+      init();
     }
 
-    private void loadPosition() {
-      final Preferences prefs = Preferences.userRoot().node(PREF_NODE);
-      final int x = prefs.getInt(PREF_X, -1);
-      final int y = prefs.getInt(PREF_Y, -1);
-
-      if (x != -1 && y != -1) {
-        setLocation(x, y);
-      } else {
-        // Center and move up
-        setLocationRelativeTo(null);
-        final Point location = getLocation();
-        final int screenHeight = Toolkit.getDefaultToolkit().getScreenSize().height;
-        final int newY = (int) (screenHeight * 0.2); // Move to 20% from top
-        setLocation(location.x, newY);
+    @Override
+    protected @Nullable ValidationInfo doValidate() {
+      if (tableNameField.getText().isBlank()) {
+        return new ValidationInfo("Table name is required.", tableNameField);
       }
+      boolean hasValidColumn = false;
+      for (int i = 0; i < tableModel.getRowCount(); i++) {
+        final Object name = tableModel.getValueAt(i, 0);
+        if (Objects.nonNull(name) && !name.toString().isBlank()) {
+          hasValidColumn = true;
+          break;
+        }
+      }
+      if (!hasValidColumn) {
+        return new ValidationInfo("At least one column with a name is required.");
+      }
+      return null;
+    }
+
+    @Override
+    protected @NotNull JComponent createCenterPanel() {
+      final JPanel panel = new JPanel(new BorderLayout(0, 8));
+
+      final JPanel namePanel = new JPanel(new BorderLayout(8, 0));
+      namePanel.add(new JBLabel("Table name:"), BorderLayout.WEST);
+      namePanel.add(tableNameField, BorderLayout.CENTER);
+      panel.add(namePanel, BorderLayout.NORTH);
+
+      final com.intellij.ui.table.JBTable table = new com.intellij.ui.table.JBTable(tableModel);
+      // Set up the SQL type column with a combo box editor
+      final com.intellij.openapi.ui.ComboBox<SqlType> typeCombo =
+          new com.intellij.openapi.ui.ComboBox<>(SqlType.values());
+      table
+          .getColumnModel()
+          .getColumn(1)
+          .setCellEditor(new javax.swing.DefaultCellEditor(typeCombo));
+      table.setRowHeight(JBUI.scale(24));
+
+      final JBScrollPane scrollPane = new JBScrollPane(table);
+      scrollPane.setPreferredSize(JBUI.size(450, 200));
+
+      final JButton addRowButton = new JButton("Add Column", AllIcons.General.Add);
+      addRowButton.addActionListener(
+          e -> tableModel.addRow(new Object[] {"", SqlType.INT, Boolean.FALSE}));
+
+      final JButton removeRowButton = new JButton("Remove", AllIcons.General.Remove);
+      removeRowButton.addActionListener(
+          e -> {
+            final int selected = table.getSelectedRow();
+            if (selected >= 0) {
+              tableModel.removeRow(selected);
+            }
+          });
+
+      final JPanel buttonsPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT));
+      buttonsPanel.add(addRowButton);
+      buttonsPanel.add(removeRowButton);
+
+      final JPanel tableContainer = new JPanel(new BorderLayout());
+      tableContainer.add(new JBLabel("Columns:"), BorderLayout.NORTH);
+      tableContainer.add(scrollPane, BorderLayout.CENTER);
+      tableContainer.add(buttonsPanel, BorderLayout.SOUTH);
+
+      panel.add(tableContainer, BorderLayout.CENTER);
+      return panel;
+    }
+
+    String getTableName() {
+      return tableNameField.getText().trim();
+    }
+
+    List<SchemaDsl.Column> getColumns() {
+      final List<SchemaDsl.Column> columns = new ArrayList<>();
+      for (int i = 0; i < tableModel.getRowCount(); i++) {
+        final Object nameObj = tableModel.getValueAt(i, 0);
+        if (Objects.isNull(nameObj) || nameObj.toString().isBlank()) {
+          continue;
+        }
+        final String name = nameObj.toString().trim();
+        Object typeObj = tableModel.getValueAt(i, 1);
+        final SqlType type = (typeObj instanceof SqlType st) ? st : SqlType.INT;
+        final boolean isPk = Boolean.TRUE.equals(tableModel.getValueAt(i, 2));
+        columns.add(isPk ? SchemaDsl.pk(name, type) : SchemaDsl.column(name, type));
+      }
+      return columns;
     }
   }
 

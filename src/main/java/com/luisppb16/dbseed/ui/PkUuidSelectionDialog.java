@@ -24,7 +24,6 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.Component;
-import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
@@ -240,7 +239,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JPanel content = new JPanel(new BorderLayout());
     content.add(tabbedPane, BorderLayout.CENTER);
-    content.setPreferredSize(new Dimension(650, 500));
+    content.setPreferredSize(JBUI.size(650, 500));
+    content.setMinimumSize(JBUI.size(500, 400));
     return content;
   }
 
@@ -856,6 +856,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final class BackAction extends AbstractAction {
     private BackAction() {
       super("Back");
+      putValue(MNEMONIC_KEY, java.awt.event.KeyEvent.VK_B);
     }
 
     @Override

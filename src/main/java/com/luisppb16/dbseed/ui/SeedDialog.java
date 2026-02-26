@@ -10,18 +10,16 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.components.JBTextField;
-import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.FormBuilder;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
+import java.awt.BorderLayout;
 import java.awt.Cursor;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
-import java.awt.event.ComponentAdapter;
-import java.awt.event.ComponentEvent;
+import java.awt.event.KeyEvent;
 import java.text.ParseException;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -30,16 +28,11 @@ import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
-import javax.swing.JLabel;
-import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
-import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
-import javax.swing.border.Border;
-import javax.swing.border.CompoundBorder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -50,14 +43,15 @@ public final class SeedDialog extends DialogWrapper {
   private static final String DEFAULT_POSTGRES_USER = "postgres";
   private static final String DEFAULT_POSTGRES_URL = "jdbc:postgresql://localhost:5432/postgres";
   private static final String DEFAULT_SCHEMA = "public";
+  private static final String JDBC_SQLSERVER_PREFIX = "jdbc:sqlserver";
 
   private final DriverInfo driverInfo;
 
   private final JBTextField urlField;
-  private final JTextField databaseField = new JTextField(DEFAULT_POSTGRES_USER);
-  private final JTextField userField = new JTextField(DEFAULT_POSTGRES_USER);
+  private final JBTextField databaseField = new JBTextField();
+  private final JBTextField userField = new JBTextField();
   private final JPasswordField passwordField = new JPasswordField();
-  private final JTextField schemaField = new JTextField(DEFAULT_SCHEMA);
+  private final JBTextField schemaField = new JBTextField();
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
 
@@ -75,10 +69,25 @@ public final class SeedDialog extends DialogWrapper {
         Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL;
     urlField = new JBTextField(template);
     urlField.getEmptyText().setText(extractBaseUrl(template));
+    urlField.setToolTipText("JDBC connection URL, e.g.: jdbc:postgresql://localhost:5432/");
+
+    databaseField.getEmptyText().setText("Database name");
+    databaseField.setToolTipText("Name of the target database.");
+
+    userField.getEmptyText().setText(DEFAULT_POSTGRES_USER);
+    userField.setToolTipText("Database user for authentication.");
+
+    passwordField.setToolTipText("Database password for authentication.");
+
+    schemaField.getEmptyText().setText(DEFAULT_SCHEMA);
+    schemaField.setToolTipText("Database schema to introspect (e.g. 'public').");
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     rowsSpinner =
         new JSpinner(new SpinnerNumberModel(10, 1, 100_000, settings.getColumnSpinnerStep()));
+
+    deferredBox.setToolTipText(
+        "When enabled, foreign key constraints are deferred to avoid insertion order issues.");
 
     loadConfiguration(driverInfo.urlTemplate());
 
@@ -86,28 +95,6 @@ public final class SeedDialog extends DialogWrapper {
 
     setOKButtonText("Next");
     init();
-  }
-
-  private static void addRow(
-      final JPanel panel,
-      final GridBagConstraints base,
-      final int rowIndex,
-      final String labelText,
-      final JComponent field) {
-
-    final GridBagConstraints c = (GridBagConstraints) base.clone();
-
-    c.gridx = 0;
-    c.gridy = rowIndex;
-    c.gridwidth = 1;
-    c.anchor = GridBagConstraints.EAST;
-    c.fill = GridBagConstraints.NONE;
-    panel.add(new JLabel(labelText), c);
-
-    c.gridx = 1;
-    c.fill = GridBagConstraints.HORIZONTAL;
-    c.anchor = GridBagConstraints.WEST;
-    panel.add(field, c);
   }
 
   @Override
@@ -120,6 +107,7 @@ public final class SeedDialog extends DialogWrapper {
     try {
       rowsSpinner.commitEdit();
     } catch (ParseException ignored) {
+      // Invalid number typed; spinner retains its last valid value.
     }
     super.doOKAction();
     saveConfiguration();
@@ -139,7 +127,7 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private void prefillUrlFields(final String urlToUse, final boolean usingSavedConfig) {
-    if (urlToUse.startsWith("jdbc:sqlserver")) {
+    if (urlToUse.startsWith(JDBC_SQLSERVER_PREFIX)) {
       prefillSqlServer(urlToUse);
     } else if (urlToUse.startsWith("jdbc:sqlite")) {
       urlField.setText(urlToUse);
@@ -231,7 +219,7 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private String extractBaseUrl(String url) {
-    if (url.startsWith("jdbc:sqlserver")) {
+    if (url.startsWith(JDBC_SQLSERVER_PREFIX)) {
       String stripped = url.replaceAll("databaseName=[^;]+;?", "").replace(";;", ";");
       return stripped.endsWith(";") ? stripped.substring(0, stripped.length() - 1) : stripped;
     }
@@ -274,67 +262,40 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private JPanel createFormPanel() {
-    final JPanel panel = new JPanel(new GridBagLayout());
-    final GridBagConstraints c = new GridBagConstraints();
-    c.insets = JBUI.insets(4);
-    c.fill = GridBagConstraints.HORIZONTAL;
-    c.weightx = 1;
+    final FormBuilder builder = FormBuilder.createFormBuilder();
 
-    int row = 0;
-    addRow(panel, c, row++, "JDBC URL:", urlField);
+    builder.addLabeledComponent("JDBC URL:", urlField);
 
     if (driverInfo.requiresUser()) {
-      addRow(panel, c, row++, "User:", userField);
+      builder.addLabeledComponent("User:", userField);
     }
 
     if (driverInfo.requiresPassword()) {
-      addRow(panel, c, row++, "Password:", createPasswordFieldWithToggle());
+      builder.addLabeledComponent("Password:", createPasswordFieldWithToggle());
     }
 
     if (driverInfo.requiresDatabaseName()) {
-      addRow(panel, c, row++, "Database:", databaseField);
+      builder.addLabeledComponent("Database:", databaseField);
     }
 
     if (driverInfo.requiresSchema()) {
-      addRow(panel, c, row++, "Schema:", schemaField);
+      builder.addLabeledComponent("Schema:", schemaField);
     }
 
-    addRow(panel, c, row++, "Rows per table:", rowsSpinner);
+    builder.addLabeledComponent("Rows per table:", rowsSpinner);
+    builder.addComponent(deferredBox);
 
-    c.gridx = 0;
-    c.gridy = row;
-    c.gridwidth = 2;
-    c.anchor = GridBagConstraints.WEST;
-    c.fill = GridBagConstraints.HORIZONTAL;
-    panel.add(deferredBox, c);
-
-    return panel;
+    return builder.getPanel();
   }
 
-  private JLayeredPane createPasswordFieldWithToggle() {
-    final JLayeredPane passwordLayeredPane = new JLayeredPane();
-    passwordLayeredPane.setPreferredSize(passwordField.getPreferredSize());
-
-    final Border originalBorder = passwordField.getBorder();
-    passwordField.setBorder(new CompoundBorder(originalBorder, JBUI.Borders.emptyRight(30)));
-    passwordLayeredPane.add(passwordField, JLayeredPane.DEFAULT_LAYER);
+  private JPanel createPasswordFieldWithToggle() {
+    final JPanel panel = new JPanel(new BorderLayout(0, 0));
+    panel.add(passwordField, BorderLayout.CENTER);
 
     final JToggleButton showPasswordButton = createShowPasswordButton();
-    passwordLayeredPane.add(showPasswordButton, JLayeredPane.PALETTE_LAYER);
+    panel.add(showPasswordButton, BorderLayout.EAST);
 
-    passwordLayeredPane.addComponentListener(
-        new ComponentAdapter() {
-          @Override
-          public void componentResized(ComponentEvent e) {
-            passwordField.setBounds(
-                0, 0, passwordLayeredPane.getWidth(), passwordLayeredPane.getHeight());
-            final int buttonWidth = 24;
-            final int buttonHeight = passwordLayeredPane.getHeight();
-            showPasswordButton.setBounds(
-                passwordLayeredPane.getWidth() - buttonWidth - 2, 0, buttonWidth, buttonHeight);
-          }
-        });
-    return passwordLayeredPane;
+    return panel;
   }
 
   private JToggleButton createShowPasswordButton() {
@@ -343,6 +304,7 @@ public final class SeedDialog extends DialogWrapper {
     showPasswordButton.setContentAreaFilled(false);
     showPasswordButton.setBorderPainted(false);
     showPasswordButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    showPasswordButton.setToolTipText("Toggle password visibility");
     showPasswordButton.addActionListener(
         e -> {
           if (showPasswordButton.isSelected()) {
@@ -359,7 +321,7 @@ public final class SeedDialog extends DialogWrapper {
     final String database = databaseField.getText().trim();
 
     if (driverInfo.requiresDatabaseName()) {
-      if (url.startsWith("jdbc:sqlserver")) {
+      if (url.startsWith(JDBC_SQLSERVER_PREFIX)) {
         url = url.replaceAll("databaseName=[^;]+;?", "");
         if (!url.endsWith(";")) {
           url += ";";
@@ -389,6 +351,7 @@ public final class SeedDialog extends DialogWrapper {
   private final class BackAction extends AbstractAction {
     private BackAction() {
       super("Back");
+      putValue(MNEMONIC_KEY, KeyEvent.VK_B);
     }
 
     @Override

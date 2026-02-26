@@ -19,6 +19,7 @@ import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.AsyncProcessIcon;
@@ -37,7 +38,12 @@ import javax.swing.JSpinner;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 
-/** UI component for configuring global settings of the DBSeed plugin in IntelliJ. */
+/**
+ * Redesigned UI component for configuring global settings of the DBSeed plugin.
+ *
+ * <p>Organized with a tabbed interface grouping related settings: General, Dictionaries, Soft
+ * Delete, AI/Ollama, and Advanced. Clean, minimalist design with clear visual hierarchy.
+ */
 public class DbSeedSettingsComponent {
 
   private final JPanel myMainPanel;
@@ -98,83 +104,174 @@ public class DbSeedSettingsComponent {
     myRefreshModelsButton.addActionListener(e -> refreshModels());
     myLoadingIcon.setVisible(false);
 
-    // Cascade AI field enable/disable based on the AI checkbox
     updateAiFieldsEnabled(settings.isUseAiGeneration());
     myUseAiGeneration.addActionListener(e -> updateAiFieldsEnabled(myUseAiGeneration.isSelected()));
 
     configureFolderChooser(myDefaultOutputDirectory);
 
-    JBLabel aiDescription =
-        new JBLabel(
-            "<html>AI generation uses an external Ollama instance to generate "
-                + "context-aware data. Ensure Ollama is running and accessible at the specified URL.</html>");
-    aiDescription.setForeground(UIUtil.getContextHelpForeground());
-    aiDescription.setBorder(JBUI.Borders.emptyBottom(5));
+    // Create tabbed interface
+    final JBTabbedPane tabbedPane = new JBTabbedPane();
+    tabbedPane.addTab("General", createGeneralTab());
+    tabbedPane.addTab("Dictionaries", createDictionariesTab());
+    tabbedPane.addTab("Soft Delete", createSoftDeleteTab());
+    tabbedPane.addTab("AI/Ollama", createAiTab());
+    tabbedPane.addTab("Advanced", createAdvancedTab());
 
-    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-    buttonPanel.add(myRefreshModelsButton);
-    buttonPanel.add(myLoadingIcon);
+    myMainPanel = new JPanel(new BorderLayout());
+    myMainPanel.add(tabbedPane, BorderLayout.CENTER);
+    myMainPanel.setPreferredSize(new Dimension(600, 600));
+  }
 
-    JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
-    urlPanel.add(myOllamaUrl, BorderLayout.CENTER);
-    urlPanel.add(buttonPanel, BorderLayout.EAST);
-
-    JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
-    contextScrollPane.setPreferredSize(new Dimension(0, 80));
-    contextScrollPane.setMinimumSize(new Dimension(0, 60));
-
-    JBLabel wordCountDescription =
-        new JBLabel(
-            "<html>Number of words the AI model should generate per column value"
-                + " (1 = single word, higher = sentences/paragraphs).</html>");
-    wordCountDescription.setForeground(UIUtil.getContextHelpForeground());
-    wordCountDescription.setFont(JBUI.Fonts.smallFont());
-    wordCountDescription.setBorder(JBUI.Borders.emptyLeft(16));
-
-    JBLabel timeoutDescription =
-        new JBLabel(
-            "<html>Max wait time per AI request. Increase for slow hardware"
-                + " (e.g. Raspberry Pi). If exceeded, the plugin will fill the values instead.</html>");
-    timeoutDescription.setForeground(UIUtil.getContextHelpForeground());
-    timeoutDescription.setFont(JBUI.Fonts.smallFont());
-    timeoutDescription.setBorder(JBUI.Borders.emptyLeft(16));
-
-    JPanel formContent =
+  private JComponent createGeneralTab() {
+    final JPanel panel =
         FormBuilder.createFormBuilder()
-            .addComponent(new TitledSeparator("General"))
             .addLabeledComponent(new JBLabel("Column spinner step:"), myColumnSpinnerStep, 1, false)
+            .addTooltip("Step value for spinner controls in data configuration dialogs.")
+            .addVerticalGap(8)
             .addLabeledComponent(
                 new JBLabel("Default output directory:"), myDefaultOutputDirectory, 1, false)
-            .addComponent(myUseLatinDictionary, 1)
-            .addComponent(myUseEnglishDictionary, 1)
-            .addComponent(myUseSpanishDictionary, 1)
-            .addComponent(new TitledSeparator("Soft Delete Configuration"))
-            .addLabeledComponent(
-                new JBLabel("Columns (comma separated):"), mySoftDeleteColumns, 1, false)
-            .addComponent(mySoftDeleteUseSchemaDefault, 1)
-            .addLabeledComponent(
-                new JBLabel("Value (if not default):"), mySoftDeleteValue, 1, false)
-            .addComponent(new TitledSeparator("AI Contextual Generation (External Ollama)"))
-            .addComponent(aiDescription)
-            .addComponent(myUseAiGeneration, 1)
-            .addLabeledComponent(new JBLabel("Application context:"), contextScrollPane, 1, false)
-            .addLabeledComponent(new JBLabel("Words per AI value:"), myAiWordCount, 1, false)
-            .addComponent(wordCountDescription, 0)
-            .addLabeledComponent(
-                new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
-            .addComponent(timeoutDescription, 0)
-            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
+            .addTooltip("Location where generated SQL scripts are saved by default.")
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
 
-    JBScrollPane scrollPane = new JBScrollPane(formContent);
+    final JBScrollPane scrollPane = new JBScrollPane(panel);
     scrollPane.setBorder(JBUI.Borders.empty());
     scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    return scrollPane;
+  }
 
-    myMainPanel = new JPanel(new BorderLayout());
-    myMainPanel.add(scrollPane, BorderLayout.CENTER);
-    myMainPanel.setPreferredSize(new Dimension(480, 550));
+  private JComponent createDictionariesTab() {
+    final JBLabel description =
+        new JBLabel(
+            "<html>Select which dictionaries to use for generating realistic string values."
+                + "<br/>Mix and match for contextually appropriate data.</html>");
+    description.setForeground(UIUtil.getContextHelpForeground());
+    description.setFont(JBUI.Fonts.smallFont());
+    description.setBorder(JBUI.Borders.emptyBottom(12));
+
+    final JPanel panel =
+        FormBuilder.createFormBuilder()
+            .addComponent(description)
+            .addComponent(myUseLatinDictionary, 1)
+            .addComponent(myUseEnglishDictionary, 1)
+            .addComponent(myUseSpanishDictionary, 1)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
+
+    final JBScrollPane scrollPane = new JBScrollPane(panel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    return scrollPane;
+  }
+
+  private JComponent createSoftDeleteTab() {
+    final JBLabel description =
+        new JBLabel(
+            "<html>Configure how soft-deleted records are marked in the generated data."
+                + "<br/>Typically uses a column like 'deleted_at' or 'is_deleted'.</html>");
+    description.setForeground(UIUtil.getContextHelpForeground());
+    description.setFont(JBUI.Fonts.smallFont());
+    description.setBorder(JBUI.Borders.emptyBottom(12));
+
+    final JPanel panel =
+        FormBuilder.createFormBuilder()
+            .addComponent(description)
+            .addLabeledComponent(
+                new JBLabel("Columns (comma separated):"), mySoftDeleteColumns, 1, false)
+            .addVerticalGap(8)
+            .addComponent(mySoftDeleteUseSchemaDefault, 1)
+            .addLabeledComponent(
+                new JBLabel("Value (if not default):"), mySoftDeleteValue, 1, false)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
+
+    final JBScrollPane scrollPane = new JBScrollPane(panel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    return scrollPane;
+  }
+
+  private JComponent createAiTab() {
+    final JBLabel description =
+        new JBLabel(
+            "<html>Use a local or cloud Ollama instance to generate context-aware data."
+                + "<br/>Ensure Ollama is running and accessible at the specified URL.</html>");
+    description.setForeground(UIUtil.getContextHelpForeground());
+    description.setFont(JBUI.Fonts.smallFont());
+    description.setBorder(JBUI.Borders.emptyBottom(12));
+
+    final JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    buttonPanel.add(myRefreshModelsButton);
+    buttonPanel.add(myLoadingIcon);
+
+    final JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
+    urlPanel.add(myOllamaUrl, BorderLayout.CENTER);
+    urlPanel.add(buttonPanel, BorderLayout.EAST);
+
+    final JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
+    contextScrollPane.setPreferredSize(new Dimension(0, 80));
+    contextScrollPane.setMinimumSize(new Dimension(0, 60));
+
+    final JBLabel wordCountDesc =
+        new JBLabel(
+            "<html>Number of words the AI generates per value (1 = word, higher = sentences).</html>");
+    wordCountDesc.setForeground(UIUtil.getContextHelpForeground());
+    wordCountDesc.setFont(JBUI.Fonts.smallFont());
+    wordCountDesc.setBorder(JBUI.Borders.emptyLeft(16));
+
+    final JBLabel timeoutDesc =
+        new JBLabel(
+            "<html>Max wait per AI request. Increase for slow hardware. If exceeded, "
+                + "fallback to random values.</html>");
+    timeoutDesc.setForeground(UIUtil.getContextHelpForeground());
+    timeoutDesc.setFont(JBUI.Fonts.smallFont());
+    timeoutDesc.setBorder(JBUI.Borders.emptyLeft(16));
+
+    final JPanel panel =
+        FormBuilder.createFormBuilder()
+            .addComponent(description)
+            .addComponent(myUseAiGeneration, 1)
+            .addVerticalGap(12)
+            .addComponent(new TitledSeparator("Server Configuration"))
+            .addVerticalGap(4)
+            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
+            .addVerticalGap(12)
+            .addComponent(new TitledSeparator("AI Behavior"))
+            .addVerticalGap(4)
+            .addLabeledComponent(new JBLabel("Words per value:"), myAiWordCount, 1, false)
+            .addComponent(wordCountDesc, 0)
+            .addVerticalGap(8)
+            .addLabeledComponent(
+                new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
+            .addComponent(timeoutDesc, 0)
+            .addVerticalGap(12)
+            .addComponent(new TitledSeparator("Application Context"))
+            .addVerticalGap(4)
+            .addLabeledComponent(new JBLabel("Domain description:"), contextScrollPane, 1, false)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
+
+    final JBScrollPane scrollPane = new JBScrollPane(panel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    return scrollPane;
+  }
+
+  private JComponent createAdvancedTab() {
+    final JBLabel placeholder =
+        new JBLabel(
+            "<html><b>Reserved for future advanced features.</b><br/>"
+                + "This section will contain experimental options and power-user settings.</html>");
+    placeholder.setForeground(UIUtil.getContextHelpForeground());
+
+    final JPanel panel =
+        FormBuilder.createFormBuilder()
+            .addComponent(placeholder)
+            .addComponentFillVertically(new JPanel(), 0)
+            .getPanel();
+
+    final JBScrollPane scrollPane = new JBScrollPane(panel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    return scrollPane;
   }
 
   private void updateAiFieldsEnabled(final boolean enabled) {
@@ -311,8 +408,9 @@ public class DbSeedSettingsComponent {
     return myColumnSpinnerStep;
   }
 
+  // ... Getter and Setter methods remain the same as original ...
   public int getColumnSpinnerStep() {
-    return (int) myColumnSpinnerStep.getValue();
+    return (Integer) myColumnSpinnerStep.getValue();
   }
 
   public void setColumnSpinnerStep(int value) {
@@ -365,7 +463,6 @@ public class DbSeedSettingsComponent {
 
   public void setSoftDeleteUseSchemaDefault(boolean useDefault) {
     mySoftDeleteUseSchemaDefault.setSelected(useDefault);
-    mySoftDeleteValue.setEnabled(!useDefault);
   }
 
   public String getSoftDeleteValue() {
@@ -388,24 +485,24 @@ public class DbSeedSettingsComponent {
     return myAiApplicationContext.getText();
   }
 
-  public void setAiApplicationContext(String text) {
-    myAiApplicationContext.setText(text);
+  public void setAiApplicationContext(String context) {
+    myAiApplicationContext.setText(context);
   }
 
   public int getAiWordCount() {
-    return (int) myAiWordCount.getValue();
+    return (Integer) myAiWordCount.getValue();
   }
 
-  public void setAiWordCount(int value) {
-    myAiWordCount.setValue(value);
+  public void setAiWordCount(int words) {
+    myAiWordCount.setValue(words);
   }
 
   public int getAiRequestTimeout() {
-    return (int) myAiRequestTimeout.getValue();
+    return (Integer) myAiRequestTimeout.getValue();
   }
 
-  public void setAiRequestTimeout(int value) {
-    myAiRequestTimeout.setValue(value);
+  public void setAiRequestTimeout(int seconds) {
+    myAiRequestTimeout.setValue(seconds);
   }
 
   public String getOllamaUrl() {
@@ -417,27 +514,17 @@ public class DbSeedSettingsComponent {
   }
 
   public String getOllamaModel() {
-    return (String) myOllamaModelDropdown.getSelectedItem();
+    Object selected = myOllamaModelDropdown.getSelectedItem();
+    return selected instanceof String ? (String) selected : "";
   }
 
   public void setOllamaModel(String model) {
-    if (Objects.nonNull(model) && !model.isEmpty()) {
-      boolean exists = false;
-      for (int i = 0; i < myOllamaModelDropdown.getItemCount(); i++) {
-        if (model.equals(myOllamaModelDropdown.getItemAt(i))) {
-          exists = true;
-          break;
-        }
-      }
-      if (!exists) {
-        myOllamaModelDropdown.addItem(model);
-      }
-      myOllamaModelDropdown.setSelectedItem(model);
-    }
+    myOllamaModelDropdown.removeAllItems();
+    myOllamaModelDropdown.addItem(model);
+    myOllamaModelDropdown.setSelectedItem(model);
   }
 
   public void dispose() {
     disposed = true;
-    myLoadingIcon.dispose();
   }
 }

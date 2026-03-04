@@ -101,6 +101,7 @@ public class DataGenerator {
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final String SOFT_DELETE_DELIMITER = ",";
   private static final String EMPTY_CONTEXT = "";
+
   /** Executor for cross-table AI generation parallelism. */
   private static final ExecutorService AI_TABLE_EXECUTOR =
       Executors.newFixedThreadPool(
@@ -144,14 +145,34 @@ public class DataGenerator {
     final Map<String, Set<String>> aiColumns =
         Objects.requireNonNullElse(params.aiColumns(), Map.of());
 
+    // ── Calculate TOTAL real work units up-front ──────────────────────────────
+    // 1 unit per row to generate (rows phase)
+    final long rowWork = (long) orderedTables.size() * params.rowsPerTable();
+    // 1 unit per AI-column×row (AI phase) — 0 when no AI
+    final long aiWork =
+        Objects.nonNull(ollamaClient)
+            ? orderedTables.stream()
+                .mapToLong(
+                    t ->
+                        (long) aiColumns.getOrDefault(t.name(), Set.of()).size()
+                            * params.rowsPerTable())
+                .sum()
+            : 0;
+    // 1 unit per table for constraint validation
+    final long validateWork = orderedTables.size();
+    // 1 unit per table for FK resolution
+    final long fkWork = orderedTables.size();
+    // Grand total
+    final long totalWork = rowWork + aiWork + validateWork + fkWork;
+
+    final ProgressTracker tracker = new ProgressTracker(params.indicator(), totalWork);
+
     // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
     // This eliminates cold-start latency on the first real generation call.
     if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
       try {
-        if (Objects.nonNull(params.indicator())) {
-          params.indicator().setText("Warming up AI model...");
-          params.indicator().setText2("Loading " + settings.getOllamaModel() + " into memory");
-        }
+        tracker.setText("Warming up AI model...");
+        tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
         ollamaClient.warmModel().join();
       } catch (final Exception e) {
         log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
@@ -177,29 +198,22 @@ public class DataGenerator {
             aiColumns,
             ollamaClient,
             Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
-            params.indicator());
+            tracker);
 
     // Phase 2: Run AI generation for ALL tables in parallel
-    generateAiValuesParallel(generators, params.indicator());
+    generateAiValuesParallel(generators, tracker);
 
-    if (Objects.nonNull(params.indicator())) {
-      params.indicator().setText("Validating constraints...");
-      params
-          .indicator()
-          .setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
-    }
-    validateNumericConstraints(orderedTables, tableConstraints, data, params.numericScale());
+    tracker.setText("Validating constraints...");
+    tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
+    validateNumericConstraints(
+        orderedTables, tableConstraints, data, params.numericScale(), tracker);
 
-    if (Objects.nonNull(params.indicator())) {
-      params.indicator().setText("Resolving foreign keys...");
-      params.indicator().setText2("Processing deferred FK dependencies");
-    }
+    tracker.setText("Resolving foreign keys...");
+    tracker.setText2("Processing deferred FK dependencies");
     final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
-    final List<PendingUpdate> updates = fkResolver.resolve();
+    final List<PendingUpdate> updates = fkResolver.resolve(tracker);
 
-    if (Objects.nonNull(params.indicator())) {
-      params.indicator().setText2(updates.size() + " deferred updates created");
-    }
+    tracker.setText2(updates.size() + " deferred updates created");
 
     return new GenerationResult(data, updates);
   }
@@ -265,7 +279,7 @@ public class DataGenerator {
       final Map<String, Set<String>> aiColumns,
       final OllamaClient ollamaClient,
       final String applicationContext,
-      final ProgressIndicator indicator) {
+      final ProgressTracker tracker) {
 
     final int totalTables = orderedTables.size();
     final long startTime = System.currentTimeMillis();
@@ -275,21 +289,20 @@ public class DataGenerator {
         .forEach(
             i -> {
               final Table table = orderedTables.get(i);
-              if (Objects.nonNull(indicator)) {
-                indicator.setText(
-                    "Generating table "
-                        .concat(String.valueOf(i + 1))
-                        .concat("/")
-                        .concat(String.valueOf(totalTables))
-                        .concat(": ")
-                        .concat(table.name()));
-                indicator.setText2(
-                    table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
-                indicator.setFraction((double) i / totalTables);
-              }
+              tracker.setText(
+                  "Generating table "
+                      .concat(String.valueOf(i + 1))
+                      .concat("/")
+                      .concat(String.valueOf(totalTables))
+                      .concat(": ")
+                      .concat(table.name()));
+              tracker.setText2(
+                  table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
 
               if (table.columns().isEmpty()) {
                 data.put(table, Collections.emptyList());
+                // count the rows-worth of work as done even for empty tables
+                tracker.advance(rowsPerTable);
                 return;
               }
 
@@ -312,19 +325,19 @@ public class DataGenerator {
                       aiColumns.getOrDefault(table.name(), Set.of()),
                       ollamaClient,
                       applicationContext,
-                      indicator);
+                      tracker);
 
               final List<Row> rows = rowGenerator.generate();
               data.put(table, rows);
               tableConstraints.put(table.name(), rowGenerator.getConstraints());
               generators.add(rowGenerator);
 
-              if (Objects.nonNull(indicator)) {
-                final long elapsed = System.currentTimeMillis() - startTime;
-                indicator.setFraction((double) (i + 1) / totalTables);
-                indicator.setText2(
-                    rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
-              }
+              // Advance by however many rows were actually generated (the RowGenerator
+              // already advanced per-row; reconcile any gap if fewer rows were produced).
+              // RowGenerator advances inside fillRemainingRows, so nothing extra here.
+
+              final long elapsed = System.currentTimeMillis() - startTime;
+              tracker.setText2(rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
             });
 
     return generators;
@@ -336,16 +349,14 @@ public class DataGenerator {
    * enabling maximum parallelism.
    */
   private static void generateAiValuesParallel(
-      final List<RowGenerator> generators, final ProgressIndicator indicator) {
+      final List<RowGenerator> generators, final ProgressTracker tracker) {
     final List<RowGenerator> aiGenerators =
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
     if (aiGenerators.isEmpty()) return;
 
-    if (Objects.nonNull(indicator)) {
-      indicator.setText("Generating AI values...");
-      indicator.setText2(aiGenerators.size() + " tables with AI columns");
-    }
+    tracker.setText("Generating AI values...");
+    tracker.setText2(aiGenerators.size() + " tables with AI columns");
 
     final List<CompletableFuture<Void>> futures =
         aiGenerators.stream()
@@ -358,16 +369,15 @@ public class DataGenerator {
       log.warn("Some AI table generations failed: {}", ex.getMessage());
     }
 
-    if (Objects.nonNull(indicator)) {
-      indicator.setText2("AI generation complete");
-    }
+    tracker.setText2("AI generation complete");
   }
 
   private static void validateNumericConstraints(
       final List<Table> orderedTables,
       final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints,
       final Map<Table, List<Row>> data,
-      final int numericScale) {
+      final int numericScale,
+      final ProgressTracker tracker) {
 
     final Faker faker = new Faker();
     final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
@@ -377,8 +387,10 @@ public class DataGenerator {
           final Map<String, ConstraintParser.ParsedConstraint> constraints =
               tableConstraints.getOrDefault(table.name(), Map.of());
           final List<Row> rows = data.get(table);
-          if (Objects.isNull(rows)) return;
-          rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
+          if (Objects.nonNull(rows)) {
+            rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
+          }
+          tracker.advance(); // 1 unit per table
         });
   }
 

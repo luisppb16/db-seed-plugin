@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.db.generator;
 
 import static org.assertj.core.api.Assertions.*;
 
+import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
@@ -49,7 +50,7 @@ class RowGeneratorTest {
         Set.of(),
         null,
         null,
-        null);
+        new ProgressTracker(null, 0));
   }
 
   private RowGenerator generator(Table table, int rowCount, Set<String> excluded) {
@@ -69,7 +70,7 @@ class RowGeneratorTest {
         Set.of(),
         null,
         null,
-        null);
+        new ProgressTracker(null, 0));
   }
 
   // ── Basic ──
@@ -229,7 +230,7 @@ class RowGeneratorTest {
             Set.of(),
             null,
             null,
-            null);
+            new ProgressTracker(null, 0));
     List<Row> rows = gen.generate();
     for (Row r : rows) {
       assertThat(r.values().get("deleted")).isEqualTo(SqlKeyword.DEFAULT);
@@ -263,7 +264,7 @@ class RowGeneratorTest {
             Set.of(),
             null,
             null,
-            null);
+            new ProgressTracker(null, 0));
     List<Row> rows = gen.generate();
     for (Row r : rows) {
       assertThat(r.values().get("is_active")).isEqualTo(1);
@@ -300,7 +301,7 @@ class RowGeneratorTest {
             Set.of(),
             null,
             null,
-            null);
+            new ProgressTracker(null, 0));
     List<Row> rows = gen.generate();
     // First 3 rows should have type=fixed
     long fixedCount = rows.stream().filter(r -> "fixed".equals(r.values().get("type"))).count();
@@ -335,7 +336,7 @@ class RowGeneratorTest {
             Set.of(),
             null,
             null,
-            null);
+            new ProgressTracker(null, 0));
     List<Row> rows = gen.generate();
     assertThat(rows).hasSize(10);
   }

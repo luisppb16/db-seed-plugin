@@ -6,6 +6,7 @@
 package com.luisppb16.dbseed.db.generator;
 
 import com.luisppb16.dbseed.db.PendingUpdate;
+import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
@@ -53,6 +54,17 @@ public final class ForeignKeyResolver {
 
   public List<PendingUpdate> resolve() {
     tableMap.values().forEach(this::resolveForeignKeysForTable);
+    return updates;
+  }
+
+  public List<PendingUpdate> resolve(final ProgressTracker tracker) {
+    tableMap
+        .values()
+        .forEach(
+            table -> {
+              resolveForeignKeysForTable(table);
+              tracker.advance(); // 1 unit per table
+            });
     return updates;
   }
 

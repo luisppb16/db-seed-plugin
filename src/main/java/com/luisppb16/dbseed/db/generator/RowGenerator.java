@@ -5,9 +5,9 @@
 
 package com.luisppb16.dbseed.db.generator;
 
-import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
+import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.CheckExpression;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.MultiColumnConstraint;
@@ -49,6 +49,7 @@ public final class RowGenerator {
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final int AI_BATCH_SIZE = 50;
   private static final int AI_MAX_RETRIES = 5;
+
   /** Executor for running AI column generation tasks in parallel. */
   private static final ExecutorService AI_COLUMN_EXECUTOR =
       Executors.newFixedThreadPool(
@@ -58,6 +59,7 @@ public final class RowGenerator {
             t.setDaemon(true);
             return t;
           });
+
   private final Table table;
   private final int rowsPerTable;
   private final Set<String> excludedColumns;
@@ -69,7 +71,7 @@ public final class RowGenerator {
   private final ValueGenerator valueGenerator;
   private final OllamaClient ollamaClient;
   private final String applicationContext;
-  private final ProgressIndicator indicator;
+  private final ProgressTracker tracker;
   @Getter private final Map<String, ParsedConstraint> constraints;
   private final Predicate<Column> isFkColumn;
   private final List<List<String>> relevantUniqueKeys;
@@ -95,7 +97,7 @@ public final class RowGenerator {
       final Set<String> aiColumns,
       final OllamaClient ollamaClient,
       final String applicationContext,
-      final ProgressIndicator indicator) {
+      final ProgressTracker tracker) {
 
     this.table = Objects.requireNonNull(table, "Table cannot be null");
     this.rowsPerTable = rowsPerTable;
@@ -114,7 +116,7 @@ public final class RowGenerator {
             faker, resolvedDictionaryWords, useLatinDictionary, usedUuids, numericScale);
     this.ollamaClient = ollamaClient;
     this.applicationContext = applicationContext;
-    this.indicator = indicator;
+    this.tracker = tracker;
 
     final List<CheckExpression> checkExpressions =
         table.checks().stream()
@@ -225,8 +227,9 @@ public final class RowGenerator {
                       row -> {
                         rows.add(row);
                         final int count = generatedCount.incrementAndGet();
-                        if (Objects.nonNull(indicator) && count % 50 == 0) {
-                          indicator.setText2(
+                        tracker.advance(); // 1 work unit per row generated
+                        if (count % 50 == 0) {
+                          tracker.setText2(
                               "Row " + count + "/" + rowsPerTable + " for " + table.name());
                         }
                       });
@@ -393,26 +396,24 @@ public final class RowGenerator {
     final int totalBatches = (totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE;
 
     for (int b = 0; b < totalBatches; b++) {
-      if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
+      if (tracker.isCanceled()) return;
 
       final int batchStart = b * AI_BATCH_SIZE;
       final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
       final int batchCount = batchEnd - batchStart;
 
-      if (Objects.nonNull(indicator)) {
-        indicator.setText2(
-            "AI generating "
-                .concat(table.name())
-                .concat(".")
-                .concat(colName)
-                .concat(" (")
-                .concat(String.valueOf(batchStart + 1))
-                .concat("-")
-                .concat(String.valueOf(batchEnd))
-                .concat("/")
-                .concat(String.valueOf(totalRows))
-                .concat(")"));
-      }
+      tracker.setText2(
+          "AI generating "
+              .concat(table.name())
+              .concat(".")
+              .concat(colName)
+              .concat(" (")
+              .concat(String.valueOf(batchStart + 1))
+              .concat("-")
+              .concat(String.valueOf(batchEnd))
+              .concat("/")
+              .concat(String.valueOf(totalRows))
+              .concat(")"));
 
       // Fire the batch request asynchronously
       final CompletableFuture<List<String>> currentFuture =
@@ -438,7 +439,7 @@ public final class RowGenerator {
 
       // Retry loop if first attempt didn't yield enough values
       while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
-        if (Objects.nonNull(indicator) && indicator.isCanceled()) return;
+        if (tracker.isCanceled()) return;
 
         final int remaining = batchCount - allValues.size();
         try {
@@ -469,6 +470,8 @@ public final class RowGenerator {
       }
 
       applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
+      // Advance by the number of rows in this batch (1 AI work unit per row per column)
+      tracker.advance(batchCount);
     }
   }
 

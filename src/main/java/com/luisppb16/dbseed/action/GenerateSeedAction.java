@@ -223,8 +223,7 @@ public final class GenerateSeedAction extends AnAction {
     final boolean effectiveDeferred = config.deferred() || mustForceDeferred;
     log.debug("Effective deferred: {}", effectiveDeferred);
 
-    indicator.setText("Generating data...");
-    indicator.setText2(ordered.size() + " tables, " + config.rowsPerTable() + " rows each");
+    // DataGenerator drives the indicator fraction via ProgressTracker
     final DataGenerator.GenerationResult gen =
         DataGenerator.generate(
             DataGenerator.GenerationParameters.builder()
@@ -249,7 +248,6 @@ public final class GenerateSeedAction extends AnAction {
 
     indicator.setText("Building SQL...");
     indicator.setText2("Generating INSERT statements for " + gen.rows().size() + " tables");
-    indicator.setFraction(0.95);
     final String sql =
         SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
 

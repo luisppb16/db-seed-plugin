@@ -8,13 +8,11 @@ package com.luisppb16.dbseed.ui;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.DocumentAdapter;
-import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.JBTextField;
-import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -226,32 +224,169 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   @Override
   protected @NotNull JComponent createCenterPanel() {
-    final JBTabbedPane tabbedPane = new JBTabbedPane();
-    tabbedPane.addTab("PK UUID Selection", createPkSelectionPanel());
-    if (DbSeedSettingsState.getInstance().isUseAiGeneration()) {
-      tabbedPane.addTab("AI Columns", createAiColumnSelectionPanel());
-    }
-    tabbedPane.addTab("Exclude Columns/Tables", createColumnExclusionPanel());
-    tabbedPane.addTab("Repetition Rules", repetitionRulesPanel);
-    tabbedPane.addTab("More Settings", createMoreSettingsPanel());
-
     synchronizeInitialStates();
+
+    // Create modern tabbed interface
+    final JBTabbedPane tabbedPane = new JBTabbedPane();
+
+    // Tab 1: Primary Keys & UUIDs
+    tabbedPane.addTab(
+        "Primary Keys",
+        AllIcons.Nodes.DataTables,
+        wrapInScrollPane(createPkSelectionPanel()),
+        "Configure UUID primary keys");
+
+    // Tab 2: AI Columns (only if AI is enabled)
+    if (DbSeedSettingsState.getInstance().isUseAiGeneration()) {
+      tabbedPane.addTab(
+          "🤖 AI Columns",
+          AllIcons.General.ProjectConfigurable,
+          wrapInScrollPane(createAiColumnSelectionPanel()),
+          "Select columns for AI-generated content");
+    }
+
+    // Tab 3: Exclusions
+    tabbedPane.addTab(
+        "Exclusions",
+        AllIcons.General.Remove,
+        wrapInScrollPane(createColumnExclusionPanel()),
+        "Exclude tables and columns from generation");
+
+    // Tab 4: Repetition Rules
+    tabbedPane.addTab(
+        "Repetition Rules",
+        AllIcons.Actions.Refresh,
+        wrapInScrollPane(repetitionRulesPanel),
+        "Configure data repetition rules");
+
+    // Tab 5: Advanced Settings
+    tabbedPane.addTab(
+        "Advanced",
+        AllIcons.General.Settings,
+        wrapInScrollPane(createMoreSettingsPanel()),
+        "Additional configuration options");
+
+    // Apply modern styling
+    tabbedPane.setBorder(JBUI.Borders.empty());
 
     final JPanel content = new JPanel(new BorderLayout());
     content.add(tabbedPane, BorderLayout.CENTER);
-    content.setPreferredSize(JBUI.size(650, 500));
-    content.setMinimumSize(JBUI.size(500, 400));
+    content.setPreferredSize(JBUI.size(750, 600));
+    content.setMinimumSize(JBUI.size(600, 450));
     return content;
+  }
+
+  /** Wraps a component in a scroll pane with consistent styling. */
+  private JBScrollPane wrapInScrollPane(JComponent component) {
+    final JPanel wrapper = new JPanel(new BorderLayout());
+    wrapper.setOpaque(false);
+    wrapper.setBorder(JBUI.Borders.empty(12));
+    wrapper.add(component, BorderLayout.CENTER);
+
+    final JBScrollPane scrollPane = new JBScrollPane(wrapper);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    scrollPane.setHorizontalScrollBarPolicy(
+        javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    return scrollPane;
   }
 
   private JPanel createMoreSettingsPanel() {
     final DbSeedSettingsState global = DbSeedSettingsState.getInstance();
 
-    // Status label for visual feedback
+    // === Soft Delete Section ===
+    final JPanel softDeleteSection = new JPanel();
+    softDeleteSection.setLayout(
+        new javax.swing.BoxLayout(softDeleteSection, javax.swing.BoxLayout.Y_AXIS));
+    softDeleteSection.setBorder(JBUI.Borders.emptyBottom(20));
+
+    // Section header
+    final JBLabel softDeleteTitle = new JBLabel("Soft Delete Configuration");
+    softDeleteTitle.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
+    softDeleteSection.add(softDeleteTitle);
+    softDeleteSection.add(Box.createVerticalStrut(12));
+
+    // Columns field
+    final JPanel columnsPanel = new JPanel(new BorderLayout(8, 0));
+    columnsPanel.setOpaque(false);
+    final JBLabel columnsLabel = new JBLabel("Columns:");
+    columnsLabel.setPreferredSize(JBUI.size(140, -1));
+    columnsPanel.add(columnsLabel, BorderLayout.WEST);
+    columnsPanel.add(softDeleteColumnsField, BorderLayout.CENTER);
+    softDeleteSection.add(columnsPanel);
+    softDeleteSection.add(Box.createVerticalStrut(8));
+
+    // Schema default checkbox
+    softDeleteSection.add(softDeleteUseSchemaDefaultBox);
+    softDeleteSection.add(Box.createVerticalStrut(8));
+
+    // Value field
+    final JPanel valuePanel = new JPanel(new BorderLayout(8, 0));
+    valuePanel.setOpaque(false);
+    final JBLabel valueLabel = new JBLabel("Value:");
+    valueLabel.setPreferredSize(JBUI.size(140, -1));
+    valuePanel.add(valueLabel, BorderLayout.WEST);
+    valuePanel.add(softDeleteValueField, BorderLayout.CENTER);
+    softDeleteSection.add(valuePanel);
+    softDeleteSection.add(Box.createVerticalStrut(12));
+
+    // Status indicator with restore button
+    final JPanel statusPanel = new JPanel(new BorderLayout());
+    statusPanel.setOpaque(false);
     final JBLabel statusLabel = new JBLabel("Using global settings");
     statusLabel.setFont(JBUI.Fonts.smallFont());
-    statusLabel.setForeground(UIManager.getColor("Label.infoForeground"));
+    statusLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    final JButton resetButton = new JButton("Restore Defaults");
+    resetButton.putClientProperty("JButton.buttonType", "borderless");
+    statusPanel.add(statusLabel, BorderLayout.WEST);
+    statusPanel.add(resetButton, BorderLayout.EAST);
+    softDeleteSection.add(statusPanel);
 
+    // === Numeric Configuration Section ===
+    final JPanel numericSection = new JPanel();
+    numericSection.setLayout(
+        new javax.swing.BoxLayout(numericSection, javax.swing.BoxLayout.Y_AXIS));
+    numericSection.setBorder(JBUI.Borders.emptyTop(20));
+
+    // Section header
+    final JBLabel numericTitle = new JBLabel("Numeric Configuration");
+    numericTitle.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
+    numericSection.add(numericTitle);
+    numericSection.add(Box.createVerticalStrut(12));
+
+    // Scale spinner
+    final JPanel scalePanel = new JPanel(new BorderLayout(8, 0));
+    scalePanel.setOpaque(false);
+    final JBLabel scaleLabel = new JBLabel("Decimal scale:");
+    scaleLabel.setPreferredSize(JBUI.size(140, -1));
+    scalePanel.add(scaleLabel, BorderLayout.WEST);
+    final JPanel spinnerWrapper = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    spinnerWrapper.setOpaque(false);
+    spinnerWrapper.add(scaleSpinner);
+    scalePanel.add(spinnerWrapper, BorderLayout.CENTER);
+    numericSection.add(scalePanel);
+    numericSection.add(Box.createVerticalStrut(6));
+
+    // Tooltip
+    final JBLabel scaleTooltip =
+        new JBLabel("Applied to DECIMAL/NUMERIC columns without explicit scale");
+    scaleTooltip.setFont(JBUI.Fonts.smallFont());
+    scaleTooltip.setForeground(UIManager.getColor("Label.disabledForeground"));
+    numericSection.add(scaleTooltip);
+
+    // === Main panel ===
+    final JPanel mainPanel = new JPanel(new BorderLayout());
+    mainPanel.setBorder(JBUI.Borders.empty());
+
+    final JPanel sectionsWrapper = new JPanel();
+    sectionsWrapper.setLayout(
+        new javax.swing.BoxLayout(sectionsWrapper, javax.swing.BoxLayout.Y_AXIS));
+    sectionsWrapper.add(softDeleteSection);
+    sectionsWrapper.add(numericSection);
+    sectionsWrapper.add(Box.createVerticalGlue());
+
+    mainPanel.add(sectionsWrapper, BorderLayout.NORTH);
+
+    // === Event handlers ===
     final Runnable updateStatus =
         () -> {
           final boolean modified =
@@ -261,9 +396,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                   || !softDeleteValueField.getText().equals(global.getSoftDeleteValue());
           statusLabel.setText(modified ? "Modified from global settings" : "Using global settings");
           statusLabel.setIcon(modified ? AllIcons.General.Modified : null);
+          statusLabel.setForeground(
+              modified
+                  ? UIManager.getColor("Label.infoForeground")
+                  : UIManager.getColor("Label.disabledForeground"));
         };
 
-    // Add listeners for real-time feedback
     final DocumentListener listener =
         new DocumentAdapter() {
           @Override
@@ -271,14 +409,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             updateStatus.run();
           }
         };
+
     softDeleteColumnsField.getDocument().addDocumentListener(listener);
     softDeleteValueField.getDocument().addDocumentListener(listener);
     softDeleteUseSchemaDefaultBox.addActionListener(e -> updateStatus.run());
 
-    // Initial status check
-    updateStatus.run();
-
-    final JButton resetButton = new JButton("Restore Global Defaults");
     resetButton.addActionListener(
         e -> {
           softDeleteColumnsField.setText(global.getSoftDeleteColumns());
@@ -288,23 +423,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           updateStatus.run();
         });
 
-    // Use FormBuilder for a clean, consistent layout
-    return FormBuilder.createFormBuilder()
-        .addComponent(new TitledSeparator("Soft Delete Configuration"))
-        .addVerticalGap(5)
-        .addLabeledComponent("Columns (comma separated):", softDeleteColumnsField)
-        .addComponent(softDeleteUseSchemaDefaultBox)
-        .addLabeledComponent("Value (if not default):", softDeleteValueField)
-        .addVerticalGap(5)
-        .addComponent(statusLabel)
-        .addComponent(resetButton)
-        .addVerticalGap(15)
-        .addComponent(new TitledSeparator("Numeric Configuration"))
-        .addVerticalGap(5)
-        .addLabeledComponent("Default numeric scale:", scaleSpinner)
-        .addTooltip("Applied to DECIMAL/NUMERIC columns without explicit scale defined in schema.")
-        .addComponentFillVertically(new JPanel(), 0)
-        .getPanel();
+    updateStatus.run();
+
+    return mainPanel;
   }
 
   private void synchronizeInitialStates() {
@@ -534,29 +655,36 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private JPanel createTablePanel(JComponent header, List<JCheckBox> columnBoxes) {
-    final JPanel tablePanel = new JPanel(new BorderLayout());
+    final JPanel tablePanel = new JPanel(new BorderLayout(0, 8));
     tablePanel.setBorder(
         BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(
-                1, 1, 1, 1, UIManager.getColor("Component.borderColor")),
-            JBUI.Borders.empty(8)));
-    tablePanel.setBackground(UIManager.getColor("Panel.background"));
-    tablePanel.add(header, BorderLayout.NORTH);
+            JBUI.Borders.customLine(UIManager.getColor("Component.borderColor"), 1, 0, 0, 0),
+            JBUI.Borders.empty(12, 8)));
+    tablePanel.setOpaque(false);
 
+    // Header panel with modern styling
+    final JPanel headerPanel = new JPanel(new BorderLayout());
+    headerPanel.setOpaque(false);
+    headerPanel.add(header, BorderLayout.WEST);
+    tablePanel.add(headerPanel, BorderLayout.NORTH);
+
+    // Columns panel with better spacing
     final JPanel columnsPanel = new JPanel(new GridBagLayout());
+    columnsPanel.setOpaque(false);
     final GridBagConstraints cc = new GridBagConstraints();
     cc.gridx = 0;
     cc.gridy = 0;
     cc.anchor = GridBagConstraints.NORTHWEST;
     cc.fill = GridBagConstraints.HORIZONTAL;
     cc.weightx = 1.0;
+    cc.insets = JBUI.insets(2, 0);
 
     for (JCheckBox box : columnBoxes) {
       columnsPanel.add(box, cc);
       cc.gridy++;
     }
 
-    columnsPanel.setBorder(JBUI.Borders.emptyLeft(16));
+    columnsPanel.setBorder(JBUI.Borders.emptyLeft(20));
     tablePanel.add(columnsPanel, BorderLayout.CENTER);
     return tablePanel;
   }
@@ -603,14 +731,26 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           }
         });
 
-    final JPanel topPanel = new JPanel(new BorderLayout(8, 8));
-    topPanel.add(toggleButton, BorderLayout.WEST);
+    final JPanel topPanel = new JPanel(new BorderLayout(12, 0));
+    topPanel.setBorder(JBUI.Borders.emptyBottom(12));
+    topPanel.setOpaque(false);
+
+    // Bulk action buttons on the left
+    final JPanel actionsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    actionsPanel.setOpaque(false);
+    toggleButton.putClientProperty("JButton.buttonType", "borderless");
+    actionsPanel.add(toggleButton);
+    topPanel.add(actionsPanel, BorderLayout.WEST);
 
     addSearchFunctionality(topPanel, listPanel, filterLogic);
 
     final JPanel mainPanel = new JPanel(new BorderLayout());
+    mainPanel.setBorder(JBUI.Borders.empty());
     mainPanel.add(topPanel, BorderLayout.NORTH);
-    mainPanel.add(new JBScrollPane(listPanel), BorderLayout.CENTER);
+
+    final JBScrollPane scrollPane = new JBScrollPane(listPanel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    mainPanel.add(scrollPane, BorderLayout.CENTER);
 
     return mainPanel;
   }
@@ -645,12 +785,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private void addSearchFunctionality(
       final JPanel topPanel, final JPanel listPanel, final BiConsumer<JPanel, String> filterLogic) {
     final JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-    final JTextField searchField = new JTextField(20);
+    searchPanel.setOpaque(false);
+
+    final JBTextField searchField = new JBTextField(20);
+    searchField.getEmptyText().setText("Search tables and columns...");
     searchField
         .getDocument()
         .addDocumentListener(createFilterListener(searchField, listPanel, filterLogic));
-    searchPanel.add(new JLabel("Search:"));
-    searchPanel.add(Box.createHorizontalStrut(4));
+
     searchPanel.add(searchField);
     topPanel.add(searchPanel, BorderLayout.EAST);
   }

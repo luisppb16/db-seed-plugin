@@ -264,6 +264,11 @@ public final class SeedDialog extends DialogWrapper {
   private JPanel createFormPanel() {
     final FormBuilder builder = FormBuilder.createFormBuilder();
 
+    // Connection Settings Section
+    builder
+        .addComponent(new com.intellij.ui.TitledSeparator("Database Connection"))
+        .addVerticalGap(4);
+
     builder.addLabeledComponent("JDBC URL:", urlField);
 
     if (driverInfo.requiresUser()) {
@@ -282,8 +287,21 @@ public final class SeedDialog extends DialogWrapper {
       builder.addLabeledComponent("Schema:", schemaField);
     }
 
+    // Generation Settings Section
+    builder
+        .addVerticalGap(12)
+        .addComponent(new com.intellij.ui.TitledSeparator("Generation Settings"))
+        .addVerticalGap(4);
+
     builder.addLabeledComponent("Rows per table:", rowsSpinner);
+    builder.addTooltip("Number of rows to generate for each table.");
+
     builder.addComponent(deferredBox);
+    builder.addTooltip(
+        "Enable deferred constraints to handle complex FK relationships automatically.");
+
+    // Filler
+    builder.addComponentFillVertically(new JPanel(), 0);
 
     return builder.getPanel();
   }

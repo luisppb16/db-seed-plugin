@@ -120,42 +120,48 @@ public final class SeedDatabaseAction extends AnAction {
     }
 
     try {
-      Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
+      final Optional<DriverInfo> chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
       if (chosenDriverOpt.isEmpty()) {
         return;
       }
 
-      boolean continueLoop = true;
-      while (continueLoop) {
-        final DriverInfo chosenDriver = chosenDriverOpt.get();
-        final SeedDialog seedDialog = new SeedDialog(chosenDriver);
-        seedDialog.show();
+      openSeedDialogFlow(project, chosenDriverOpt.get());
+    } catch (final Exception ex) {
+      handleException(project, "Error preparing driver: ", ex);
+    }
+  }
 
-        final int exitCode = seedDialog.getExitCode();
-        switch (exitCode) {
-          case DialogWrapper.OK_EXIT_CODE -> {
-            runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
-            continueLoop = false;
-          }
-          case SeedDialog.BACK_EXIT_CODE -> {
-            try {
-              chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
-              if (chosenDriverOpt.isEmpty()) {
-                continueLoop = false;
-              }
-            } catch (final Exception ex) {
-              handleException(project, "Error re-selecting driver: ", ex);
+  private void openSeedDialogFlow(final Project project, final DriverInfo initialDriver) {
+    Optional<DriverInfo> chosenDriverOpt = Optional.of(initialDriver);
+    boolean continueLoop = true;
+
+    while (continueLoop) {
+      final DriverInfo chosenDriver = chosenDriverOpt.get();
+      final SeedDialog seedDialog = new SeedDialog(chosenDriver);
+      seedDialog.show();
+
+      final int exitCode = seedDialog.getExitCode();
+      switch (exitCode) {
+        case DialogWrapper.OK_EXIT_CODE -> {
+          runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
+          continueLoop = false;
+        }
+        case SeedDialog.BACK_EXIT_CODE -> {
+          try {
+            chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
+            if (chosenDriverOpt.isEmpty()) {
               continueLoop = false;
             }
-          }
-          default -> {
-            log.debug("Seed generation dialog canceled.");
+          } catch (final Exception ex) {
+            handleException(project, "Error re-selecting driver: ", ex);
             continueLoop = false;
           }
         }
+        default -> {
+          log.debug("Seed generation dialog canceled.");
+          continueLoop = false;
+        }
       }
-    } catch (final Exception ex) {
-      handleException(project, "Error preparing driver: ", ex);
     }
   }
 
@@ -364,8 +370,10 @@ public final class SeedDatabaseAction extends AnAction {
                   }
                 });
       }
-      case PkUuidSelectionDialog.BACK_EXIT_CODE ->
-          log.debug("User navigated back from PK UUID selection.");
+      case PkUuidSelectionDialog.BACK_EXIT_CODE -> {
+        log.debug("User navigated back from PK UUID selection.");
+        openSeedDialogFlow(project, chosenDriver);
+      }
       default -> log.debug("PK UUID selection canceled.");
     }
   }

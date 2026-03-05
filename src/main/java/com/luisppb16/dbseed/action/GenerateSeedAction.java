@@ -87,14 +87,21 @@ public final class GenerateSeedAction extends AnAction {
                 @Override
                 public void run(@NotNull ProgressIndicator indicator) {
                   indicator.setIndeterminate(true);
+                  indicator.setText("Connecting to database...");
+                  indicator.setText2("Schema: " + config.schema() + " | Driver: " + chosenDriver.name());
                   try (Connection conn =
                       DriverManager.getConnection(
                           config.url(),
                           Objects.requireNonNullElse(config.user(), ""),
                           Objects.requireNonNullElse(config.password(), ""))) {
+                    indicator.setText("Analyzing schema structure...");
+                    indicator.setText2("Extracting tables, columns, constraints and relationships");
+                    final long introspectStart = System.currentTimeMillis();
                     List<Table> tables =
                         SchemaIntrospector.introspect(
                             conn, config.schema(), DialectFactory.resolve(chosenDriver));
+                    final long introspectElapsed = System.currentTimeMillis() - introspectStart;
+                    indicator.setText2("Schema introspection completed in " + introspectElapsed + "ms (" + tables.size() + " tables found)");
                     tablesRef.set(tables);
                   } catch (Exception ex) {
                     errorRef.set(ex);
@@ -204,11 +211,11 @@ public final class GenerateSeedAction extends AnAction {
             .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
     indicator.setText("Sorting tables...");
-    indicator.setText2("Filtering " + tables.size() + " tables");
+    indicator.setText2("Filtering " + tables.size() + " tables (" + selections.excludedTables().size() + " excluded)");
     final List<Table> filteredTables =
         tables.stream().filter(t -> !selections.excludedTables().contains(t.name())).toList();
 
-    indicator.setText2("Resolving dependency order for " + filteredTables.size() + " tables");
+    indicator.setText2("Resolving dependency order for " + filteredTables.size() + " tables (topological sort)");
     final TopologicalSorter.SortResult sort = TopologicalSorter.sort(filteredTables);
 
     final Map<String, Table> tableMap =
@@ -247,14 +254,15 @@ public final class GenerateSeedAction extends AnAction {
                 .build());
 
     indicator.setText("Building SQL...");
-    indicator.setText2("Generating INSERT statements for " + gen.rows().size() + " tables");
+    final int totalRows = gen.rows().values().stream().mapToInt(List::size).sum();
+    indicator.setText2("Generating INSERT statements for " + gen.rows().size() + " tables (" + totalRows + " total rows)");
     final String sql =
         SqlGenerator.generate(gen.rows(), gen.updates(), effectiveDeferred, driverInfo);
 
     log.info("Seed SQL generated successfully.");
     indicator.setFraction(1.0);
     indicator.setText("Done!");
-    indicator.setText2("");
+    indicator.setText2("SQL file generated with " + totalRows + " INSERT statements");
     return sql;
   }
 

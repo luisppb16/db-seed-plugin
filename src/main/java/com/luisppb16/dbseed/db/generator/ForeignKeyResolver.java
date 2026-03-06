@@ -25,7 +25,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * Sophisticated foreign key resolution engine for database seeding operations in the DBSeed plugin.
@@ -59,32 +58,11 @@ public final class ForeignKeyResolver {
   }
 
   public List<PendingUpdate> resolve(final ProgressTracker tracker) {
-    final List<Table> tables = new ArrayList<>(tableMap.values());
-    final int totalTables = tables.size();
-
-    IntStream.range(0, totalTables)
+    tableMap
+        .values()
         .forEach(
-            i -> {
-              final Table table = tables.get(i);
+            table -> {
               resolveForeignKeysForTable(table);
-
-              final int tableIndex = i + 1;
-              final int percentage = (tableIndex * 100) / totalTables;
-              final List<Row> rows = data.getOrDefault(table, List.of());
-              tracker.setText2(
-                  "Resolving FKs for "
-                      + table.name()
-                      + " ("
-                      + tableIndex
-                      + "/"
-                      + totalTables
-                      + " - "
-                      + percentage
-                      + "%) - "
-                      + rows.size()
-                      + " rows, "
-                      + updates.size()
-                      + " updates");
               tracker.advance(); // 1 unit per table
             });
     return updates;

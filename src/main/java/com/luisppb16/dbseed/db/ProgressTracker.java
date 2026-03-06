@@ -25,10 +25,6 @@ public final class ProgressTracker {
   private final ProgressIndicator indicator;
   private final long totalWork;
   private final AtomicLong completed = new AtomicLong(0);
-  private final AtomicLong phaseCompleted = new AtomicLong(0);
-  private long phaseTotal = 0;
-  private String currentPhase = "";
-  private long phaseStartTime = 0;
 
   /**
    * @param indicator the IntelliJ progress indicator to update (may be {@code null} — all
@@ -41,43 +37,6 @@ public final class ProgressTracker {
     this.totalWork = Math.max(totalWork, 1); // avoid division by zero
   }
 
-  /**
-   * Format time information: elapsed time and estimated remaining time.
-   *
-   * @param percent completion percentage (0-100)
-   * @param elapsedMs elapsed milliseconds
-   * @return formatted time string
-   */
-  private static String formatTimeInfo(final long percent, final long elapsedMs) {
-    if (percent == 0) {
-      return "| --:-- remaining";
-    }
-    final long totalEstimatedMs = (elapsedMs * 100) / percent;
-    final long remainingMs = totalEstimatedMs - elapsedMs;
-    final long elapsedSec = elapsedMs / 1000;
-    final long remainingSec = remainingMs / 1000;
-    return String.format(
-        "| %d:%02d elapsed | %d:%02d remaining",
-        elapsedSec / 60, elapsedSec % 60, remainingSec / 60, remainingSec % 60);
-  }
-
-  /**
-   * Build a visual progress bar.
-   *
-   * @param percent completion percentage (0-100)
-   * @return a visual progress bar string
-   */
-  private static String buildProgressBar(final long percent) {
-    final int barLength = 25;
-    final int filledLength = (int) ((percent * barLength) / 100);
-    final StringBuilder bar = new StringBuilder("│");
-    for (int i = 0; i < barLength; i++) {
-      bar.append(i < filledLength ? "█" : "░");
-    }
-    bar.append("│");
-    return bar.toString();
-  }
-
   /** Returns {@code true} when no indicator is attached (progress is a no-op). */
   public boolean isNoOp() {
     return Objects.isNull(indicator);
@@ -87,9 +46,7 @@ public final class ProgressTracker {
   public void advance(final long units) {
     if (Objects.isNull(indicator)) return;
     final long now = completed.addAndGet(units);
-    final long phaseNow = phaseCompleted.addAndGet(units);
     indicator.setFraction(Math.min((double) now / totalWork, 1.0));
-    updateDetailedProgress(phaseNow);
   }
 
   /** Convenience shorthand — advance by one unit. */
@@ -102,39 +59,9 @@ public final class ProgressTracker {
     if (Objects.nonNull(indicator)) indicator.setText(text);
   }
 
-  /** Set the secondary (detail) status text with verbose phase information. */
+  /** Set the secondary (detail) status text. */
   public void setText2(final String text) {
     if (Objects.nonNull(indicator)) indicator.setText2(text);
-  }
-
-  /**
-   * Start a new phase with a total number of work units.
-   *
-   * @param phaseName the name of the phase (e.g., "Generating rows", "Validating constraints")
-   * @param total the total number of work units in this phase
-   */
-  public void startPhase(final String phaseName, final long total) {
-    this.currentPhase = Objects.requireNonNull(phaseName, "Phase name cannot be null");
-    this.phaseTotal = Math.max(total, 1);
-    this.phaseCompleted.set(0);
-    this.phaseStartTime = System.currentTimeMillis();
-    updateDetailedProgress(0);
-  }
-
-  /** Update the detailed progress display with current phase information. */
-  private void updateDetailedProgress(final long phaseNow) {
-    if (Objects.isNull(indicator) || currentPhase.isEmpty()) {
-      return;
-    }
-    final long percent = phaseTotal > 0 ? (phaseNow * 100) / phaseTotal : 0;
-    final String progressBar = buildProgressBar(percent);
-    final double overallPercent = totalWork > 0 ? (completed.get() * 100.0) / totalWork : 0;
-    final long elapsedMs = System.currentTimeMillis() - phaseStartTime;
-    final String timeInfo = formatTimeInfo(percent, elapsedMs);
-    indicator.setText2(
-        String.format(
-            "├ %s │ %d/%d (%d%%) %s [TOTAL: %.1f%%] %s",
-            currentPhase, phaseNow, phaseTotal, percent, progressBar, overallPercent, timeInfo));
   }
 
   /** Check whether the user has requested cancellation. */
@@ -155,20 +82,5 @@ public final class ProgressTracker {
   /** Return the total number of work units. */
   public long getTotalWork() {
     return totalWork;
-  }
-
-  /** Return the current phase name. */
-  public String getCurrentPhase() {
-    return currentPhase;
-  }
-
-  /** Return the number of completed units in the current phase. */
-  public long getPhaseCompleted() {
-    return phaseCompleted.get();
-  }
-
-  /** Return the total units for the current phase. */
-  public long getPhaseTotal() {
-    return phaseTotal;
   }
 }

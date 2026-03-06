@@ -167,20 +167,15 @@ public class DataGenerator {
 
     final ProgressTracker tracker = new ProgressTracker(params.indicator(), totalWork);
 
-    // Phase 0: AI Model Warm-up
+    // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
+    // This eliminates cold-start latency on the first real generation call.
     if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
       try {
-        final int totalAiColumns = aiColumns.values().stream().mapToInt(Set::size).sum();
-        tracker.setText("[AI WARM-UP] Loading model into VRAM");
-        tracker.startPhase("AI Model Initialization", 1);
-        final long warmStart = System.currentTimeMillis();
+        tracker.setText("Warming up AI model...");
+        tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
         ollamaClient.warmModel().join();
-        final long warmElapsed = System.currentTimeMillis() - warmStart;
-        tracker.advance(1);
-        tracker.setText2("✓ Model loaded in " + warmElapsed + "ms (" + totalAiColumns + " AI columns ready)");
       } catch (final Exception e) {
         log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
-        tracker.setText2("⚠ Model warm-up failed: " + e.getMessage());
       }
     }
 
@@ -188,43 +183,37 @@ public class DataGenerator {
         generateTableRows(
             orderedTables,
             params.rowsPerTable(),
-            new TableRowsContext(
-                excludedColumnsSet,
-                params.repetitionRules(),
-                faker,
-                usedUuids,
-                dictionaryWords,
-                params.useLatinDictionary(),
-                softDeleteCols,
-                params.softDeleteUseSchemaDefault(),
-                params.softDeleteValue(),
-                params.numericScale(),
-                aiColumns,
-                ollamaClient,
-                Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT)),
+            excludedColumnsSet,
+            params.repetitionRules(),
+            faker,
+            usedUuids,
             tableConstraints,
             data,
+            dictionaryWords,
+            params.useLatinDictionary(),
+            softDeleteCols,
+            params.softDeleteUseSchemaDefault(),
+            params.softDeleteValue(),
+            params.numericScale(),
+            aiColumns,
+            ollamaClient,
+            Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
             tracker);
 
     // Phase 2: Run AI generation for ALL tables in parallel
-    if (Objects.nonNull(ollamaClient) && aiWork > 0) {
-      tracker.setText("[DATA GENERATION] Phase 2 of 4: AI Value Generation");
-      tracker.startPhase("AI Data Generation", aiWork);
-      generateAiValuesParallel(generators, tracker);
-      tracker.setText2("✓ AI generation phase completed");
-    }
+    generateAiValuesParallel(generators, tracker);
 
-    tracker.setText("[DATA VALIDATION] Phase 3 of 4: Constraint Validation");
-    tracker.startPhase("Constraint Validation", validateWork);
+    tracker.setText("Validating constraints...");
+    tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
     validateNumericConstraints(
         orderedTables, tableConstraints, data, params.numericScale(), tracker);
-    tracker.setText2("✓ Constraint validation completed");
 
-    tracker.setText("[FOREIGN KEY RESOLUTION] Phase 4 of 4: FK Dependencies");
-    tracker.startPhase("Foreign Key Resolution", fkWork);
+    tracker.setText("Resolving foreign keys...");
+    tracker.setText2("Processing deferred FK dependencies");
     final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
     final List<PendingUpdate> updates = fkResolver.resolve(tracker);
-    tracker.setText2("✓ FK resolution completed - " + updates.size() + " deferred updates ready");
+
+    tracker.setText2(updates.size() + " deferred updates created");
 
     return new GenerationResult(data, updates);
   }
@@ -272,64 +261,43 @@ public class DataGenerator {
     return softDeleteCols;
   }
 
-  /** Internal context object to reduce parameter count for table row generation. */
-  private record TableRowsContext(
-      Map<String, Set<String>> excludedColumns,
-      Map<String, List<RepetitionRule>> repetitionRules,
-      Faker faker,
-      Set<UUID> usedUuids,
-      List<String> dictionaryWords,
-      boolean useLatinDictionary,
-      Set<String> softDeleteCols,
-      boolean softDeleteUseSchemaDefault,
-      String softDeleteValue,
-      int numericScale,
-      Map<String, Set<String>> aiColumns,
-      OllamaClient ollamaClient,
-      String applicationContext) {}
-
   private static List<RowGenerator> generateTableRows(
       final List<Table> orderedTables,
       final int rowsPerTable,
-      final TableRowsContext ctx,
+      final Map<String, Set<String>> excludedColumns,
+      final Map<String, List<RepetitionRule>> repetitionRules,
+      final Faker faker,
+      final Set<UUID> usedUuids,
       final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints,
       final Map<Table, List<Row>> data,
+      final List<String> dictionaryWords,
+      final boolean useLatinDictionary,
+      final Set<String> softDeleteCols,
+      final boolean softDeleteUseSchemaDefault,
+      final String softDeleteValue,
+      final int numericScale,
+      final Map<String, Set<String>> aiColumns,
+      final OllamaClient ollamaClient,
+      final String applicationContext,
       final ProgressTracker tracker) {
 
     final int totalTables = orderedTables.size();
     final long startTime = System.currentTimeMillis();
     final List<RowGenerator> generators = new ArrayList<>();
 
-    tracker.setText("[ROW GENERATION] Phase 1 of 4: Generating Test Data");
-    tracker.startPhase("Row Generation", (long) totalTables * rowsPerTable);
-
     IntStream.range(0, totalTables)
         .forEach(
             i -> {
               final Table table = orderedTables.get(i);
-              final Set<String> tableExcludedCols = ctx.excludedColumns().getOrDefault(table.name(), Set.of());
-              final List<RepetitionRule> tableRules = Objects.nonNull(ctx.repetitionRules())
-                  ? ctx.repetitionRules().getOrDefault(table.name(), Collections.emptyList())
-                  : Collections.emptyList();
-
               tracker.setText(
-                  "┌ [ROW GENERATION] Table "
+                  "Generating table "
                       .concat(String.valueOf(i + 1))
                       .concat("/")
                       .concat(String.valueOf(totalTables))
                       .concat(": ")
                       .concat(table.name()));
-
-              final StringBuilder detailMsg = new StringBuilder();
-              detailMsg.append(table.columns().size()).append(" columns, ")
-                  .append(rowsPerTable).append(" rows");
-              if (!tableExcludedCols.isEmpty()) {
-                detailMsg.append(" [").append(tableExcludedCols.size()).append(" excluded]");
-              }
-              if (!tableRules.isEmpty()) {
-                detailMsg.append(" {").append(tableRules.size()).append(" rules}");
-              }
-              tracker.setText2(detailMsg.toString());
+              tracker.setText2(
+                  table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
 
               if (table.columns().isEmpty()) {
                 data.put(table, Collections.emptyList());
@@ -342,21 +310,21 @@ public class DataGenerator {
                   new RowGenerator(
                       table,
                       rowsPerTable,
-                      ctx.excludedColumns().getOrDefault(table.name(), Set.of()),
-                      Objects.nonNull(ctx.repetitionRules())
-                          ? ctx.repetitionRules().getOrDefault(table.name(), Collections.emptyList())
+                      excludedColumns.getOrDefault(table.name(), Set.of()),
+                      Objects.nonNull(repetitionRules)
+                          ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
                           : Collections.emptyList(),
-                      ctx.faker(),
-                      ctx.usedUuids(),
-                      ctx.dictionaryWords(),
-                      ctx.useLatinDictionary(),
-                      ctx.softDeleteCols(),
-                      ctx.softDeleteUseSchemaDefault(),
-                      ctx.softDeleteValue(),
-                      ctx.numericScale(),
-                      ctx.aiColumns().getOrDefault(table.name(), Set.of()),
-                      ctx.ollamaClient(),
-                      ctx.applicationContext(),
+                      faker,
+                      usedUuids,
+                      dictionaryWords,
+                      useLatinDictionary,
+                      softDeleteCols,
+                      softDeleteUseSchemaDefault,
+                      softDeleteValue,
+                      numericScale,
+                      aiColumns.getOrDefault(table.name(), Set.of()),
+                      ollamaClient,
+                      applicationContext,
                       tracker);
 
               final List<Row> rows = rowGenerator.generate();
@@ -369,10 +337,7 @@ public class DataGenerator {
               // RowGenerator advances inside fillRemainingRows, so nothing extra here.
 
               final long elapsed = System.currentTimeMillis() - startTime;
-              final double rowsPerSecond = rows.isEmpty() ? 0.0 : (rows.size() * 1000.0) / elapsed;
-              tracker.setText2(
-                  rows.size() + " rows generated in " + (elapsed / 1000) + "s ("
-                  + String.format("%.1f", rowsPerSecond) + " rows/s)");
+              tracker.setText2(rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
             });
 
     return generators;
@@ -390,14 +355,9 @@ public class DataGenerator {
 
     if (aiGenerators.isEmpty()) return;
 
-    final int totalAiColumns = aiGenerators.stream()
-        .mapToInt(RowGenerator::getAiColumnCount)
-        .sum();
-
     tracker.setText("Generating AI values...");
-    tracker.setText2(aiGenerators.size() + " tables with " + totalAiColumns + " AI columns (parallel mode)");
+    tracker.setText2(aiGenerators.size() + " tables with AI columns");
 
-    final long aiStartTime = System.currentTimeMillis();
     final List<CompletableFuture<Void>> futures =
         aiGenerators.stream()
             .map(gen -> CompletableFuture.runAsync(gen::generateAiValues, AI_TABLE_EXECUTOR))
@@ -405,12 +365,11 @@ public class DataGenerator {
 
     try {
       CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
-      final long aiElapsed = System.currentTimeMillis() - aiStartTime;
-      tracker.setText2("AI generation complete in " + (aiElapsed / 1000) + "s");
     } catch (final Exception ex) {
       log.warn("Some AI table generations failed: {}", ex.getMessage());
-      tracker.setText2("AI generation completed with errors: " + ex.getMessage());
     }
+
+    tracker.setText2("AI generation complete");
   }
 
   private static void validateNumericConstraints(
@@ -422,36 +381,17 @@ public class DataGenerator {
 
     final Faker faker = new Faker();
     final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
-    final int totalTables = orderedTables.size();
-    final long startTime = System.currentTimeMillis();
 
-    IntStream.range(0, orderedTables.size())
-        .forEach(
-            i -> {
-              final Table table = orderedTables.get(i);
-              final Map<String, ConstraintParser.ParsedConstraint> constraints =
-                  tableConstraints.getOrDefault(table.name(), Map.of());
-              final List<Row> rows = data.get(table);
-              if (Objects.nonNull(rows)) {
-                rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
-              }
-
-              final int tableIndex = i + 1;
-              final int percentage = (tableIndex * 100) / totalTables;
-              tracker.setText2(
-                  "Validating "
-                      + table.name()
-                      + " ("
-                      + tableIndex
-                      + "/"
-                      + totalTables
-                      + " - "
-                      + percentage
-                      + "%) - "
-                      + (Objects.nonNull(rows) ? rows.size() : 0)
-                      + " rows");
-              tracker.advance(); // 1 unit per table
-            });
+    orderedTables.forEach(
+        table -> {
+          final Map<String, ConstraintParser.ParsedConstraint> constraints =
+              tableConstraints.getOrDefault(table.name(), Map.of());
+          final List<Row> rows = data.get(table);
+          if (Objects.nonNull(rows)) {
+            rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
+          }
+          tracker.advance(); // 1 unit per table
+        });
   }
 
   private static void validateRowNumericConstraints(

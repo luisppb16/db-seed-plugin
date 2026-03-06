@@ -110,22 +110,6 @@ import org.jetbrains.annotations.NotNull;
 public final class SeedDatabaseAction extends AnAction {
 
   private static final long INSERT_THRESHOLD = 10000L;
-  private static final String PROGRESS_SEPARATOR =
-      "═══════════════════════════════════════════════════════════";
-  private static final String ERROR_DIALOG_TITLE = "DBSeed Error";
-  private static final String SECTION_START =
-      "┌─────────────────────────────────────────────────────────────";
-  private static final String SECTION_END =
-      "└─────────────────────────────────────────────────────────────";
-  private static final String SUBSECTION = "├ ";
-  private static final String LEAF = "└ ";
-
-  private static String maskUrl(final String url) {
-    if (url.length() > 50) {
-      return url.substring(0, 47) + "...";
-    }
-    return url;
-  }
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
@@ -192,65 +176,15 @@ public final class SeedDatabaseAction extends AnAction {
               @Override
               public void run(@NotNull final ProgressIndicator indicator) {
                 indicator.setIndeterminate(true);
-                indicator.setText(SECTION_START);
-                indicator.setText2(
-                    SUBSECTION + "Establishing connection to " + chosenDriver.name() + "...");
                 try (final Connection conn =
                     DriverManager.getConnection(
                         config.url(),
                         Objects.requireNonNullElse(config.user(), ""),
                         Objects.requireNonNullElse(config.password(), ""))) {
-
-                  indicator.setText(PROGRESS_SEPARATOR);
-                  indicator.setText2(
-                      SUBSECTION + "[1/4] Connection established | URL: " + maskUrl(config.url()));
-                  Thread.sleep(100);
-
-                  indicator.setText(PROGRESS_SEPARATOR);
-                  indicator.setText2(
-                      SUBSECTION + "[2/4] Analyzing schema structure: " + config.schema());
-
-                  final long introspectStart = System.currentTimeMillis();
-                  final List<Table> tables =
+                  tablesRef.set(
                       SchemaIntrospector.introspect(
-                          conn, config.schema(), DialectFactory.resolve(chosenDriver));
-                  final long introspectElapsed = System.currentTimeMillis() - introspectStart;
-
-                  indicator.setText(PROGRESS_SEPARATOR);
-                  indicator.setText2(
-                      SUBSECTION + "[3/4] Schema analysis complete (" + introspectElapsed + "ms)");
-                  Thread.sleep(100);
-
-                  indicator.setText(PROGRESS_SEPARATOR);
-                  final String tablesSummary =
-                      tables.stream()
-                          .map(t -> t.name() + " (" + t.columns().size() + " cols)")
-                          .limit(3)
-                          .collect(Collectors.joining(", "));
-                  final String moreInfo = tables.size() > 3 ? ", ..." : "";
-                  indicator.setText2(
-                      SUBSECTION
-                          + "[4/4] Tables found: "
-                          + tables.size()
-                          + " | "
-                          + tablesSummary
-                          + moreInfo);
-                  Thread.sleep(100);
-
-                  indicator.setText(SECTION_END);
-                  final int totalCols = tables.stream().mapToInt(t -> t.columns().size()).sum();
-                  indicator.setText2(
-                      LEAF
-                          + "✓ Introspection successful in "
-                          + introspectElapsed
-                          + "ms | Total columns: "
-                          + totalCols);
-
-                  tablesRef.set(tables);
+                          conn, config.schema(), DialectFactory.resolve(chosenDriver)));
                   log.info("Schema introspection successful for schema: {}", config.schema());
-                } catch (final InterruptedException ex) {
-                  Thread.currentThread().interrupt();
-                  errorRef.set(ex);
                 } catch (final Exception ex) {
                   errorRef.set(ex);
                 }
@@ -265,7 +199,7 @@ public final class SeedDatabaseAction extends AnAction {
                 final List<Table> tables = tablesRef.get();
                 if (Objects.isNull(tables) || tables.isEmpty()) {
                   Messages.showErrorDialog(
-                      project, "No tables found in schema: " + config.schema(), ERROR_DIALOG_TITLE);
+                      project, "No tables found in schema: " + config.schema(), "DBSeed Error");
                   return;
                 }
                 continueGeneration(project, config, tables, chosenDriver);
@@ -372,47 +306,20 @@ public final class SeedDatabaseAction extends AnAction {
                     try {
                       indicator.setIndeterminate(false);
                       indicator.setFraction(0.0);
-
-                      // STEP 0: Configuration
-                      indicator.setText(SECTION_START);
-                      indicator.setText2(SUBSECTION + "STEP 0/5: Loading configuration files...");
-                      Thread.sleep(50);
-                      indicator.setFraction(0.05);
+                      indicator.setText("Preparing generation...");
 
                       final List<Table> filteredTables =
                           ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
 
-                      // STEP 1: Topology
-                      indicator.setText(PROGRESS_SEPARATOR);
+                      indicator.setText("Sorting tables...");
                       indicator.setText2(
-                          SUBSECTION
-                              + "STEP 1/5: Table topology analysis ("
-                              + filteredTables.size()
-                              + " tables, "
-                              + excludedTables.size()
-                              + " excluded)");
-                      Thread.sleep(50);
-                      indicator.setFraction(0.10);
+                          "Resolving dependency order for " + filteredTables.size() + " tables");
 
                       final boolean mustForceDeferred =
                           TopologicalSorter.requiresDeferredDueToNonNullableCycles(
                               sort, tableByName);
                       final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
-
-                      indicator.setText(PROGRESS_SEPARATOR);
-                      indicator.setText2(
-                          SUBSECTION
-                              + "STEP 1/5: Deferred constraints mode: "
-                              + (effectiveDeferred ? "ENABLED" : "disabled"));
-                      Thread.sleep(50);
                       log.debug("Effective deferred: {}", effectiveDeferred);
-
-                      // STEP 2: Data Generation (handled by DataGenerator)
-                      indicator.setText(PROGRESS_SEPARATOR);
-                      indicator.setText2(
-                          SUBSECTION + "STEP 2/5: Generating synthetic data rows...");
-                      Thread.sleep(50);
-                      indicator.setFraction(0.15);
 
                       // DataGenerator drives the indicator fraction via ProgressTracker
                       final DataGenerator.GenerationResult gen =
@@ -443,79 +350,20 @@ public final class SeedDatabaseAction extends AnAction {
                           "Data generation completed for {} rows per table.",
                           finalConfig.rowsPerTable());
 
-                      if (indicator.isCanceled()) {
-                        log.info("Data generation cancelled by user.");
-                        return;
-                      }
+                      if (indicator.isCanceled()) return;
 
-                      // STEP 3: SQL Build
-                      indicator.setText(PROGRESS_SEPARATOR);
+                      indicator.setText("Building SQL...");
                       indicator.setText2(
-                          SUBSECTION + "STEP 3/5: Building SQL INSERT statements...");
-                      Thread.sleep(50);
-                      indicator.setFraction(0.70);
-
-                      final int totalRows = gen.rows().values().stream().mapToInt(List::size).sum();
-
-                      indicator.setText(PROGRESS_SEPARATOR);
-                      indicator.setText2(
-                          SUBSECTION + "STEP 3/5: Processing " + totalRows + " data rows...");
-                      Thread.sleep(50);
-
+                          "Generating INSERT statements for " + gen.rows().size() + " tables");
                       final String sql =
                           SqlGenerator.generate(
                               gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
-
-                      indicator.setText(PROGRESS_SEPARATOR);
-                      final long sqlLines = sql.split("\n").length;
-                      indicator.setText2(
-                          SUBSECTION + "STEP 3/5: Generated " + sqlLines + " SQL lines");
-                      Thread.sleep(50);
-                      indicator.setFraction(0.85);
-
-                      // STEP 4: File Output
-                      indicator.setText(PROGRESS_SEPARATOR);
-                      indicator.setText2(SUBSECTION + "STEP 4/5: Preparing output file...");
-                      Thread.sleep(50);
-                      indicator.setFraction(0.90);
-
-                      // STEP 5: Complete
-                      indicator.setText(PROGRESS_SEPARATOR);
-                      indicator.setText2(SUBSECTION + "STEP 5/5: Finalizing...");
-                      indicator.setFraction(0.95);
-                      Thread.sleep(100);
-
-                      indicator.setText(SECTION_END);
-                      final long updateCount = gen.updates().size();
-                      final long tableCount = gen.rows().size();
-                      final long rowsPerTableAvg = tableCount > 0 ? totalRows / tableCount : 0;
-                      final long totalColumnsCount =
-                          gen.rows().entrySet().stream()
-                              .mapToLong(
-                                  e -> (long) e.getKey().columns().size() * e.getValue().size())
-                              .sum();
-                      indicator.setText2(
-                          LEAF
-                              + "✓ COMPLETED: "
-                              + totalRows
-                              + " rows across "
-                              + tableCount
-                              + " tables | "
-                              + updateCount
-                              + " deferred updates | "
-                              + totalColumnsCount
-                              + " cell values | Avg: "
-                              + rowsPerTableAvg
-                              + " rows/table");
                       indicator.setFraction(1.0);
-
+                      indicator.setText("Done!");
                       log.info("SQL script built successfully.");
 
                       ApplicationManager.getApplication()
                           .invokeLater(() -> saveAndOpenSqlFile(project, sql));
-                    } catch (final InterruptedException ex) {
-                      Thread.currentThread().interrupt();
-                      log.error("Generation interrupted: {}", ex.getMessage());
                     } catch (final Exception ex) {
                       handleException(project, "Error during SQL generation: ", ex);
                     }

@@ -758,18 +758,30 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private String getTableNameForComponent(final Component component) {
     Component current = component;
     while (Objects.nonNull(current)) {
-      if (current instanceof final JPanel panel) {
-        for (final Component child : panel.getComponents()) {
-          if (child instanceof final JCheckBox box
-              && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
-            return box.getText();
-          }
-          if (child instanceof final JLabel label) {
-            return label.getText();
-          }
-        }
+      final String tableName = findTableHeaderText(current);
+      if (Objects.nonNull(tableName)) {
+        return tableName;
       }
       current = current.getParent();
+    }
+    return null;
+  }
+
+  private static String findTableHeaderText(final Component component) {
+    if (component instanceof final JCheckBox box
+        && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
+      return box.getText();
+    }
+    if (component instanceof final JLabel label) {
+      return label.getText();
+    }
+    if (component instanceof final JPanel panel) {
+      for (final Component child : panel.getComponents()) {
+        final String text = findTableHeaderText(child);
+        if (Objects.nonNull(text) && !text.isBlank()) {
+          return text;
+        }
+      }
     }
     return null;
   }
@@ -854,15 +866,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private String getHeaderText(JPanel tablePanel) {
-    for (final Component c : tablePanel.getComponents()) {
-      if (c instanceof final JCheckBox box
-          && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
-        return box.getText();
-      } else if (c instanceof final JLabel label) {
-        return label.getText();
-      }
-    }
-    return "";
+    return Objects.requireNonNullElse(findTableHeaderText(tablePanel), "");
   }
 
   private List<JCheckBox> getColumnBoxes(JPanel tablePanel) {

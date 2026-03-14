@@ -92,7 +92,7 @@ public class OllamaClient {
   private static final int LIST_MODELS_TIMEOUT_SECONDS = 5;
 
   private static final double DEFAULT_TEMPERATURE = 0.5;
-  private static final double BATCH_TEMPERATURE = 0.7;
+  private static final double BATCH_TEMPERATURE = DEFAULT_TEMPERATURE;
 
   private static final int DEFAULT_NUM_PREDICT = 30;
   private static final int BATCH_NUM_PREDICT_FACTOR = 15;
@@ -106,7 +106,6 @@ public class OllamaClient {
 
   private static final String SYSTEM_ROLE =
       "You are a database seed data generator. You output raw data values only. "
-          + "The language consistency is very important, you will output values in the language of the prompt. "
           + "Never add introductions, headers, numbering, bullet points, quotes, labels, or explanations. "
           + "Start immediately with the first value.";
 
@@ -388,11 +387,11 @@ public class OllamaClient {
         }
       }
 
-      String requestBody = buildChatRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
+      String requestBody = buildGenerateRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/chat"))
+              .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -485,11 +484,11 @@ public class OllamaClient {
         }
       }
 
-      String requestBody = buildChatRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
+      String requestBody = buildGenerateRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/chat"))
+              .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -539,41 +538,30 @@ public class OllamaClient {
   private String extractRawResponse(String responseBody) throws IOException {
     try {
       final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
-      // /api/chat format: { "message": { "content": "..." } }
-      if (json.has("message") && json.getAsJsonObject("message").has("content")) {
-        return json.getAsJsonObject("message").get("content").getAsString();
-      }
-      // Fallback for /api/generate format
+      // /api/generate format: { "response": "..." }
       if (json.has("response")) {
         return json.get("response").getAsString();
       }
-      throw new IOException("Invalid response from Ollama: missing 'message.content' field");
+      // Fallback for /api/chat format
+      if (json.has("message") && json.getAsJsonObject("message").has("content")) {
+        return json.getAsJsonObject("message").get("content").getAsString();
+      }
+      throw new IOException("Invalid response from Ollama: missing 'response' field");
     } catch (final Exception e) {
       if (e instanceof IOException) throw e;
       throw new IOException("Failed to parse Ollama response: " + e.getMessage(), e);
     }
   }
 
-  private String buildChatRequestBody(String prompt, double temperature, int numPredict) {
+  private String buildGenerateRequestBody(String prompt, double temperature, int numPredict) {
     final JsonObject options = new JsonObject();
     options.addProperty("temperature", temperature);
     options.addProperty("num_predict", numPredict);
 
-    final JsonObject systemMessage = new JsonObject();
-    systemMessage.addProperty("role", "system");
-    systemMessage.addProperty("content", SYSTEM_ROLE);
-
-    final JsonObject userMessage = new JsonObject();
-    userMessage.addProperty("role", "user");
-    userMessage.addProperty("content", prompt);
-
-    final com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
-    messages.add(systemMessage);
-    messages.add(userMessage);
-
     final JsonObject body = new JsonObject();
     body.addProperty("model", modelName);
-    body.add("messages", messages);
+    body.addProperty("prompt", prompt);
+    body.addProperty("system", SYSTEM_ROLE);
     body.addProperty("stream", false);
     body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
     body.add("options", options);
@@ -593,23 +581,16 @@ public class OllamaClient {
       final JsonObject options = new JsonObject();
       options.addProperty("num_predict", 1);
 
-      final JsonObject userMessage = new JsonObject();
-      userMessage.addProperty("role", "user");
-      userMessage.addProperty("content", "hi");
-
-      final com.google.gson.JsonArray messages = new com.google.gson.JsonArray();
-      messages.add(userMessage);
-
       final JsonObject body = new JsonObject();
       body.addProperty("model", modelName);
-      body.add("messages", messages);
+      body.addProperty("prompt", "");
       body.addProperty("stream", false);
       body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
       body.add("options", options);
 
       HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/chat"))
+              .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))

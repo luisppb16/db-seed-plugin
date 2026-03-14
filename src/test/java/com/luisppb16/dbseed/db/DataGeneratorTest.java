@@ -297,10 +297,10 @@ class DataGeneratorTest {
   void numericScale_appliedToDecimalValues() {
     Column decCol =
         Column.builder().name("price").jdbcType(Types.DECIMAL).length(10).scale(4).build();
-    Table t =
-        new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
+    Table t = new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
-    GenerationParameters params = baseParams().tables(List.of(t)).numericScale(4).rowsPerTable(10).build();
+    GenerationParameters params =
+        baseParams().tables(List.of(t)).numericScale(4).rowsPerTable(10).build();
     GenerationResult result = DataGenerator.generate(params);
 
     List<Row> rows =
@@ -318,12 +318,11 @@ class DataGeneratorTest {
 
   @Test
   void numericScale_defaultScale2_producesTwoDecimals() {
-    Column decCol =
-        Column.builder().name("amount").jdbcType(Types.DECIMAL).length(8).build();
-    Table t =
-        new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
+    Column decCol = Column.builder().name("amount").jdbcType(Types.DECIMAL).length(8).build();
+    Table t = new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
-    GenerationParameters params = baseParams().tables(List.of(t)).numericScale(2).rowsPerTable(20).build();
+    GenerationParameters params =
+        baseParams().tables(List.of(t)).numericScale(2).rowsPerTable(20).build();
     GenerationResult result = DataGenerator.generate(params);
 
     List<Row> rows =
@@ -344,10 +343,15 @@ class DataGeneratorTest {
 
   @Test
   void numericValidation_constrainedValues_withinBounds() {
-    Column intCol =
-        Column.builder().name("score").jdbcType(Types.INTEGER).build();
+    Column intCol = Column.builder().name("score").jdbcType(Types.INTEGER).build();
     Table t =
-        new Table("t", List.of(intCol), List.of(), List.of(), List.of("score BETWEEN 1 AND 5"), List.of());
+        new Table(
+            "t",
+            List.of(intCol),
+            List.of(),
+            List.of(),
+            List.of("score BETWEEN 1 AND 5"),
+            List.of());
 
     GenerationParameters params = baseParams().tables(List.of(t)).rowsPerTable(50).build();
     GenerationResult result = DataGenerator.generate(params);
@@ -407,10 +411,7 @@ class DataGeneratorTest {
             List.of());
 
     GenerationParameters params =
-        baseParams()
-            .tables(List.of(t))
-            .excludedColumns(Map.of("t", List.of("secret")))
-            .build();
+        baseParams().tables(List.of(t)).excludedColumns(Map.of("t", List.of("secret"))).build();
     GenerationResult result = DataGenerator.generate(params);
 
     for (Row r : result.rows().get(t)) {

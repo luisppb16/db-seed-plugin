@@ -582,9 +582,9 @@ public class OllamaClient {
   }
 
   /**
-   * Pre-warms the model by sending a minimal generate request. This forces Ollama to load the
-   * model into VRAM before the actual batch generation starts, avoiding the cold-start latency
-   * penalty on the first real request. The response is discarded.
+   * Pre-warms the model by sending a minimal generate request. This forces Ollama to load the model
+   * into VRAM before the actual batch generation starts, avoiding the cold-start latency penalty on
+   * the first real request. The response is discarded.
    *
    * @return A CompletableFuture that completes when the model is loaded.
    */

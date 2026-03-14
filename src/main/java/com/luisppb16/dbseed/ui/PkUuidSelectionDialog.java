@@ -167,6 +167,16 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         || name.equals("country");
   }
 
+  private static String extractText(Component component) {
+    if (component instanceof final JCheckBox box) {
+      return box.getText();
+    }
+    if (component instanceof final JLabel label) {
+      return label.getText();
+    }
+    return null;
+  }
+
   private void initDefaults() {
     tables.forEach(
         table -> {
@@ -500,17 +510,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           c.gridy++;
         });
 
-    return createTogglableListPanel(
-        listPanel,
-        checkBoxes,
-        (box, isSelected) -> {
-          final String tableName = getTableNameForComponent(box);
-          final String columnName = getColumnNameForCheckBox(box);
-          if (Objects.nonNull(tableName)) {
-            onPkBoxChanged(tableName, columnName, isSelected);
-          }
-        },
-        this::filterPanelComponents);
+    return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
   }
 
   private void onPkBoxChanged(String tableName, String pkCol, boolean isSelected) {
@@ -559,38 +559,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           c.gridy++;
         });
 
-    return createTogglableListPanel(
-        listPanel,
-        checkBoxes,
-        (box, isSelected) -> {
-          if (Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
-            onTableExcludeBoxChanged(box.getText(), isSelected, findColumnBoxesForTable(box));
-          } else {
-            final String tableName = getTableNameForComponent(box);
-            final String columnName = getColumnNameForCheckBox(box);
-            if (Objects.nonNull(tableName)) {
-              onExcludeBoxChanged(tableName, columnName, isSelected);
-            }
-          }
-        },
-        this::filterPanelComponents);
-  }
-
-  private List<JCheckBox> findColumnBoxesForTable(JCheckBox tableBox) {
-    List<JCheckBox> boxes = new ArrayList<>();
-    Component parent = tableBox.getParent(); // tablePanel
-    if (parent instanceof JPanel panel) {
-      for (Component child : panel.getComponents()) {
-        if (child instanceof JPanel columnsPanel) {
-          for (Component colChild : columnsPanel.getComponents()) {
-            if (colChild instanceof JCheckBox cb) {
-              boxes.add(cb);
-            }
-          }
-        }
-      }
-    }
-    return boxes;
+    return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
   }
 
   private void onExcludeBoxChanged(String tableName, String columnName, boolean isSelected) {
@@ -692,7 +661,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private JComponent createTogglableListPanel(
       final JPanel listPanel,
       final List<JCheckBox> checkBoxes,
-      final BiConsumer<JCheckBox, Boolean> modelUpdater,
       final BiConsumer<JPanel, String> filterLogic) {
     final JButton toggleButton = new JButton();
     final AtomicBoolean isBulkUpdating = new AtomicBoolean(false);
@@ -721,8 +689,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             checkBoxes.forEach(
                 box -> {
                   if (box.isEnabled() && box.isSelected() != selectAll) {
-                    box.setSelected(selectAll);
-                    modelUpdater.accept(box, selectAll);
+                    box.doClick(0);
                   }
                 });
           } finally {
@@ -753,33 +720,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     mainPanel.add(scrollPane, BorderLayout.CENTER);
 
     return mainPanel;
-  }
-
-  private String getTableNameForComponent(final Component component) {
-    Component current = component;
-    while (Objects.nonNull(current)) {
-      if (current instanceof final JPanel panel) {
-        for (final Component child : panel.getComponents()) {
-          if (child instanceof final JCheckBox box
-              && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
-            return box.getText();
-          }
-          if (child instanceof final JLabel label) {
-            return label.getText();
-          }
-        }
-      }
-      current = current.getParent();
-    }
-    return null;
-  }
-
-  private String getColumnNameForCheckBox(final JCheckBox checkBox) {
-    final String text = checkBox.getText();
-    if (text.startsWith(TREAT_AS_UUID_PREFIX)) {
-      return text.substring(TREAT_AS_UUID_PREFIX.length());
-    }
-    return text;
   }
 
   private void addSearchFunctionality(
@@ -854,12 +794,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private String getHeaderText(JPanel tablePanel) {
-    for (final Component c : tablePanel.getComponents()) {
-      if (c instanceof final JCheckBox box
-          && Boolean.TRUE.equals(box.getClientProperty(IS_TABLE_PROPERTY))) {
-        return box.getText();
-      } else if (c instanceof final JLabel label) {
-        return label.getText();
+    for (final Component child : tablePanel.getComponents()) {
+      final String text = extractText(child);
+      if (Objects.nonNull(text)) {
+        return text;
+      }
+      if (child instanceof final JPanel panel) {
+        for (final Component inner : panel.getComponents()) {
+          final String innerText = extractText(inner);
+          if (Objects.nonNull(innerText)) {
+            return innerText;
+          }
+        }
       }
     }
     return "";
@@ -925,17 +871,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           c.gridy++;
         });
 
-    return createTogglableListPanel(
-        listPanel,
-        checkBoxes,
-        (box, isSelected) -> {
-          final String tableName = getTableNameForComponent(box);
-          final String columnName = getColumnNameForCheckBox(box);
-          if (Objects.nonNull(tableName)) {
-            onAiBoxChanged(tableName, columnName, isSelected);
-          }
-        },
-        this::filterPanelComponents);
+    return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
   }
 
   private void onAiBoxChanged(String tableName, String columnName, boolean isSelected) {

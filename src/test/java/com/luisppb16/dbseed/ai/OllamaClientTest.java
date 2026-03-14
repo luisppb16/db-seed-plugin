@@ -2,18 +2,20 @@
 
 package com.luisppb16.dbseed.ai;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
 public class OllamaClientTest {
 
-    // Other classes and methods...
+  // Other classes and methods...
 
-    @Nested static class ExtractRawResponse {
-        @Test
-        void testSomeBehavior() {
-            // Test case implementation
-        }
+  @Nested
+  static class ExtractRawResponse {
+    @Test
+    void testSomeBehavior() {
+      // Test case implementation
     }
+  }
 }

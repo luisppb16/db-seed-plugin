@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Builder;
@@ -102,14 +103,21 @@ public class DataGenerator {
   private static final String SOFT_DELETE_DELIMITER = ",";
   private static final String EMPTY_CONTEXT = "";
 
-  /** Executor for cross-table AI generation parallelism. */
-  private static final ExecutorService AI_TABLE_EXECUTOR =
+  /**
+   * Global executor for AI column generation.
+   *
+   * <p>The hotfix that serialized AI work column-by-column removed all useful overlap between
+   * columns/tables and caused large regressions on machines where Ollama can queue or process more
+   * than one request efficiently. We keep a bounded pool to recover throughput without reintroducing
+   * the unbounded contention of the old nested parallelism.
+   */
+  private static final ExecutorService AI_COLUMN_EXECUTOR =
       Executors.newFixedThreadPool(
-          Math.min(8, Runtime.getRuntime().availableProcessors()),
+          Math.clamp(Runtime.getRuntime().availableProcessors(), 2, 4),
           r -> {
-            Thread t = new Thread(r, "ai-table-gen");
-            t.setDaemon(true);
-            return t;
+            final Thread thread = new Thread(r, "ai-col-gen");
+            thread.setDaemon(true);
+            return thread;
           });
 
   public static GenerationResult generate(final GenerationParameters params) {
@@ -144,6 +152,7 @@ public class DataGenerator {
 
     final Map<String, Set<String>> aiColumns =
         Objects.requireNonNullElse(params.aiColumns(), Map.of());
+    final int aiWordCount = settings.getAiWordCount();
 
     // ── Calculate TOTAL real work units up-front ──────────────────────────────
     // 1 unit per row to generate (rows phase)
@@ -196,12 +205,13 @@ public class DataGenerator {
             params.softDeleteValue(),
             params.numericScale(),
             aiColumns,
+            aiWordCount,
             ollamaClient,
             Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
             tracker);
 
-    // Phase 2: Run AI generation for ALL tables in parallel
-    generateAiValuesParallel(generators, tracker);
+    // Phase 2: Run AI generation with bounded parallelism across AI columns
+    generateAiValues(generators, tracker);
 
     tracker.setText("Validating constraints...");
     tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
@@ -277,6 +287,7 @@ public class DataGenerator {
       final String softDeleteValue,
       final int numericScale,
       final Map<String, Set<String>> aiColumns,
+      final int aiWordCount,
       final OllamaClient ollamaClient,
       final String applicationContext,
       final ProgressTracker tracker) {
@@ -323,6 +334,7 @@ public class DataGenerator {
                       softDeleteValue,
                       numericScale,
                       aiColumns.getOrDefault(table.name(), Set.of()),
+                      aiWordCount,
                       ollamaClient,
                       applicationContext,
                       tracker);
@@ -343,30 +355,49 @@ public class DataGenerator {
     return generators;
   }
 
-  /**
-   * Phase 2: Runs AI value generation for all tables in parallel. This is separated from row
-   * generation so that all tables can have their base rows ready before any AI requests are made,
-   * enabling maximum parallelism.
-   */
-  private static void generateAiValuesParallel(
+  /** Phase 2: Runs AI value generation with bounded parallelism across all selected AI columns. */
+  private static void generateAiValues(
       final List<RowGenerator> generators, final ProgressTracker tracker) {
     final List<RowGenerator> aiGenerators =
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
     if (aiGenerators.isEmpty()) return;
 
-    tracker.setText("Generating AI values...");
-    tracker.setText2(aiGenerators.size() + " tables with AI columns");
+    final long totalAiColumns =
+        aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
+    final AtomicInteger startedColumns = new AtomicInteger(0);
+    final List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-    final List<CompletableFuture<Void>> futures =
-        aiGenerators.stream()
-            .map(gen -> CompletableFuture.runAsync(gen::generateAiValues, AI_TABLE_EXECUTOR))
-            .toList();
+    tracker.setText("Generating AI values...");
+    tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
+
+    for (final RowGenerator gen : aiGenerators) {
+      for (final Column col : gen.getValidAiColumns()) {
+        futures.add(
+            CompletableFuture.runAsync(
+                () -> {
+                  if (tracker.isCanceled()) return;
+
+                  final int started = startedColumns.incrementAndGet();
+                  tracker.setText(
+                      "AI column "
+                          .concat(String.valueOf(started))
+                          .concat("/")
+                          .concat(String.valueOf(totalAiColumns)));
+                  try {
+                    gen.generateAiValuesForColumn(col);
+                  } catch (final Exception ex) {
+                    log.warn("AI generation failed for column {}: {}", col.name(), ex.getMessage());
+                  }
+                },
+                AI_COLUMN_EXECUTOR));
+      }
+    }
 
     try {
       CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
     } catch (final Exception ex) {
-      log.warn("Some AI table generations failed: {}", ex.getMessage());
+      log.warn("Some AI column generations failed: {}", ex.getMessage());
     }
 
     tracker.setText2("AI generation complete");

@@ -94,7 +94,6 @@ public class OllamaClient {
   private static final double DEFAULT_TEMPERATURE = 0.5;
   private static final double BATCH_TEMPERATURE = DEFAULT_TEMPERATURE;
 
-  private static final int DEFAULT_NUM_PREDICT = 30;
   private static final int BATCH_NUM_PREDICT_FACTOR = 15;
   private static final int WORD_COUNT_PREDICT_MULTIPLIER = 3;
   private static final int MIN_WORD_COUNT = 1;
@@ -129,7 +128,7 @@ public class OllamaClient {
    */
   private static final HttpClient HTTP_CLIENT =
       HttpClient.newBuilder()
-          .version(HttpClient.Version.HTTP_2)
+          .version(HttpClient.Version.HTTP_1_1)
           .connectTimeout(Duration.ofSeconds(DEFAULT_CONNECT_TIMEOUT_SECONDS))
           .executor(HTTP_EXECUTOR)
           .build();
@@ -322,96 +321,6 @@ public class OllamaClient {
     return models;
   }
 
-  public CompletableFuture<String> generateValue(
-      @NotNull final String applicationContext,
-      @NotNull final String tableName,
-      @NotNull final String columnName,
-      @NotNull final String sqlType,
-      final int wordCount) {
-
-    final int effectiveWordCount = Math.max(MIN_WORD_COUNT, wordCount);
-    final String contextLine =
-        !applicationContext.isBlank() ? "Application context: " + applicationContext + "\n" : "";
-    final boolean isArrayType = isArrayType(sqlType);
-
-    try {
-      String prompt;
-      int numPredict;
-
-      if (isArrayType) {
-        // For array types, generate in PostgreSQL array format: {element1,element2,element3}
-        final int elementCount = 3; // Default 3 elements per array
-        if (effectiveWordCount == 1) {
-          prompt =
-              """
-                  %sGenerate one realistic array value for column "%s" (table: %s, type: %s). \
-                  Format: {element1,element2,element3} with %d elements. Each element should be a single word. \
-                  Use PostgreSQL array syntax with curly braces and comma-separated values. Single line only.
-                  Value:"""
-                  .formatted(contextLine, columnName, tableName, sqlType, elementCount);
-        } else {
-          prompt =
-              """
-                  %sGenerate one realistic array value for column "%s" (table: %s, type: %s). \
-                  Format: {element1,element2,element3} with %d elements. Each element up to %d words. \
-                  Use PostgreSQL array syntax with curly braces and comma-separated values. Single line only.
-                  Value:"""
-                  .formatted(
-                      contextLine,
-                      columnName,
-                      tableName,
-                      sqlType,
-                      elementCount,
-                      effectiveWordCount);
-        }
-        numPredict =
-            Math.max(
-                DEFAULT_NUM_PREDICT * 2,
-                elementCount * effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
-      } else {
-        if (effectiveWordCount == 1) {
-          prompt =
-              """
-                  %sGenerate one realistic value for column "%s" (table: %s, type: %s). Single line only.
-                  Value:"""
-                  .formatted(contextLine, columnName, tableName, sqlType);
-          numPredict = DEFAULT_NUM_PREDICT;
-        } else {
-          prompt =
-              """
-                  %sGenerate one realistic value for column "%s" (table: %s, type: %s). Up to %d words. Single line only.
-                  Value:"""
-                  .formatted(contextLine, columnName, tableName, sqlType, effectiveWordCount);
-          numPredict =
-              Math.max(DEFAULT_NUM_PREDICT, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
-        }
-      }
-
-      String requestBody = buildGenerateRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
-
-      HttpRequest request =
-          HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/generate"))
-              .header("Content-Type", "application/json")
-              .timeout(Duration.ofSeconds(requestTimeoutSeconds))
-              .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-              .build();
-
-      return HTTP_CLIENT
-          .sendAsync(request, HttpResponse.BodyHandlers.ofString())
-          .thenApply(
-              response -> {
-                if (response.statusCode() != 200) {
-                  log.warn("Ollama error {}: {}", response.statusCode(), response.body());
-                  throw new OllamaException("Ollama error: " + response.statusCode());
-                }
-                return response.body();
-              })
-          .thenApply(body -> parseResponse(body, columnName));
-    } catch (Exception e) {
-      return CompletableFuture.failedFuture(e);
-    }
-  }
 
   public CompletableFuture<List<String>> generateBatchValues(
       @NotNull final String applicationContext,
@@ -431,23 +340,14 @@ public class OllamaClient {
       int numPredict;
 
       if (isArrayType) {
-        // For array types, generate in PostgreSQL array format: {element1,element2,element3}
-        final int elementCount = 3; // Default 3 elements per array
+        final int elementCount = 3;
         if (effectiveWordCount == 1) {
           prompt =
-              """
-                  %sGenerate exactly %d unique and different array values for column "%s" (table: %s, type: %s). \
-                  Format each array as: {element1,element2,element3} with %d elements per array. Each element should be a single word. \
-                  Use PostgreSQL array syntax with curly braces and comma-separated values. \
-                  One array per line. No duplicates. No numbering. No explanations. Raw array values only."""
+              "%sGenerate exactly %d unique array values for column \"%s\" (table: %s, type: %s). Format: {el1,el2,el3} with %d elements. Single word each. PostgreSQL array syntax. One per line. Raw values only."
                   .formatted(contextLine, count, columnName, tableName, sqlType, elementCount);
         } else {
           prompt =
-              """
-                  %sGenerate exactly %d unique and different array values for column "%s" (table: %s, type: %s). \
-                  Format each array as: {element1,element2,element3} with %d elements per array. Each element up to %d words. \
-                  Use PostgreSQL array syntax with curly braces and comma-separated values. \
-                  One array per line. No duplicates. No numbering. No explanations. Raw array values only."""
+              "%sGenerate exactly %d unique array values for column \"%s\" (table: %s, type: %s). Format: {el1,el2,el3} with %d elements, up to %d words each. PostgreSQL array syntax. One per line. Raw values only."
                   .formatted(
                       contextLine,
                       count,
@@ -465,16 +365,12 @@ public class OllamaClient {
       } else {
         if (effectiveWordCount == 1) {
           prompt =
-              """
-                  %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
-                  One value per line. No duplicates. No numbering. No explanations. Raw values only."""
+              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). One per line. Raw values only."
                   .formatted(contextLine, count, columnName, tableName, sqlType);
           numPredict = count * BATCH_NUM_PREDICT_FACTOR;
         } else {
           prompt =
-              """
-                  %sGenerate exactly %d unique and different values for column "%s" (table: %s, type: %s). \
-                  Each value up to %d words. One value per line. No duplicates. No numbering. No explanations. Raw values only."""
+              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). Up to %d words each. One per line. Raw values only."
                   .formatted(
                       contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
           numPredict =
@@ -525,15 +421,6 @@ public class OllamaClient {
     }
   }
 
-  private String parseResponse(String responseBody, String columnName) {
-    try {
-      String raw = extractRawResponse(responseBody);
-      return sanitizeAiOutput(raw, columnName);
-    } catch (Exception e) {
-      log.warn("Failed to parse Ollama response", e);
-      return null;
-    }
-  }
 
   private String extractRawResponse(String responseBody) throws IOException {
     try {
@@ -584,6 +471,7 @@ public class OllamaClient {
       final JsonObject body = new JsonObject();
       body.addProperty("model", modelName);
       body.addProperty("prompt", "");
+      body.addProperty("system", SYSTEM_ROLE);
       body.addProperty("stream", false);
       body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
       body.add("options", options);

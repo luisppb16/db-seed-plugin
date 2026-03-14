@@ -48,6 +48,7 @@ class RowGeneratorTest {
         null,
         2,
         Set.of(),
+        1,
         null,
         null,
         new ProgressTracker(null, 0));
@@ -68,6 +69,7 @@ class RowGeneratorTest {
         null,
         2,
         Set.of(),
+        1,
         null,
         null,
         new ProgressTracker(null, 0));
@@ -228,6 +230,7 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
+            1,
             null,
             null,
             new ProgressTracker(null, 0));
@@ -262,6 +265,7 @@ class RowGeneratorTest {
             "1",
             2,
             Set.of(),
+            1,
             null,
             null,
             new ProgressTracker(null, 0));
@@ -299,6 +303,7 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
+            1,
             null,
             null,
             new ProgressTracker(null, 0));
@@ -334,6 +339,7 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
+            1,
             null,
             null,
             new ProgressTracker(null, 0));

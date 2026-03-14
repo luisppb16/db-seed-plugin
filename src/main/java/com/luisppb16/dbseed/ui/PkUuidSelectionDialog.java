@@ -6,7 +6,9 @@
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -16,8 +18,11 @@ import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
+import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
+import com.luisppb16.dbseed.model.SelfReferenceConfig;
+import com.luisppb16.dbseed.model.SelfReferenceStrategy;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
@@ -113,6 +118,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
+
+  // Self-reference strategy configuration
+  private final Map<String, SelfReferenceConfig> selfReferenceConfigs = new LinkedHashMap<>();
+  private final Map<String, ComboBox<SelfReferenceStrategy>> selfRefStrategyBoxes =
+      new LinkedHashMap<>();
+  private final Map<String, JSpinner> selfRefDepthSpinners = new LinkedHashMap<>();
 
   public PkUuidSelectionDialog(
       @NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
@@ -229,7 +240,70 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     } catch (final ParseException ignored) {
       // Invalid number typed, spinner will retain last valid value.
     }
+
+    // Commit depth spinners and sync selfReferenceConfigs from current UI state
+    selfRefDepthSpinners.forEach(
+        (tableName, spinner) -> {
+          try {
+            spinner.commitEdit();
+          } catch (final ParseException ignored) {
+            // retain last valid
+          }
+          final ComboBox<SelfReferenceStrategy> box = selfRefStrategyBoxes.get(tableName);
+          if (box != null) {
+            updateSelfRefConfig(
+                tableName,
+                (SelfReferenceStrategy) box.getSelectedItem(),
+                (Integer) spinner.getValue());
+          }
+        });
+
+    // Validate self-ref configs and warn the user when necessary
+    final List<String> warnings = buildSelfRefWarnings();
+    if (!warnings.isEmpty()) {
+      final int choice =
+          Messages.showOkCancelDialog(
+              "Self-reference strategy configuration issues:\n\n"
+                  + String.join("\n", warnings)
+                  + "\n\nContinue anyway?",
+              "Self-Reference Configuration Warning",
+              "Continue",
+              "Cancel",
+              Messages.getWarningIcon());
+      if (choice != Messages.OK) {
+        return;
+      }
+    }
+
     super.doOKAction();
+  }
+
+  private List<String> buildSelfRefWarnings() {
+    final List<String> warnings = new ArrayList<>();
+    final int rowsPerTable = initialConfig.rowsPerTable();
+    selfReferenceConfigs.forEach(
+        (tableName, config) -> {
+          if (config.strategy() == SelfReferenceStrategy.CIRCULAR && rowsPerTable < 2) {
+            warnings.add(
+                "• Table '"
+                    + tableName
+                    + "': CIRCULAR requires ≥ 2 rows per table (currently "
+                    + rowsPerTable
+                    + "). Generation will fail.");
+          }
+          if (config.strategy() == SelfReferenceStrategy.HIERARCHY
+              && config.hierarchyDepth() > rowsPerTable) {
+            warnings.add(
+                "• Table '"
+                    + tableName
+                    + "': HIERARCHY depth="
+                    + config.hierarchyDepth()
+                    + " exceeds rows per table ("
+                    + rowsPerTable
+                    + "). Extra levels will be collapsed automatically.");
+          }
+        });
+    return warnings;
   }
 
   @Override
@@ -392,6 +466,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         new javax.swing.BoxLayout(sectionsWrapper, javax.swing.BoxLayout.Y_AXIS));
     sectionsWrapper.add(softDeleteSection);
     sectionsWrapper.add(numericSection);
+    sectionsWrapper.add(createSelfRefSection());
     sectionsWrapper.add(Box.createVerticalGlue());
 
     mainPanel.add(sectionsWrapper, BorderLayout.NORTH);
@@ -929,6 +1004,130 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public int getNumericScale() {
     return (Integer) scaleSpinner.getValue();
+  }
+
+  public Map<String, SelfReferenceConfig> getSelfReferenceConfigs() {
+    return Map.copyOf(selfReferenceConfigs);
+  }
+
+  // ── Self-reference section ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Builds the "Self-Referencing FK Strategy" panel for the Advanced tab.
+   *
+   * <p>Only tables that have a self-referencing FK <em>or</em> that participate in a multi-table
+   * cycle (detected via {@link TopologicalSorter}) are shown. For each qualifying table the user
+   * can pick {@code NONE / CIRCULAR / HIERARCHY} and, when HIERARCHY is chosen, configure the
+   * hierarchy depth.
+   */
+  private JPanel createSelfRefSection() {
+    // Detect qualifying tables
+    final Set<String> qualifyingNames = new LinkedHashSet<>();
+    tables.forEach(
+        t -> {
+          if (t.foreignKeys().stream().anyMatch(fk -> fk.pkTable().equals(t.name()))) {
+            qualifyingNames.add(t.name());
+          }
+        });
+    if (tables.size() > 1) {
+      TopologicalSorter.sort(tables).cycles().forEach(qualifyingNames::addAll);
+    }
+    final List<Table> qualifying =
+        tables.stream().filter(t -> qualifyingNames.contains(t.name())).toList();
+
+    // Build section panel
+    final JPanel section = new JPanel();
+    section.setLayout(new javax.swing.BoxLayout(section, javax.swing.BoxLayout.Y_AXIS));
+    section.setBorder(JBUI.Borders.emptyTop(20));
+
+    final JBLabel title = new JBLabel("Self-Referencing FK Strategy");
+    title.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
+    section.add(title);
+    section.add(Box.createVerticalStrut(6));
+
+    if (qualifying.isEmpty()) {
+      final JBLabel noTables =
+          new JBLabel("No self-referencing or cyclic FK tables detected in this schema.");
+      noTables.setFont(JBUI.Fonts.smallFont());
+      noTables.setForeground(UIManager.getColor("Label.disabledForeground"));
+      section.add(noTables);
+      return section;
+    }
+
+    final JBLabel tooltip =
+        new JBLabel(
+            "Configure how rows reference each other for tables with self or circular FKs.");
+    tooltip.setFont(JBUI.Fonts.smallFont());
+    tooltip.setForeground(UIManager.getColor("Label.disabledForeground"));
+    section.add(tooltip);
+    section.add(Box.createVerticalStrut(12));
+
+    for (final Table table : qualifying) {
+      section.add(createSelfRefRow(table));
+      section.add(Box.createVerticalStrut(6));
+    }
+
+    return section;
+  }
+
+  /** Creates a single per-table row: [table name] [Strategy ▼] [Depth: spinner]. */
+  private JPanel createSelfRefRow(final Table table) {
+    final java.awt.FlowLayout fl = new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 2);
+    final JPanel row = new JPanel(fl);
+
+    final JBLabel tableLabel = new JBLabel(table.name());
+    tableLabel.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD));
+    tableLabel.setPreferredSize(JBUI.size(160, -1));
+    row.add(tableLabel);
+
+    row.add(new JBLabel("Strategy:"));
+    final ComboBox<SelfReferenceStrategy> strategyBox =
+        new ComboBox<>(SelfReferenceStrategy.values());
+    strategyBox.setSelectedItem(SelfReferenceStrategy.NONE);
+    row.add(strategyBox);
+
+    row.add(new JBLabel("  Depth:"));
+    final JSpinner depthSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 9999, 1));
+    depthSpinner.setEnabled(false);
+    depthSpinner.setPreferredSize(JBUI.size(60, -1));
+    ComponentUtils.configureSpinnerArrowKeyControls(depthSpinner);
+    row.add(depthSpinner);
+
+    // Store widget references for doOKAction sync
+    selfRefStrategyBoxes.put(table.name(), strategyBox);
+    selfRefDepthSpinners.put(table.name(), depthSpinner);
+
+    // Wire listeners
+    strategyBox.addActionListener(
+        e -> {
+          final SelfReferenceStrategy selected =
+              (SelfReferenceStrategy) strategyBox.getSelectedItem();
+          depthSpinner.setEnabled(selected == SelfReferenceStrategy.HIERARCHY);
+          updateSelfRefConfig(table.name(), selected, (Integer) depthSpinner.getValue());
+        });
+    depthSpinner.addChangeListener(
+        e ->
+            updateSelfRefConfig(
+                table.name(),
+                (SelfReferenceStrategy) strategyBox.getSelectedItem(),
+                (Integer) depthSpinner.getValue()));
+
+    return row;
+  }
+
+  private void updateSelfRefConfig(
+      final String tableName, final SelfReferenceStrategy strategy, final int depth) {
+    if (strategy == null || strategy == SelfReferenceStrategy.NONE) {
+      selfReferenceConfigs.remove(tableName);
+    } else if (strategy == SelfReferenceStrategy.HIERARCHY) {
+      selfReferenceConfigs.put(
+          tableName,
+          SelfReferenceConfig.builder().strategy(strategy).hierarchyDepth(depth).build());
+    } else {
+      // CIRCULAR — hierarchyDepth is not used but the record requires a value
+      selfReferenceConfigs.put(
+          tableName, SelfReferenceConfig.builder().strategy(strategy).hierarchyDepth(0).build());
+    }
   }
 
   private final class BackAction extends AbstractAction {

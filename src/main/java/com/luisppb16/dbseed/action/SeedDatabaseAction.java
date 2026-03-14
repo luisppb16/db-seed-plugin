@@ -30,6 +30,7 @@ import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.RepetitionRule;
+import com.luisppb16.dbseed.model.SelfReferenceConfig;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
@@ -253,6 +254,8 @@ public final class SeedDatabaseAction extends AnAction {
         final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
         final Map<String, Set<String>> aiColumns = pkDialog.getAiColumnsByTable();
         final Set<String> excludedTables = pkDialog.getExcludedTables();
+        final Map<String, SelfReferenceConfig> selfReferenceConfigs =
+            pkDialog.getSelfReferenceConfigs();
 
         final Map<String, Map<String, String>> pkUuidOverrides =
             selectedPkUuidColumns.entrySet().stream()
@@ -344,6 +347,7 @@ public final class SeedDatabaseAction extends AnAction {
                                       settings.isUseAiGeneration()
                                           ? settings.getAiApplicationContext()
                                           : null)
+                                  .selfReferenceConfigs(selfReferenceConfigs)
                                   .indicator(indicator)
                                   .build());
                       log.info(

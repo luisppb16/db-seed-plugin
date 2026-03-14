@@ -15,6 +15,7 @@ import com.luisppb16.dbseed.db.generator.RowGenerator;
 import com.luisppb16.dbseed.db.generator.ValueGenerator;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
+import com.luisppb16.dbseed.model.SelfReferenceConfig;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -220,7 +221,12 @@ public class DataGenerator {
 
     tracker.setText("Resolving foreign keys...");
     tracker.setText2("Processing deferred FK dependencies");
-    final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
+    final ForeignKeyResolver fkResolver =
+        new ForeignKeyResolver(
+            tableMap,
+            data,
+            params.deferred(),
+            Objects.requireNonNullElse(params.selfReferenceConfigs(), Map.of()));
     final List<PendingUpdate> updates = fkResolver.resolve(tracker);
 
     tracker.setText2(updates.size() + " deferred updates created");
@@ -474,6 +480,7 @@ public class DataGenerator {
       int numericScale,
       Map<String, Set<String>> aiColumns,
       String applicationContext,
+      Map<String, SelfReferenceConfig> selfReferenceConfigs,
       ProgressIndicator indicator) {}
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}

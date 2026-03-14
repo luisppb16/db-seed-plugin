@@ -30,6 +30,7 @@ import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.RepetitionRule;
+import com.luisppb16.dbseed.model.SelfReferenceConfig;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
@@ -125,7 +126,8 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getExcludedColumnsByTable(),
               pkDialog.getRepetitionRules(),
               pkDialog.getExcludedTables(),
-              pkDialog.getAiColumnsByTable());
+              pkDialog.getAiColumnsByTable(),
+              pkDialog.getSelfReferenceConfigs());
 
       final GenerationConfig finalConfig =
           config.toBuilder()
@@ -243,6 +245,7 @@ public final class GenerateSeedAction extends AnAction {
                 .aiColumns(selections.aiColumns())
                 .applicationContext(
                     settings.isUseAiGeneration() ? settings.getAiApplicationContext() : null)
+                .selfReferenceConfigs(selections.selfReferenceConfigs())
                 .indicator(indicator)
                 .build());
 
@@ -285,5 +288,6 @@ public final class GenerateSeedAction extends AnAction {
       Map<String, Set<String>> excludedColumns,
       Map<String, List<RepetitionRule>> repetitionRules,
       Set<String> excludedTables,
-      Map<String, Set<String>> aiColumns) {}
+      Map<String, Set<String>> aiColumns,
+      Map<String, SelfReferenceConfig> selfReferenceConfigs) {}
 }

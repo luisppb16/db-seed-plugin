@@ -13,6 +13,8 @@ import com.luisppb16.dbseed.db.DataGenerator.GenerationParameters;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationResult;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
+import com.luisppb16.dbseed.model.SelfReferenceConfig;
+import com.luisppb16.dbseed.model.SelfReferenceStrategy;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import java.io.OutputStream;
@@ -534,5 +536,102 @@ class DataGeneratorTest {
             .findFirst()
             .orElseThrow();
     assertThat(normalRows).hasSize(5);
+  }
+
+  // ── Self-reference strategies ──
+
+  @Test
+  void selfRef_circular_noSelfLoops() {
+    // Table "ranks" with a nullable self-referencing FK (parent_id → id)
+    Table ranks =
+        new Table(
+            "ranks",
+            List.of(intPk("id"), nullableCol("parent_id")),
+            List.of("id"),
+            List.of(new ForeignKey(null, "ranks", Map.of("parent_id", "id"), false)),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(ranks))
+            .rowsPerTable(5)
+            .deferred(true)
+            .selfReferenceConfigs(
+                Map.of(
+                    "ranks",
+                    SelfReferenceConfig.builder()
+                        .strategy(SelfReferenceStrategy.CIRCULAR)
+                        .hierarchyDepth(0)
+                        .build()))
+            .build();
+
+    GenerationResult result = DataGenerator.generate(params);
+
+    List<Row> rows =
+        result.rows().entrySet().stream()
+            .filter(e -> e.getKey().name().equals("ranks"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(rows).hasSize(5);
+    rows.forEach(
+        r -> {
+          Object id = r.values().get("id");
+          Object parentId = r.values().get("parent_id");
+          assertThat(parentId).as("row id=%s must have a non-null parent (CIRCULAR)", id).isNotNull();
+          assertThat(parentId).as("row id=%s must not be a self-loop (CIRCULAR)", id).isNotEqualTo(id);
+        });
+  }
+
+  @Test
+  void selfRef_hierarchy_depth2_rootsHaveNullParent() {
+    // Table "categories" with a nullable self-referencing FK, 6 rows, depth=2
+    Table categories =
+        new Table(
+            "categories",
+            List.of(intPk("id"), nullableCol("parent_id")),
+            List.of("id"),
+            List.of(new ForeignKey(null, "categories", Map.of("parent_id", "id"), false)),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(categories))
+            .rowsPerTable(6)
+            .deferred(true)
+            .selfReferenceConfigs(
+                Map.of(
+                    "categories",
+                    SelfReferenceConfig.builder()
+                        .strategy(SelfReferenceStrategy.HIERARCHY)
+                        .hierarchyDepth(2)
+                        .build()))
+            .build();
+
+    GenerationResult result = DataGenerator.generate(params);
+
+    List<Row> rows =
+        result.rows().entrySet().stream()
+            .filter(e -> e.getKey().name().equals("categories"))
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(rows).hasSize(6);
+
+    // Level 0 (rows 0-2) — roots → null parent
+    rows.subList(0, 3)
+        .forEach(r -> assertThat(r.values().get("parent_id"))
+            .as("root row id=%s should have null parent_id", r.values().get("id"))
+            .isNull());
+
+    // Level 1 (rows 3-5) — children → non-null parent
+    rows.subList(3, 6)
+        .forEach(r -> assertThat(r.values().get("parent_id"))
+            .as("child row id=%s should have non-null parent_id", r.values().get("id"))
+            .isNotNull());
   }
 }

@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
 
 class SchemaIntrospectorTest {
 
-  private Connection conn;
   private final DatabaseDialect h2Dialect = new StandardDialect("h2.properties");
+  private Connection conn;
 
   @BeforeEach
   void setUp() throws SQLException {
@@ -177,7 +177,8 @@ class SchemaIntrospectorTest {
   @Test
   void compositeFk() throws SQLException {
     exec("CREATE TABLE parent (a INT, b INT, PRIMARY KEY (a, b))");
-    exec("CREATE TABLE child (id INT PRIMARY KEY, fa INT, fb INT, FOREIGN KEY (fa, fb) REFERENCES parent(a, b))");
+    exec(
+        "CREATE TABLE child (id INT PRIMARY KEY, fa INT, fb INT, FOREIGN KEY (fa, fb) REFERENCES parent(a, b))");
     Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
     ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.columnMapping()).hasSize(2);

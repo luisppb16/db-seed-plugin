@@ -57,6 +57,7 @@ import javax.swing.JComponent;
 import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JSeparator;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
@@ -119,16 +120,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Map<String, ComboBox<SelfReferenceStrategy>> selfRefStrategyBoxes =
       new LinkedHashMap<>();
   private final Map<String, JSpinner> selfRefDepthSpinners = new LinkedHashMap<>();
-
-  private record SelfRefRelation(
-      String tableName, String fkColumn, String targetTable, String targetColumn) {
-    private String toDisplayText() {
-      return "%s.%s -> %s.%s".formatted(tableName, fkColumn, targetTable, targetColumn);
-    }
-  }
-
-  private record SelfRefRowControls(
-      ComboBox<SelfReferenceStrategy> strategyBox, JSpinner depthSpinner) {}
 
   public PkUuidSelectionDialog(
       @NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
@@ -379,6 +370,19 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return scrollPane;
   }
 
+  private JComponent createAdvancedSectionDivider() {
+    final JPanel wrapper = new JPanel(new BorderLayout());
+    wrapper.setOpaque(false);
+    wrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
+    wrapper.setBorder(JBUI.Borders.empty(10, 0));
+
+    final JSeparator separator = new JSeparator();
+    separator.setForeground(UIManager.getColor("Component.borderColor"));
+    separator.setAlignmentX(Component.LEFT_ALIGNMENT);
+    wrapper.add(separator, BorderLayout.CENTER);
+    return wrapper;
+  }
+
   private JPanel createMoreSettingsPanel() {
     final DbSeedSettingsState global = DbSeedSettingsState.getInstance();
 
@@ -469,9 +473,22 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final JPanel sectionsWrapper = new JPanel();
     sectionsWrapper.setLayout(
         new javax.swing.BoxLayout(sectionsWrapper, javax.swing.BoxLayout.Y_AXIS));
+    sectionsWrapper.setOpaque(false);
+    sectionsWrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
     sectionsWrapper.add(softDeleteSection);
+    sectionsWrapper.add(createAdvancedSectionDivider());
     sectionsWrapper.add(numericSection);
+    sectionsWrapper.add(createAdvancedSectionDivider());
+    final JBLabel selfRefDescription =
+        new JBLabel("Define how to generate self-references and cycles per table/column.");
+    selfRefDescription.setFont(JBUI.Fonts.smallFont());
+    selfRefDescription.setForeground(UIManager.getColor("Label.disabledForeground"));
+    selfRefDescription.setAlignmentX(Component.LEFT_ALIGNMENT);
+    sectionsWrapper.add(Box.createVerticalStrut(8));
+    sectionsWrapper.add(selfRefDescription);
+    sectionsWrapper.add(Box.createVerticalStrut(6));
     sectionsWrapper.add(createSelfRefSection());
+    sectionsWrapper.add(createAdvancedSectionDivider());
     sectionsWrapper.add(Box.createVerticalGlue());
 
     mainPanel.add(sectionsWrapper, BorderLayout.NORTH);
@@ -1015,13 +1032,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return Map.copyOf(selfReferenceConfigs);
   }
 
-  // ── Self-reference section ──────────────────────────────────────────────────────────────────
-
   /**
    * Builds the "Self-Referencing FK Strategy" panel for the Advanced tab.
    *
-   * <p>Detected FK relations that are self-referencing or part of a multi-table cycle are shown
-   * as simple rows with the exact source and target column.
+   * <p>Detected FK relations that are self-referencing or part of a multi-table cycle are shown as
+   * simple rows with the exact source and target column.
    */
   private JPanel createSelfRefSection() {
     selfRefStrategyBoxes.clear();
@@ -1100,10 +1115,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           final SelfReferenceStrategy selected =
               (SelfReferenceStrategy) globalStrategyBox.getSelectedItem();
           final int depth = (Integer) globalDepthSpinner.getValue();
-          rowsByTable.keySet().forEach(
-              tableName ->
-                  syncTableSelfRefControls(
-                      tableName, selected, depth, rowsByTable, syncingRows));
+          rowsByTable
+              .keySet()
+              .forEach(
+                  tableName ->
+                      syncTableSelfRefControls(
+                          tableName, selected, depth, rowsByTable, syncingRows));
         });
 
     // Header row
@@ -1205,7 +1222,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       for (final var fk : table.foreignKeys()) {
         final boolean isSelfReference = table.name().equals(fk.pkTable());
         final boolean isMultiCycleRelation =
-            multiCycles.stream().anyMatch(c -> c.contains(table.name()) && c.contains(fk.pkTable()));
+            multiCycles.stream()
+                .anyMatch(c -> c.contains(table.name()) && c.contains(fk.pkTable()));
         if (!isSelfReference && !isMultiCycleRelation) {
           continue;
         }
@@ -1224,6 +1242,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             .thenComparing(SelfRefRelation::targetColumn));
     return relations;
   }
+
+  // ── Self-reference section ──────────────────────────────────────────────────────────────────
 
   private void syncTableSelfRefControls(
       final String tableName,
@@ -1281,6 +1301,15 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     ComponentUtils.configureSpinnerArrowKeyControls(spinner);
   }
 
+  private record SelfRefRelation(
+      String tableName, String fkColumn, String targetTable, String targetColumn) {
+    private String toDisplayText() {
+      return "%s.%s -> %s.%s".formatted(tableName, fkColumn, targetTable, targetColumn);
+    }
+  }
+
+  private record SelfRefRowControls(
+      ComboBox<SelfReferenceStrategy> strategyBox, JSpinner depthSpinner) {}
 
   private final class BackAction extends AbstractAction {
     private BackAction() {

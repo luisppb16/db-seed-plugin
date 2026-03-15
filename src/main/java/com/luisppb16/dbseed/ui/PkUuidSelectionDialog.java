@@ -18,7 +18,6 @@ import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
-import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.SelfReferenceConfig;
@@ -55,6 +54,7 @@ import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
+import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
@@ -97,7 +97,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private static final String TREAT_AS_UUID_PREFIX = "Treat as UUID: ";
   private static final String IS_TABLE_PROPERTY = "isTable";
-
+  private static final int DEFAULT_GLOBAL_HIERARCHY_DEPTH = 2;
   private final List<Table> tables;
   private final GenerationConfig initialConfig;
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
@@ -105,25 +105,30 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Set<String> excludedTables = new LinkedHashSet<>();
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
   private final RepetitionRulesPanel repetitionRulesPanel;
-
   private final JBTextField softDeleteColumnsField = new JBTextField();
   private final JBCheckBox softDeleteUseSchemaDefaultBox =
       new JBCheckBox("Use schema default value");
   private final JBTextField softDeleteValueField = new JBTextField();
-
   private final JSpinner scaleSpinner;
-
   private final Map<String, Set<String>> aiColumnsByTable = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> aiCheckBoxes = new LinkedHashMap<>();
-
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
-
   // Self-reference strategy configuration
   private final Map<String, SelfReferenceConfig> selfReferenceConfigs = new LinkedHashMap<>();
   private final Map<String, ComboBox<SelfReferenceStrategy>> selfRefStrategyBoxes =
       new LinkedHashMap<>();
   private final Map<String, JSpinner> selfRefDepthSpinners = new LinkedHashMap<>();
+
+  private record SelfRefRelation(
+      String tableName, String fkColumn, String targetTable, String targetColumn) {
+    private String toDisplayText() {
+      return "%s.%s -> %s.%s".formatted(tableName, fkColumn, targetTable, targetColumn);
+    }
+  }
+
+  private record SelfRefRowControls(
+      ComboBox<SelfReferenceStrategy> strategyBox, JSpinner depthSpinner) {}
 
   public PkUuidSelectionDialog(
       @NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
@@ -1015,104 +1020,237 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   /**
    * Builds the "Self-Referencing FK Strategy" panel for the Advanced tab.
    *
-   * <p>Only tables that have a self-referencing FK <em>or</em> that participate in a multi-table
-   * cycle (detected via {@link TopologicalSorter}) are shown. For each qualifying table the user
-   * can pick {@code NONE / CIRCULAR / HIERARCHY} and, when HIERARCHY is chosen, configure the
-   * hierarchy depth.
+   * <p>Detected FK relations that are self-referencing or part of a multi-table cycle are shown
+   * as simple rows with the exact source and target column.
    */
   private JPanel createSelfRefSection() {
-    // Detect qualifying tables
-    final Set<String> qualifyingNames = new LinkedHashSet<>();
-    tables.forEach(
-        t -> {
-          if (t.foreignKeys().stream().anyMatch(fk -> fk.pkTable().equals(t.name()))) {
-            qualifyingNames.add(t.name());
-          }
-        });
-    if (tables.size() > 1) {
-      TopologicalSorter.sort(tables).cycles().forEach(qualifyingNames::addAll);
-    }
-    final List<Table> qualifying =
-        tables.stream().filter(t -> qualifyingNames.contains(t.name())).toList();
+    selfRefStrategyBoxes.clear();
+    selfRefDepthSpinners.clear();
 
-    // Build section panel
+    final List<SelfRefRelation> relations = detectSelfRefRelations();
+
+    // ── Section container ─────────────────────────────────────────────────
     final JPanel section = new JPanel();
     section.setLayout(new javax.swing.BoxLayout(section, javax.swing.BoxLayout.Y_AXIS));
     section.setBorder(JBUI.Borders.emptyTop(20));
 
-    final JBLabel title = new JBLabel("Self-Referencing FK Strategy");
+    final JBLabel title = new JBLabel("Self-Referencing / Cyclic FK Strategy");
     title.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
+    title.setAlignmentX(Component.LEFT_ALIGNMENT);
     section.add(title);
     section.add(Box.createVerticalStrut(6));
 
-    if (qualifying.isEmpty()) {
+    if (relations.isEmpty()) {
       final JBLabel noTables =
-          new JBLabel("No self-referencing or cyclic FK tables detected in this schema.");
+          new JBLabel("No self-referencing or cyclic FK columns detected in this schema.");
       noTables.setFont(JBUI.Fonts.smallFont());
       noTables.setForeground(UIManager.getColor("Label.disabledForeground"));
+      noTables.setAlignmentX(Component.LEFT_ALIGNMENT);
       section.add(noTables);
       return section;
     }
 
-    final JBLabel tooltip =
-        new JBLabel(
-            "Configure how rows reference each other for tables with self or circular FKs.");
-    tooltip.setFont(JBUI.Fonts.smallFont());
-    tooltip.setForeground(UIManager.getColor("Label.disabledForeground"));
-    section.add(tooltip);
+    final JPanel descriptionPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    descriptionPanel.setOpaque(false);
+    descriptionPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    final JBLabel descriptionLabel =
+        new JBLabel("Configure strategy and depth directly on each FK column.");
+    descriptionLabel.setFont(JBUI.Fonts.smallFont());
+    descriptionLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    descriptionPanel.add(descriptionLabel);
+    section.add(descriptionPanel);
+    section.add(Box.createVerticalStrut(8));
+
+    final Map<String, List<SelfRefRowControls>> rowsByTable = new LinkedHashMap<>();
+    final AtomicBoolean syncingRows = new AtomicBoolean(false);
+
+    // ── Global controls ───────────────────────────────────────────────────
+    final JPanel globalRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 2));
+    globalRow.setOpaque(false);
+    globalRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+    final ComboBox<SelfReferenceStrategy> globalStrategyBox =
+        new ComboBox<>(SelfReferenceStrategy.values());
+    globalStrategyBox.setSelectedItem(SelfReferenceStrategy.NONE);
+
+    final JSpinner globalDepthSpinner =
+        new JSpinner(new SpinnerNumberModel(DEFAULT_GLOBAL_HIERARCHY_DEPTH, 1, 9999, 1));
+    configureEditableDepthSpinner(globalDepthSpinner, 96);
+
+    final JButton applyAllButton = new JButton("Apply to all");
+
+    globalRow.add(new JBLabel("Global strategy:"));
+    globalRow.add(globalStrategyBox);
+    globalRow.add(Box.createHorizontalStrut(4));
+    globalRow.add(new JBLabel("Depth:"));
+    globalRow.add(globalDepthSpinner);
+    globalRow.add(Box.createHorizontalStrut(2));
+    globalRow.add(applyAllButton);
+
+    section.add(globalRow);
     section.add(Box.createVerticalStrut(12));
 
-    for (final Table table : qualifying) {
-      section.add(createSelfRefRow(table));
-      section.add(Box.createVerticalStrut(6));
+    applyAllButton.addActionListener(
+        e -> {
+          try {
+            globalDepthSpinner.commitEdit();
+          } catch (final ParseException ignored) {
+            // keep last valid value
+          }
+          final SelfReferenceStrategy selected =
+              (SelfReferenceStrategy) globalStrategyBox.getSelectedItem();
+          final int depth = (Integer) globalDepthSpinner.getValue();
+          rowsByTable.keySet().forEach(
+              tableName ->
+                  syncTableSelfRefControls(
+                      tableName, selected, depth, rowsByTable, syncingRows));
+        });
+
+    // Header row
+    final JPanel headerRow = new JPanel(new GridBagLayout());
+    headerRow.setOpaque(false);
+    headerRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+    final GridBagConstraints hc = new GridBagConstraints();
+    hc.gridy = 0;
+    hc.insets = JBUI.insets(0, 0, 6, 8);
+    hc.anchor = GridBagConstraints.WEST;
+
+    hc.gridx = 0;
+    hc.weightx = 1.0;
+    hc.fill = GridBagConstraints.HORIZONTAL;
+    final JBLabel relationHeader = new JBLabel("Table.Column -> Target");
+    relationHeader.setFont(JBUI.Fonts.smallFont().deriveFont(Font.BOLD));
+    headerRow.add(relationHeader, hc);
+
+    hc.gridx = 1;
+    hc.weightx = 0;
+    hc.fill = GridBagConstraints.NONE;
+    final JBLabel strategyHeader = new JBLabel("Strategy");
+    strategyHeader.setFont(JBUI.Fonts.smallFont().deriveFont(Font.BOLD));
+    headerRow.add(strategyHeader, hc);
+
+    hc.gridx = 2;
+    final JBLabel depthHeader = new JBLabel("Depth");
+    depthHeader.setFont(JBUI.Fonts.smallFont().deriveFont(Font.BOLD));
+    headerRow.add(depthHeader, hc);
+
+    section.add(headerRow);
+
+    for (final SelfRefRelation relation : relations) {
+      final JPanel row = new JPanel(new GridBagLayout());
+      row.setOpaque(false);
+      row.setAlignmentX(Component.LEFT_ALIGNMENT);
+      final GridBagConstraints c = new GridBagConstraints();
+      c.gridy = 0;
+      c.insets = JBUI.insets(2, 0, 2, 8);
+      c.anchor = GridBagConstraints.WEST;
+
+      c.gridx = 0;
+      c.weightx = 1.0;
+      c.fill = GridBagConstraints.HORIZONTAL;
+      row.add(new JBLabel(relation.toDisplayText()), c);
+
+      final ComboBox<SelfReferenceStrategy> strategyBox =
+          new ComboBox<>(SelfReferenceStrategy.values());
+      strategyBox.setSelectedItem(SelfReferenceStrategy.NONE);
+      c.gridx = 1;
+      c.weightx = 0;
+      c.fill = GridBagConstraints.NONE;
+      row.add(strategyBox, c);
+
+      final JSpinner depthSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 9999, 1));
+      configureEditableDepthSpinner(depthSpinner, 84);
+      depthSpinner.setEnabled(false);
+      c.gridx = 2;
+      row.add(depthSpinner, c);
+
+      rowsByTable
+          .computeIfAbsent(relation.tableName(), key -> new ArrayList<>())
+          .add(new SelfRefRowControls(strategyBox, depthSpinner));
+      selfRefStrategyBoxes.putIfAbsent(relation.tableName(), strategyBox);
+      selfRefDepthSpinners.putIfAbsent(relation.tableName(), depthSpinner);
+
+      strategyBox.addActionListener(
+          e ->
+              syncTableSelfRefControls(
+                  relation.tableName(),
+                  (SelfReferenceStrategy) strategyBox.getSelectedItem(),
+                  (Integer) depthSpinner.getValue(),
+                  rowsByTable,
+                  syncingRows));
+
+      depthSpinner.addChangeListener(
+          e ->
+              syncTableSelfRefControls(
+                  relation.tableName(),
+                  (SelfReferenceStrategy) strategyBox.getSelectedItem(),
+                  (Integer) depthSpinner.getValue(),
+                  rowsByTable,
+                  syncingRows));
+
+      section.add(row);
     }
 
     return section;
   }
 
-  /** Creates a single per-table row: [table name] [Strategy ▼] [Depth: spinner]. */
-  private JPanel createSelfRefRow(final Table table) {
-    final java.awt.FlowLayout fl = new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 8, 2);
-    final JPanel row = new JPanel(fl);
+  private List<SelfRefRelation> detectSelfRefRelations() {
+    final List<SelfRefRelation> relations = new ArrayList<>();
+    final List<Set<String>> multiCycles =
+        com.luisppb16.dbseed.db.TopologicalSorter.sort(tables).cycles().stream()
+            .filter(cycle -> cycle.size() > 1)
+            .toList();
 
-    final JBLabel tableLabel = new JBLabel(table.name());
-    tableLabel.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD));
-    tableLabel.setPreferredSize(JBUI.size(160, -1));
-    row.add(tableLabel);
+    for (final Table table : tables) {
+      for (final var fk : table.foreignKeys()) {
+        final boolean isSelfReference = table.name().equals(fk.pkTable());
+        final boolean isMultiCycleRelation =
+            multiCycles.stream().anyMatch(c -> c.contains(table.name()) && c.contains(fk.pkTable()));
+        if (!isSelfReference && !isMultiCycleRelation) {
+          continue;
+        }
+        fk.columnMapping()
+            .forEach(
+                (fkColumn, targetColumn) ->
+                    relations.add(
+                        new SelfRefRelation(table.name(), fkColumn, fk.pkTable(), targetColumn)));
+      }
+    }
 
-    row.add(new JBLabel("Strategy:"));
-    final ComboBox<SelfReferenceStrategy> strategyBox =
-        new ComboBox<>(SelfReferenceStrategy.values());
-    strategyBox.setSelectedItem(SelfReferenceStrategy.NONE);
-    row.add(strategyBox);
+    relations.sort(
+        java.util.Comparator.comparing(SelfRefRelation::tableName)
+            .thenComparing(SelfRefRelation::fkColumn)
+            .thenComparing(SelfRefRelation::targetTable)
+            .thenComparing(SelfRefRelation::targetColumn));
+    return relations;
+  }
 
-    row.add(new JBLabel("  Depth:"));
-    final JSpinner depthSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 9999, 1));
-    depthSpinner.setEnabled(false);
-    depthSpinner.setPreferredSize(JBUI.size(60, -1));
-    ComponentUtils.configureSpinnerArrowKeyControls(depthSpinner);
-    row.add(depthSpinner);
+  private void syncTableSelfRefControls(
+      final String tableName,
+      final SelfReferenceStrategy strategy,
+      final int depth,
+      final Map<String, List<SelfRefRowControls>> rowsByTable,
+      final AtomicBoolean syncingRows) {
+    if (strategy == null || syncingRows.get()) {
+      return;
+    }
 
-    // Store widget references for doOKAction sync
-    selfRefStrategyBoxes.put(table.name(), strategyBox);
-    selfRefDepthSpinners.put(table.name(), depthSpinner);
-
-    // Wire listeners
-    strategyBox.addActionListener(
-        e -> {
-          final SelfReferenceStrategy selected =
-              (SelfReferenceStrategy) strategyBox.getSelectedItem();
-          depthSpinner.setEnabled(selected == SelfReferenceStrategy.HIERARCHY);
-          updateSelfRefConfig(table.name(), selected, (Integer) depthSpinner.getValue());
-        });
-    depthSpinner.addChangeListener(
-        e ->
-            updateSelfRefConfig(
-                table.name(),
-                (SelfReferenceStrategy) strategyBox.getSelectedItem(),
-                (Integer) depthSpinner.getValue()));
-
-    return row;
+    syncingRows.set(true);
+    try {
+      final List<SelfRefRowControls> controls = rowsByTable.getOrDefault(tableName, List.of());
+      for (final SelfRefRowControls control : controls) {
+        if (control.strategyBox().getSelectedItem() != strategy) {
+          control.strategyBox().setSelectedItem(strategy);
+        }
+        if (!Objects.equals(control.depthSpinner().getValue(), depth)) {
+          control.depthSpinner().setValue(depth);
+        }
+        control.depthSpinner().setEnabled(strategy == SelfReferenceStrategy.HIERARCHY);
+      }
+      updateSelfRefConfig(tableName, strategy, depth);
+    } finally {
+      syncingRows.set(false);
+    }
   }
 
   private void updateSelfRefConfig(
@@ -1129,6 +1267,20 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           tableName, SelfReferenceConfig.builder().strategy(strategy).hierarchyDepth(0).build());
     }
   }
+
+  private void configureEditableDepthSpinner(final JSpinner spinner, final int width) {
+    spinner.setEditor(new JSpinner.NumberEditor(spinner, "#"));
+    if (spinner.getEditor() instanceof final JSpinner.DefaultEditor defaultEditor) {
+      final JFormattedTextField textField = defaultEditor.getTextField();
+      textField.setEditable(true);
+      textField.setColumns(5);
+    }
+
+    // Use a concrete height so the editor stays visible in Darcula/IntelliJ themes.
+    spinner.setPreferredSize(JBUI.size(width, 26));
+    ComponentUtils.configureSpinnerArrowKeyControls(spinner);
+  }
+
 
   private final class BackAction extends AbstractAction {
     private BackAction() {

@@ -11,7 +11,9 @@ import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JFormattedTextField;
 import javax.swing.JSpinner;
+import javax.swing.JTextField;
 import javax.swing.KeyStroke;
+import javax.swing.text.DefaultFormatter;
 import lombok.experimental.UtilityClass;
 
 /**
@@ -46,6 +48,15 @@ public class ComponentUtils {
     final JComponent editor = spinner.getEditor();
     if (editor instanceof final JSpinner.DefaultEditor defaultEditor) {
       final JFormattedTextField textField = defaultEditor.getTextField();
+      textField.setEditable(true);
+      textField.setHorizontalAlignment(JTextField.RIGHT);
+      if (textField.getColumns() < 4) {
+        textField.setColumns(4);
+      }
+      if (textField.getFormatter() instanceof final DefaultFormatter formatter) {
+        formatter.setCommitsOnValidEdit(true);
+      }
+
       final InputMap inputMap = textField.getInputMap(JComponent.WHEN_FOCUSED);
 
       final String incrementAction = "increment";

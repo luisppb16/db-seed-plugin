@@ -120,3 +120,139 @@ CREATE TABLE public.articles
     created_at TIMESTAMP DEFAULT now()
 );
 
+-- Test fixtures for hierarchy generation and mutual circular references.
+CREATE TABLE public.military_ranks
+(
+    id             UUID PRIMARY KEY,
+    rank_name      VARCHAR(100) NOT NULL UNIQUE,
+    parent_rank_id UUID,
+    level_hint     INT          DEFAULT 0 CHECK (level_hint >= 0),
+    CONSTRAINT chk_military_ranks_no_self_loop CHECK (parent_rank_id IS NULL OR parent_rank_id <> id),
+    CONSTRAINT fk_military_ranks_parent FOREIGN KEY (parent_rank_id)
+        REFERENCES public.military_ranks (id)
+        DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE public.department_nodes
+(
+    id          UUID PRIMARY KEY,
+    node_name   VARCHAR(120) NOT NULL,
+    parent_id   UUID,
+    depth_limit INT          NOT NULL CHECK (depth_limit >= 1 AND depth_limit <= 12),
+    CONSTRAINT chk_department_nodes_no_self_loop CHECK (parent_id IS NULL OR parent_id <> id),
+    CONSTRAINT fk_department_nodes_parent FOREIGN KEY (parent_id)
+        REFERENCES public.department_nodes (id)
+        DEFERRABLE INITIALLY DEFERRED
+);
+
+-- Mutual cycle of length 2.
+CREATE TABLE public.cycle2_a
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    b_ref_id  UUID NOT NULL UNIQUE
+);
+
+CREATE TABLE public.cycle2_b
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    a_ref_id  UUID NOT NULL UNIQUE
+);
+
+ALTER TABLE public.cycle2_a
+    ADD CONSTRAINT fk_cycle2_a_to_b FOREIGN KEY (b_ref_id)
+        REFERENCES public.cycle2_b (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE public.cycle2_b
+    ADD CONSTRAINT fk_cycle2_b_to_a FOREIGN KEY (a_ref_id)
+        REFERENCES public.cycle2_a (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+-- Mutual cycle of length 3.
+CREATE TABLE public.cycle3_a
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    b_ref_id  UUID NOT NULL UNIQUE
+);
+
+CREATE TABLE public.cycle3_b
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    c_ref_id  UUID NOT NULL UNIQUE
+);
+
+CREATE TABLE public.cycle3_c
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    a_ref_id  UUID NOT NULL UNIQUE
+);
+
+ALTER TABLE public.cycle3_a
+    ADD CONSTRAINT fk_cycle3_a_to_b FOREIGN KEY (b_ref_id)
+        REFERENCES public.cycle3_b (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE public.cycle3_b
+    ADD CONSTRAINT fk_cycle3_b_to_c FOREIGN KEY (c_ref_id)
+        REFERENCES public.cycle3_c (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE public.cycle3_c
+    ADD CONSTRAINT fk_cycle3_c_to_a FOREIGN KEY (a_ref_id)
+        REFERENCES public.cycle3_a (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+-- Mutual cycle of length 4.
+CREATE TABLE public.cycle4_a
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    b_ref_id  UUID NOT NULL UNIQUE
+);
+
+CREATE TABLE public.cycle4_b
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    c_ref_id  UUID NOT NULL UNIQUE
+);
+
+CREATE TABLE public.cycle4_c
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    d_ref_id  UUID NOT NULL UNIQUE
+);
+
+CREATE TABLE public.cycle4_d
+(
+    id        UUID PRIMARY KEY,
+    name      VARCHAR(80),
+    a_ref_id  UUID NOT NULL UNIQUE
+);
+
+ALTER TABLE public.cycle4_a
+    ADD CONSTRAINT fk_cycle4_a_to_b FOREIGN KEY (b_ref_id)
+        REFERENCES public.cycle4_b (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE public.cycle4_b
+    ADD CONSTRAINT fk_cycle4_b_to_c FOREIGN KEY (c_ref_id)
+        REFERENCES public.cycle4_c (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE public.cycle4_c
+    ADD CONSTRAINT fk_cycle4_c_to_d FOREIGN KEY (d_ref_id)
+        REFERENCES public.cycle4_d (id)
+        DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE public.cycle4_d
+    ADD CONSTRAINT fk_cycle4_d_to_a FOREIGN KEY (a_ref_id)
+        REFERENCES public.cycle4_a (id)
+        DEFERRABLE INITIALLY DEFERRED;
+

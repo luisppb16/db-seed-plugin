@@ -3,10 +3,10 @@ name: Build, Test and Release Plugin
 on:
   push:
     branches:
-      - feature/referencias-circulares-y-jerarquias
+      - main
   pull_request:
     branches:
-      - feature/referencias-circulares-y-jerarquias
+      - main
   release:
     types: [ published ]
 

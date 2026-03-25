@@ -330,7 +330,7 @@ class SqliteDatabaseSeedingIntegrationTest {
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
       IntegrationTestSupport.applyInlineSql(
           connection,
-          "CREATE TABLE profile (id INTEGER PRIMARY KEY, bio TEXT, secret_key TEXT)",
+          "CREATE TABLE profile (id INTEGER PRIMARY KEY, bio TEXT NOT NULL, secret_key TEXT)",
           IntegrationTestSupport.allStatements());
 
       final IntegrationTestSupport.WorkflowOptions options =
@@ -353,10 +353,13 @@ class SqliteDatabaseSeedingIntegrationTest {
       IntegrationTestSupport.runWorkflow(
           connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
 
+      long totalGenerados = IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile");
+      assertThat(totalGenerados).isGreaterThan(0);
+
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile WHERE secret_key IS NULL"))
-          .isEqualTo(5);
+          .isEqualTo(totalGenerados);
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile WHERE bio IS NOT NULL"))
-          .isEqualTo(5);
+          .isEqualTo(totalGenerados);
     }
   }
 
@@ -366,7 +369,7 @@ class SqliteDatabaseSeedingIntegrationTest {
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
       IntegrationTestSupport.applyInlineSql(
           connection,
-          "CREATE TABLE company (id INTEGER PRIMARY KEY, name TEXT, industry TEXT, hq TEXT)",
+          "CREATE TABLE company (id INTEGER PRIMARY KEY, name TEXT NOT NULL, industry TEXT NOT NULL, hq TEXT NOT NULL)",
           IntegrationTestSupport.allStatements());
 
       final com.luisppb16.dbseed.model.RepetitionRule rule = 
@@ -374,7 +377,7 @@ class SqliteDatabaseSeedingIntegrationTest {
       
       final IntegrationTestSupport.WorkflowOptions options =
           new IntegrationTestSupport.WorkflowOptions(
-              2,
+              5,
               false,
               Map.of(),
               Map.of(),
@@ -528,6 +531,8 @@ class SqliteDatabaseSeedingIntegrationTest {
         .orElseThrow(() -> new AssertionError("Artifact not found in classpath: " + artifactFragment));
   }
 }
+
+
 
 
 

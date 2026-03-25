@@ -5,7 +5,7 @@
 
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.11.0'
+    id 'org.jetbrains.intellij.platform' version '2.13.1'
     id 'jacoco'
 }
 
@@ -24,14 +24,10 @@ group = 'com.LuisPPB16'
 version = '1.3.3'
 
 intellijPlatform {
-    signing {
-        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
-        privateKey = providers.environmentVariable("PRIVATE_KEY")
-        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
-    }
-    publishing {
-        token = providers.environmentVariable("PUBLISH_TOKEN")
-    }
+    signing.certificateChain.set(providers.environmentVariable("CERTIFICATE_CHAIN"))
+    signing.privateKey.set(providers.environmentVariable("PRIVATE_KEY"))
+    signing.password.set(providers.environmentVariable("PRIVATE_KEY_PASSWORD"))
+    publishing.token.set(providers.environmentVariable("PUBLISH_TOKEN"))
 }
 
 repositories {
@@ -45,7 +41,12 @@ dependencies {
     intellijPlatform {
         intellijIdeaCommunity '2024.2'
         bundledPlugin 'com.intellij.java'
-        instrumentationTools()
+    }
+
+    constraints {
+        testImplementation('org.apache.commons:commons-compress:1.28.0') {
+            because 'avoid CVEs in the transitive test classpath'
+        }
     }
 
     implementation 'net.datafaker:datafaker:2.5.3'

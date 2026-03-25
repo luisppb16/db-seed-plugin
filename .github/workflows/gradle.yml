@@ -26,5 +26,4 @@ jobs:
           gradle-version: '9.4.0'
 
       - name: Build with Gradle
-        run: ./gradlew clean buildPlugin
-
+        run: gradle clean buildPlugin

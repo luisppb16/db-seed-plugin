@@ -9,31 +9,39 @@ import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.schema.SchemaDsl;
 import com.luisppb16.dbseed.schema.SqlType;
 import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Window;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import javax.swing.Action;
+import javax.swing.DefaultCellEditor;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JComponent;
+import javax.swing.JDialog;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.SwingWorker;
+import javax.swing.table.DefaultTableModel;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -128,7 +136,7 @@ public final class SchemaDesigner extends AnAction {
     }
 
     private void generateSql() {
-      final javax.swing.JDialog progressDialog = new javax.swing.JDialog();
+      final JDialog progressDialog = new JDialog();
       progressDialog.setTitle("Generating SQL");
       progressDialog.setModal(true);
       final JProgressBar progressBar = new JProgressBar();
@@ -180,15 +188,14 @@ public final class SchemaDesigner extends AnAction {
    */
   private static final class AddTableDialog extends DialogWrapper {
 
-    private final javax.swing.JTextField tableNameField = new javax.swing.JTextField(20);
-    private final javax.swing.table.DefaultTableModel tableModel;
+    private final JTextField tableNameField = new JTextField(20);
+    private final DefaultTableModel tableModel;
 
-    AddTableDialog(@Nullable java.awt.Window parent) {
-      super(true);
+    AddTableDialog(@Nullable Window parent) {
+      super(parent, true);
       setTitle("Add Table");
       tableModel =
-          new javax.swing.table.DefaultTableModel(
-              new Object[] {"Column Name", "SQL Type", "Primary Key"}, 0) {
+          new DefaultTableModel(new Object[] {"Column Name", "SQL Type", "Primary Key"}, 0) {
             @Override
             public Class<?> getColumnClass(int columnIndex) {
               return columnIndex == 2 ? Boolean.class : Object.class;
@@ -232,14 +239,10 @@ public final class SchemaDesigner extends AnAction {
       namePanel.add(tableNameField, BorderLayout.CENTER);
       panel.add(namePanel, BorderLayout.NORTH);
 
-      final com.intellij.ui.table.JBTable table = new com.intellij.ui.table.JBTable(tableModel);
+      final JBTable table = new JBTable(tableModel);
       // Set up the SQL type column with a combo box editor
-      final com.intellij.openapi.ui.ComboBox<SqlType> typeCombo =
-          new com.intellij.openapi.ui.ComboBox<>(SqlType.values());
-      table
-          .getColumnModel()
-          .getColumn(1)
-          .setCellEditor(new javax.swing.DefaultCellEditor(typeCombo));
+      final ComboBox<SqlType> typeCombo = new ComboBox<>(SqlType.values());
+      table.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(typeCombo));
       table.setRowHeight(JBUI.scale(24));
 
       final JBScrollPane scrollPane = new JBScrollPane(table);
@@ -258,7 +261,7 @@ public final class SchemaDesigner extends AnAction {
             }
           });
 
-      final JPanel buttonsPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT));
+      final JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
       buttonsPanel.add(addRowButton);
       buttonsPanel.add(removeRowButton);
 

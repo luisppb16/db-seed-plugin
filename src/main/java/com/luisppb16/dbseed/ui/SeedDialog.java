@@ -9,6 +9,7 @@ import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
@@ -266,7 +267,7 @@ public final class SeedDialog extends DialogWrapper {
 
     // Connection Settings Section
     builder
-        .addComponent(new com.intellij.ui.TitledSeparator("Database Connection"))
+        .addComponent(new TitledSeparator("Database Connection"))
         .addVerticalGap(4);
 
     builder.addLabeledComponent("JDBC URL:", urlField);
@@ -290,7 +291,7 @@ public final class SeedDialog extends DialogWrapper {
     // Generation Settings Section
     builder
         .addVerticalGap(12)
-        .addComponent(new com.intellij.ui.TitledSeparator("Generation Settings"))
+        .addComponent(new TitledSeparator("Generation Settings"))
         .addVerticalGap(4);
 
     builder.addLabeledComponent("Rows per table:", rowsSpinner);

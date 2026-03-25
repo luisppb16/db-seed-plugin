@@ -41,6 +41,8 @@ import javax.swing.JSplitPane;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingConstants;
+import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import org.jetbrains.annotations.NotNull;
@@ -168,13 +170,11 @@ public class RepetitionRulesPanel extends JPanel {
     final JPanel rulesContainer = new JPanel();
     rulesContainer.setLayout(new BoxLayout(rulesContainer, BoxLayout.Y_AXIS));
 
-    final JLabel emptyLabel =
-        new JLabel("No repetition rules defined. Click 'Add Repetition Rule' to create one.");
-    emptyLabel.setIcon(AllIcons.General.Information);
-    emptyLabel.setForeground(javax.swing.UIManager.getColor("Label.infoForeground"));
-    emptyLabel.setBorder(JBUI.Borders.empty(16));
-    emptyLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-    rulesContainer.add(emptyLabel);
+    final JLabel emptyLabel = new JLabel("Select a column to add repetition rules");
+    emptyLabel.setForeground(UIManager.getColor("Label.infoForeground"));
+    emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC));
+    emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
+    rulesContainer.add(emptyLabel, "EMPTY");
 
     final JScrollPane scrollPane = new JBScrollPane(rulesContainer);
     panel.add(scrollPane, BorderLayout.CENTER);
@@ -215,7 +215,7 @@ public class RepetitionRulesPanel extends JPanel {
         BorderFactory.createCompoundBorder(
             BorderFactory.createEmptyBorder(5, 5, 5, 5),
             BorderFactory.createLineBorder(
-                javax.swing.UIManager.getColor("Component.borderColor"))));
+                UIManager.getColor("Component.borderColor"))));
 
     final JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
     headerPanel.add(new JLabel("Repeat Count:"));
@@ -232,7 +232,7 @@ public class RepetitionRulesPanel extends JPanel {
           container.remove(rulePanel);
           // Also remove the trailing vertical strut
           if (container.getComponentCount() > 0) {
-            final java.awt.Component last =
+            final Component last =
                 container.getComponent(container.getComponentCount() - 1);
             if (last instanceof Box.Filler) {
               container.remove(last);
@@ -240,13 +240,10 @@ public class RepetitionRulesPanel extends JPanel {
           }
           // Restore empty-state label if no rules remain
           if (rulesByTable.get(table.name()).isEmpty()) {
-            final JLabel emptyLabel =
-                new JLabel(
-                    "No repetition rules defined. Click 'Add Repetition Rule' to create one.");
-            emptyLabel.setIcon(AllIcons.General.Information);
-            emptyLabel.setForeground(javax.swing.UIManager.getColor("Label.infoForeground"));
-            emptyLabel.setBorder(JBUI.Borders.empty(16));
-            emptyLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+            final JLabel emptyLabel = new JLabel("No repetition rules defined");
+            emptyLabel.setForeground(UIManager.getColor("Label.infoForeground"));
+            emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC));
+            emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
             container.add(emptyLabel);
           }
           container.revalidate();
@@ -298,7 +295,7 @@ public class RepetitionRulesPanel extends JPanel {
         e ->
             valueField.setEnabled(STRATEGY_CONSTANT_VALUE.equals(strategyCombo.getSelectedItem())));
 
-    final JButton removeBtn = new JButton(AllIcons.Actions.Cancel);
+    final JButton removeBtn = new JButton(AllIcons.General.Remove);
 
     final ColumnOverrideModel overrideModel = new ColumnOverrideModel();
     overrideModel.columnName = (String) colCombo.getSelectedItem();

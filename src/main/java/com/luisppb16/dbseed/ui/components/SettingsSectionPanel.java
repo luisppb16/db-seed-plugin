@@ -9,7 +9,11 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ui.JBColor;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.Font;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -58,7 +62,7 @@ public class SettingsSectionPanel extends JPanel {
 
     // Section title
     final JLabel titleLabel = new JLabel(title);
-    titleLabel.setFont(titleLabel.getFont().deriveFont(java.awt.Font.BOLD, 12f));
+    titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 12f));
     titleLabel.setForeground(UIUtil.getActiveTextColor());
 
     // Toggle button (initially expanded)

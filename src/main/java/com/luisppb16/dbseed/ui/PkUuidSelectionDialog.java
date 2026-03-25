@@ -27,6 +27,7 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.sql.Types;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -47,6 +48,7 @@ import javax.swing.AbstractButton;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
@@ -54,6 +56,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.JTextField;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
@@ -295,8 +298,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JBScrollPane scrollPane = new JBScrollPane(wrapper);
     scrollPane.setBorder(JBUI.Borders.empty());
-    scrollPane.setHorizontalScrollBarPolicy(
-        javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     return scrollPane;
   }
 
@@ -305,9 +307,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     // === Soft Delete Section ===
     final JPanel softDeleteSection = new JPanel();
-    softDeleteSection.setLayout(
-        new javax.swing.BoxLayout(softDeleteSection, javax.swing.BoxLayout.Y_AXIS));
-    softDeleteSection.setBorder(JBUI.Borders.emptyBottom(20));
+    softDeleteSection.setLayout(new BoxLayout(softDeleteSection, BoxLayout.Y_AXIS));
+    softDeleteSection.setBorder(BorderFactory.createTitledBorder("Soft Delete Settings"));
 
     // Section header
     final JBLabel softDeleteTitle = new JBLabel("Soft Delete Configuration");
@@ -353,9 +354,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     // === Numeric Configuration Section ===
     final JPanel numericSection = new JPanel();
-    numericSection.setLayout(
-        new javax.swing.BoxLayout(numericSection, javax.swing.BoxLayout.Y_AXIS));
-    numericSection.setBorder(JBUI.Borders.emptyTop(20));
+    numericSection.setLayout(new BoxLayout(numericSection, BoxLayout.Y_AXIS));
+    numericSection.setBorder(BorderFactory.createTitledBorder("Numeric Scale"));
 
     // Section header
     final JBLabel numericTitle = new JBLabel("Numeric Configuration");
@@ -388,8 +388,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     mainPanel.setBorder(JBUI.Borders.empty());
 
     final JPanel sectionsWrapper = new JPanel();
-    sectionsWrapper.setLayout(
-        new javax.swing.BoxLayout(sectionsWrapper, javax.swing.BoxLayout.Y_AXIS));
+    sectionsWrapper.setLayout(new BoxLayout(sectionsWrapper, BoxLayout.Y_AXIS));
     sectionsWrapper.add(softDeleteSection);
     sectionsWrapper.add(numericSection);
     sectionsWrapper.add(Box.createVerticalGlue());
@@ -934,7 +933,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final class BackAction extends AbstractAction {
     private BackAction() {
       super("Back");
-      putValue(MNEMONIC_KEY, java.awt.event.KeyEvent.VK_B);
+      putValue(MNEMONIC_KEY, KeyEvent.VK_B);
     }
 
     @Override

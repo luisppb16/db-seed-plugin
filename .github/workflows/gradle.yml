@@ -17,7 +17,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          java-version: '25'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -26,5 +26,5 @@ jobs:
           gradle-version: '9.4.0'
 
       - name: Build with Gradle
-        run: gradle clean buildPlugin
+        run: ./gradlew clean buildPlugin
 

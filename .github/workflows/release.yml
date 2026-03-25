@@ -1,4 +1,4 @@
-name: Build, Test and Release Plugin
+name: Build, Test, Sign, Release and Publish Plugin
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '25'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Setup Gradle
@@ -37,17 +37,28 @@ jobs:
           gradle-version: '9.4.0'
 
       - name: Run Gradle build, tests, and JaCoCo report
-        run: gradle clean buildPlugin jacocoTestReport
+        run: ./gradlew clean buildPlugin jacocoTestReport
 
       - name: Build plugin distribution ZIP
         if: github.event_name == 'release'
-        run: gradle clean buildPlugin
+        run: ./gradlew clean buildPlugin
+
+      - name: Sign plugin distribution ZIP
+        if: github.event_name == 'release'
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+        run: ./gradlew signPlugin
 
       - name: Locate plugin ZIP
         if: github.event_name == 'release'
         id: locate-zip
         run: |
-          ZIP_PATH=$(find build/distributions -type f -name "*.zip" | head -n 1)
+          ZIP_PATH=$(find build/distributions -type f -name "*-signed.zip" | head -n 1)
+          if [ -z "$ZIP_PATH" ]; then
+            ZIP_PATH=$(find build/distributions -type f -name "*.zip" | head -n 1)
+          fi
           if [ -z "$ZIP_PATH" ]; then
             echo "No distributable ZIP file found" >&2
             exit 1
@@ -59,3 +70,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.locate-zip.outputs.zip_path }}
+
+      - name: Publish plugin to JetBrains Marketplace
+        if: github.event_name == 'release'
+        env:
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: ./gradlew publishPlugin
+

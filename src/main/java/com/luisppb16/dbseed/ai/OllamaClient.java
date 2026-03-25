@@ -321,7 +321,6 @@ public class OllamaClient {
     return models;
   }
 
-
   public CompletableFuture<List<String>> generateBatchValues(
       @NotNull final String applicationContext,
       @NotNull final String tableName,
@@ -420,7 +419,6 @@ public class OllamaClient {
       return List.of();
     }
   }
-
 
   private String extractRawResponse(String responseBody) throws IOException {
     try {

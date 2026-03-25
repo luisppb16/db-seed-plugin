@@ -48,7 +48,6 @@ public final class RowGenerator {
   private static final double AI_OVER_REQUEST_FACTOR = 1.2;
   private static final int AI_RECYCLE_THRESHOLD = 5;
 
-
   private final Table table;
   private final int rowsPerTable;
   private final Set<String> excludedColumns;
@@ -152,16 +151,14 @@ public final class RowGenerator {
     return rows;
   }
 
-  /**
-   * Returns true if this generator has AI columns that require generation.
-   */
+  /** Returns true if this generator has AI columns that require generation. */
   public boolean hasAiColumns() {
     return Objects.nonNull(ollamaClient) && !aiColumns.isEmpty() && !rows.isEmpty();
   }
 
   /**
-   * Returns the filtered list of AI columns valid for generation (non-null, non-excluded).
-   * Used by DataGenerator to flatten (table, column) pairs for the single AI executor.
+   * Returns the filtered list of AI columns valid for generation (non-null, non-excluded). Used by
+   * DataGenerator to flatten (table, column) pairs for the single AI executor.
    */
   public List<Column> getValidAiColumns() {
     if (Objects.isNull(ollamaClient) || aiColumns.isEmpty() || rows.isEmpty()) {
@@ -175,8 +172,8 @@ public final class RowGenerator {
   }
 
   /**
-   * Generates AI values for a single column across all rows.
-   * Called externally by DataGenerator from the flat AI executor pool.
+   * Generates AI values for a single column across all rows. Called externally by DataGenerator
+   * from the flat AI executor pool.
    */
   public void generateAiValuesForColumn(final Column col) {
     if (Objects.isNull(ollamaClient) || rows.isEmpty()) return;
@@ -451,8 +448,7 @@ public final class RowGenerator {
               retries++;
             }
           } catch (final Exception ex) {
-            log.warn(
-                "Batch AI retry failed for {}.{}: {}", table.name(), colName, ex.getMessage());
+            log.warn("Batch AI retry failed for {}.{}: {}", table.name(), colName, ex.getMessage());
             retries++;
           }
         }

@@ -214,8 +214,7 @@ public class RepetitionRulesPanel extends JPanel {
     rulePanel.setBorder(
         BorderFactory.createCompoundBorder(
             BorderFactory.createEmptyBorder(5, 5, 5, 5),
-            BorderFactory.createLineBorder(
-                UIManager.getColor("Component.borderColor"))));
+            BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"))));
 
     final JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
     headerPanel.add(new JLabel("Repeat Count:"));
@@ -232,8 +231,7 @@ public class RepetitionRulesPanel extends JPanel {
           container.remove(rulePanel);
           // Also remove the trailing vertical strut
           if (container.getComponentCount() > 0) {
-            final Component last =
-                container.getComponent(container.getComponentCount() - 1);
+            final Component last = container.getComponent(container.getComponentCount() - 1);
             if (last instanceof Box.Filler) {
               container.remove(last);
             }

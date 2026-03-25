@@ -108,8 +108,8 @@ public class DataGenerator {
    *
    * <p>The hotfix that serialized AI work column-by-column removed all useful overlap between
    * columns/tables and caused large regressions on machines where Ollama can queue or process more
-   * than one request efficiently. We keep a bounded pool to recover throughput without reintroducing
-   * the unbounded contention of the old nested parallelism.
+   * than one request efficiently. We keep a bounded pool to recover throughput without
+   * reintroducing the unbounded contention of the old nested parallelism.
    */
   private static final ExecutorService AI_COLUMN_EXECUTOR =
       Executors.newFixedThreadPool(

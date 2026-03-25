@@ -266,9 +266,7 @@ public final class SeedDialog extends DialogWrapper {
     final FormBuilder builder = FormBuilder.createFormBuilder();
 
     // Connection Settings Section
-    builder
-        .addComponent(new TitledSeparator("Database Connection"))
-        .addVerticalGap(4);
+    builder.addComponent(new TitledSeparator("Database Connection")).addVerticalGap(4);
 
     builder.addLabeledComponent("JDBC URL:", urlField);
 

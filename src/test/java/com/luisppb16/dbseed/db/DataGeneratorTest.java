@@ -7,7 +7,6 @@ package com.luisppb16.dbseed.db;
 
 import static org.assertj.core.api.Assertions.*;
 
-import com.sun.net.httpserver.HttpServer;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationParameters;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationResult;
@@ -15,11 +14,12 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
-import java.sql.Types;
 import java.nio.charset.StandardCharsets;
+import java.sql.Types;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import org.junit.jupiter.api.AfterAll;
@@ -470,7 +470,8 @@ class DataGeneratorTest {
                 Thread.sleep(50L);
               } catch (final InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException("Interrupted while handling fake Ollama request", e);
+                throw new IllegalStateException(
+                    "Interrupted while handling fake Ollama request", e);
               }
 
               responseBody = "{\"response\":\"__AI_VALUE__\\n__AI_VALUE_2__\"}";

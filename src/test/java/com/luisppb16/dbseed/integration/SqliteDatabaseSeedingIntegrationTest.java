@@ -9,15 +9,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.util.DriverLoader;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -57,6 +57,28 @@ class SqliteDatabaseSeedingIntegrationTest {
     }
   }
 
+  private static HttpServer startOllamaServer(final String responseLines) throws IOException {
+    final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext("/api/generate", new OllamaGenerateHandler(responseLines));
+    server.start();
+    return server;
+  }
+
+  private static String escapeJson(final String value) {
+    return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+  }
+
+  private static Path resolveClasspathArtifact(final String artifactFragment) {
+    return java.util.Arrays.stream(
+            System.getProperty("java.class.path", "").split(java.io.File.pathSeparator))
+        .map(Path::of)
+        .filter(path -> path.getFileName() != null)
+        .filter(path -> path.getFileName().toString().contains(artifactFragment))
+        .findFirst()
+        .orElseThrow(
+            () -> new AssertionError("Artifact not found in classpath: " + artifactFragment));
+  }
+
   @BeforeEach
   void resetSettings() {
     settings = IntegrationTestSupport.defaultSettings();
@@ -71,7 +93,10 @@ class SqliteDatabaseSeedingIntegrationTest {
 
       final IntegrationTestSupport.WorkflowResult outcome =
           IntegrationTestSupport.runWorkflow(
-              connection, null, IntegrationTestSupport.SQLITE_DRIVER, IntegrationTestSupport.defaults(2));
+              connection,
+              null,
+              IntegrationTestSupport.SQLITE_DRIVER,
+              IntegrationTestSupport.defaults(2));
 
       assertThat(outcome.tables()).isNotEmpty();
       assertThat(outcome.orderedTables()).hasSize(outcome.tables().size());
@@ -107,11 +132,15 @@ class SqliteDatabaseSeedingIntegrationTest {
 
     final Path sqlitePath = IntegrationTestSupport.newTempSqlitePath("dbseed-cycle-nullable");
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
-      IntegrationTestSupport.applyInlineSql(connection, schemaSql, IntegrationTestSupport.allStatements());
+      IntegrationTestSupport.applyInlineSql(
+          connection, schemaSql, IntegrationTestSupport.allStatements());
 
       final IntegrationTestSupport.WorkflowResult outcome =
           IntegrationTestSupport.prepareWorkflow(
-              connection, null, IntegrationTestSupport.SQLITE_DRIVER, IntegrationTestSupport.defaults(4));
+              connection,
+              null,
+              IntegrationTestSupport.SQLITE_DRIVER,
+              IntegrationTestSupport.defaults(4));
 
       assertThat(outcome.sortResult().cycles()).hasSize(1);
       assertThat(outcome.deferred()).isFalse();
@@ -156,7 +185,8 @@ class SqliteDatabaseSeedingIntegrationTest {
     settings.setAiApplicationContext("blog platform");
     settings.setAiWordCount(2);
 
-    final HttpServer server = startOllamaServer("ai_value_1\nai_value_2\nai_value_3\nai_value_4\nai_value_5");
+    final HttpServer server =
+        startOllamaServer("ai_value_1\nai_value_2\nai_value_3\nai_value_4\nai_value_5");
     settings.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
 
     final String schemaSql =
@@ -170,7 +200,8 @@ class SqliteDatabaseSeedingIntegrationTest {
 
     final Path sqlitePath = IntegrationTestSupport.newTempSqlitePath("dbseed-ai-positive");
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
-      IntegrationTestSupport.applyInlineSql(connection, schemaSql, IntegrationTestSupport.allStatements());
+      IntegrationTestSupport.applyInlineSql(
+          connection, schemaSql, IntegrationTestSupport.allStatements());
 
       final IntegrationTestSupport.WorkflowOptions options =
           new IntegrationTestSupport.WorkflowOptions(
@@ -190,13 +221,13 @@ class SqliteDatabaseSeedingIntegrationTest {
               settings.getAiApplicationContext());
 
       final IntegrationTestSupport.WorkflowResult outcome =
-          IntegrationTestSupport.runWorkflow(connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
+          IntegrationTestSupport.runWorkflow(
+              connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
 
       assertThat(outcome.generatedSql()).contains("INSERT INTO");
       assertThat(
               IntegrationTestSupport.queryForLong(
-                  connection,
-                  "SELECT COUNT(*) FROM articles WHERE content LIKE 'ai_value_%'"))
+                  connection, "SELECT COUNT(*) FROM articles WHERE content LIKE 'ai_value_%'"))
           .isEqualTo(4);
     } finally {
       server.stop(0);
@@ -220,7 +251,8 @@ class SqliteDatabaseSeedingIntegrationTest {
 
     final Path sqlitePath = IntegrationTestSupport.newTempSqlitePath("dbseed-ai-fallback");
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
-      IntegrationTestSupport.applyInlineSql(connection, schemaSql, IntegrationTestSupport.allStatements());
+      IntegrationTestSupport.applyInlineSql(
+          connection, schemaSql, IntegrationTestSupport.allStatements());
 
       final IntegrationTestSupport.WorkflowOptions options =
           new IntegrationTestSupport.WorkflowOptions(
@@ -239,7 +271,8 @@ class SqliteDatabaseSeedingIntegrationTest {
               Map.of("notes", Set.of("content")),
               settings.getAiApplicationContext());
 
-      IntegrationTestSupport.runWorkflow(connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
+      IntegrationTestSupport.runWorkflow(
+          connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
 
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM notes"))
           .isEqualTo(3);
@@ -283,7 +316,11 @@ class SqliteDatabaseSeedingIntegrationTest {
             .build();
 
     final Path cachedJar =
-        Path.of(System.getProperty("user.home"), ".db-seed-plugin", "drivers", "missing-driver-0.0.0.jar");
+        Path.of(
+            System.getProperty("user.home"),
+            ".db-seed-plugin",
+            "drivers",
+            "missing-driver-0.0.0.jar");
     Files.deleteIfExists(cachedJar);
 
     assertThatThrownBy(() -> DriverLoader.ensureDriverPresent(invalidDriver))
@@ -295,8 +332,7 @@ class SqliteDatabaseSeedingIntegrationTest {
     final Path missingDirectory = Files.createTempDirectory("dbseed-missing-db");
     final String url = "jdbc:sqlite:file:" + missingDirectory.resolve("missing.db") + "?mode=ro";
 
-    assertThatThrownBy(() -> DriverManager.getConnection(url))
-        .isInstanceOf(SQLException.class);
+    assertThatThrownBy(() -> DriverManager.getConnection(url)).isInstanceOf(SQLException.class);
   }
 
   @Test
@@ -317,7 +353,10 @@ class SqliteDatabaseSeedingIntegrationTest {
           IntegrationTestSupport.allStatements());
 
       IntegrationTestSupport.runWorkflow(
-          connection, null, IntegrationTestSupport.SQLITE_DRIVER, IntegrationTestSupport.defaults(5));
+          connection,
+          null,
+          IntegrationTestSupport.SQLITE_DRIVER,
+          IntegrationTestSupport.defaults(5));
 
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM audit_log"))
           .isEqualTo(5);
@@ -353,12 +392,17 @@ class SqliteDatabaseSeedingIntegrationTest {
       IntegrationTestSupport.runWorkflow(
           connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
 
-      long totalGenerados = IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile");
+      long totalGenerados =
+          IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile");
       assertThat(totalGenerados).isGreaterThan(0);
 
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile WHERE secret_key IS NULL"))
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(*) FROM profile WHERE secret_key IS NULL"))
           .isEqualTo(totalGenerados);
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM profile WHERE bio IS NOT NULL"))
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(*) FROM profile WHERE bio IS NOT NULL"))
           .isEqualTo(totalGenerados);
     }
   }
@@ -372,9 +416,10 @@ class SqliteDatabaseSeedingIntegrationTest {
           "CREATE TABLE company (id INTEGER PRIMARY KEY, name TEXT NOT NULL, industry TEXT NOT NULL, hq TEXT NOT NULL)",
           IntegrationTestSupport.allStatements());
 
-      final com.luisppb16.dbseed.model.RepetitionRule rule = 
-          new com.luisppb16.dbseed.model.RepetitionRule(3, Map.of("industry", "Tech"), Set.of("hq"));
-      
+      final com.luisppb16.dbseed.model.RepetitionRule rule =
+          new com.luisppb16.dbseed.model.RepetitionRule(
+              3, Map.of("industry", "Tech"), Set.of("hq"));
+
       final IntegrationTestSupport.WorkflowOptions options =
           new IntegrationTestSupport.WorkflowOptions(
               5,
@@ -397,9 +442,13 @@ class SqliteDatabaseSeedingIntegrationTest {
 
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM company"))
           .isGreaterThanOrEqualTo(3);
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM company WHERE industry = 'Tech'"))
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(*) FROM company WHERE industry = 'Tech'"))
           .isEqualTo(3);
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(DISTINCT hq) FROM company WHERE industry = 'Tech'"))
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(DISTINCT hq) FROM company WHERE industry = 'Tech'"))
           .isEqualTo(1);
     }
   }
@@ -435,7 +484,9 @@ class SqliteDatabaseSeedingIntegrationTest {
 
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM record"))
           .isEqualTo(2);
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM record WHERE deleted_at IS NULL"))
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(*) FROM record WHERE deleted_at IS NULL"))
           .isEqualTo(2);
     }
   }
@@ -457,7 +508,10 @@ class SqliteDatabaseSeedingIntegrationTest {
           IntegrationTestSupport.allStatements());
 
       IntegrationTestSupport.runWorkflow(
-          connection, null, IntegrationTestSupport.SQLITE_DRIVER, IntegrationTestSupport.defaults(5));
+          connection,
+          null,
+          IntegrationTestSupport.SQLITE_DRIVER,
+          IntegrationTestSupport.defaults(5));
 
       assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM employee"))
           .isEqualTo(5);
@@ -482,57 +536,29 @@ class SqliteDatabaseSeedingIntegrationTest {
                 IntegrationTestSupport.SQLITE_DRIVER,
                 IntegrationTestSupport.defaults(1_200));
 
-            assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM events"))
+            assertThat(
+                    IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM events"))
                 .isEqualTo(1_200);
           }
         });
   }
 
-  private static HttpServer startOllamaServer(final String responseLines) throws IOException {
-    final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    server.createContext("/api/generate", new OllamaGenerateHandler(responseLines));
-    server.start();
-    return server;
-  }
-
-  private static final class OllamaGenerateHandler implements HttpHandler {
-    private final String responseLines;
-
-    private OllamaGenerateHandler(final String responseLines) {
-      this.responseLines = responseLines;
-    }
+  private record OllamaGenerateHandler(String responseLines) implements HttpHandler {
 
     @Override
-    public void handle(final HttpExchange exchange) throws IOException {
-      final String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-      final String responseBody =
-          requestBody.contains("\"prompt\":\"\"")
-              ? "{\"response\":\"warm\"}"
-              : "{\"response\":\"" + escapeJson(responseLines) + "\"}";
+      public void handle(final HttpExchange exchange) throws IOException {
+        final String requestBody =
+            new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        final String responseBody =
+            requestBody.contains("\"prompt\":\"\"")
+                ? "{\"response\":\"warm\"}"
+                : "{\"response\":\"" + escapeJson(responseLines) + "\"}";
 
-      exchange.getResponseHeaders().add("Content-Type", "application/json");
-      exchange.sendResponseHeaders(200, responseBody.getBytes(StandardCharsets.UTF_8).length);
-      try (OutputStream outputStream = exchange.getResponseBody()) {
-        outputStream.write(responseBody.getBytes(StandardCharsets.UTF_8));
+        exchange.getResponseHeaders().add("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, responseBody.getBytes(StandardCharsets.UTF_8).length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+          outputStream.write(responseBody.getBytes(StandardCharsets.UTF_8));
+        }
       }
     }
-  }
-
-  private static String escapeJson(final String value) {
-    return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-  }
-
-  private static Path resolveClasspathArtifact(final String artifactFragment) {
-    return java.util.Arrays.stream(System.getProperty("java.class.path", "").split(java.io.File.pathSeparator))
-        .map(Path::of)
-        .filter(path -> path.getFileName() != null)
-        .filter(path -> path.getFileName().toString().contains(artifactFragment))
-        .findFirst()
-        .orElseThrow(() -> new AssertionError("Artifact not found in classpath: " + artifactFragment));
-  }
 }
-
-
-
-
-

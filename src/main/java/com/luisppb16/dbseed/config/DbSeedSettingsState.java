@@ -10,6 +10,10 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
+import com.luisppb16.dbseed.model.RepetitionRule;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import lombok.Getter;
 import lombok.Setter;
@@ -50,6 +54,10 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private int aiWordCount = 1;
   private int aiRequestTimeoutSeconds = 120;
 
+  private Map<String, List<RepetitionRule>> repetitionRules = new HashMap<>();
+
+  private Map<String, Map<String, Integer>> circularReferences = new HashMap<>();
+
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
         ApplicationManager.getApplication().getService(DbSeedSettingsState.class),
@@ -89,5 +97,21 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.aiWordCount = state.aiWordCount > 0 ? state.aiWordCount : 1;
     this.aiRequestTimeoutSeconds =
         state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
+  }
+
+  public Map<String, List<RepetitionRule>> getRepetitionRules() {
+    return repetitionRules;
+  }
+
+  public void setRepetitionRules(Map<String, List<RepetitionRule>> repetitionRules) {
+    this.repetitionRules = repetitionRules;
+  }
+
+  public Map<String, Map<String, Integer>> getCircularReferences() {
+    return circularReferences;
+  }
+
+  public void setCircularReferences(Map<String, Map<String, Integer>> circularReferences) {
+    this.circularReferences = circularReferences;
   }
 }

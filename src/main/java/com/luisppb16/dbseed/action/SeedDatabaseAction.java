@@ -340,6 +340,7 @@ public final class SeedDatabaseAction extends AnAction {
                                   .softDeleteValue(finalConfig.softDeleteValue())
                                   .numericScale(finalConfig.numericScale())
                                   .aiColumns(aiColumns)
+                                  .circularReferences(pkDialog.getCircularReferences())
                                   .applicationContext(
                                       settings.isUseAiGeneration()
                                           ? settings.getAiApplicationContext()

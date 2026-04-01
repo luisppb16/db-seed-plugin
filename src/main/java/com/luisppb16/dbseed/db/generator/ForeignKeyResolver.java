@@ -38,18 +38,21 @@ public final class ForeignKeyResolver {
   private final Map<String, Table> tableMap;
   private final Map<Table, List<Row>> data;
   private final boolean deferred;
-  private final List<PendingUpdate> updates;
-  private final Set<String> inserted;
-  private final Map<String, Deque<Row>> uniqueFkParentQueues;
+  private final Map<String, Map<String, Integer>> circularReferences;
+  private final Set<String> inserted = new HashSet<>();
+  private final Set<String> resolving = new HashSet<>();
+  private final List<PendingUpdate> updates = new ArrayList<>();
+  private final Map<String, Deque<Row>> uniqueFkParentQueues = new HashMap<>();
 
   public ForeignKeyResolver(
-      final Map<String, Table> tableMap, final Map<Table, List<Row>> data, final boolean deferred) {
+      final Map<String, Table> tableMap,
+      final Map<Table, List<Row>> data,
+      final boolean deferred,
+      final Map<String, Map<String, Integer>> circularReferences) {
     this.tableMap = Objects.requireNonNull(tableMap, "Table map cannot be null");
     this.data = Objects.requireNonNull(data, "Data map cannot be null");
     this.deferred = deferred;
-    this.updates = new ArrayList<>();
-    this.inserted = new HashSet<>();
-    this.uniqueFkParentQueues = new HashMap<>();
+    this.circularReferences = circularReferences == null ? new HashMap<>() : circularReferences;
   }
 
   public List<PendingUpdate> resolve() {
@@ -84,6 +87,19 @@ public final class ForeignKeyResolver {
 
     final List<List<String>> uniqueKeysOnFks = extractUniqueKeysOnForeignKeys(table);
 
+    // First, pre-process circular reference FKs
+    final List<ForeignKey> circularFks = new ArrayList<>();
+    if (circularReferences.containsKey(table.name())) {
+      final Map<String, Integer> fksConfig = circularReferences.get(table.name());
+      table.foreignKeys().stream()
+          .filter(fk -> fksConfig.containsKey(fk.name()) && fk.pkTable().equals(table.name()))
+          .forEach(circularFks::add);
+    }
+
+    if (!circularFks.isEmpty()) {
+      handleCircularReferences(table, rows, circularFks, circularReferences.get(table.name()));
+    }
+
     if (!uniqueKeysOnFks.isEmpty()) {
       handleUniqueFkResolution(table, rows, uniqueKeysOnFks);
     } else {
@@ -92,12 +108,51 @@ public final class ForeignKeyResolver {
               table
                   .foreignKeys()
                   .forEach(
-                      fk ->
+                      fk -> {
+                        if (!circularFks.contains(fk)) {
                           resolveSingleForeignKey(
-                              fk, table, row, fkNullableCache.getOrDefault(fk, false))));
+                              fk, table, row, fkNullableCache.getOrDefault(fk, false));
+                        }
+                      }));
     }
 
     inserted.add(table.name());
+  }
+
+  private void handleCircularReferences(
+      final Table table,
+      final List<Row> rows,
+      final List<ForeignKey> circularFks,
+      final Map<String, Integer> depths) {
+
+    for (ForeignKey fk : circularFks) {
+      int maxDepth = depths.getOrDefault(fk.name(), 3);
+      if (rows.isEmpty()) continue;
+
+      for (int i = 0; i < rows.size(); i++) {
+        Row row = rows.get(i);
+        int chainStart = (i / maxDepth) * maxDepth;
+        int chainEnd = Math.min(chainStart + maxDepth, rows.size()) - 1;
+
+        Row parentRow = (i == chainEnd) ? rows.get(chainStart) : rows.get(i + 1);
+
+        if (deferred) {
+          fk.columnMapping()
+              .forEach((fkCol, pkCol) -> row.values().put(fkCol, parentRow.values().get(pkCol)));
+        } else {
+          final Map<String, Object> fkVals = new LinkedHashMap<>();
+          fk.columnMapping()
+              .forEach(
+                  (fkCol, pkCol) -> {
+                    fkVals.put(fkCol, parentRow.values().get(pkCol));
+                    row.values().put(fkCol, null);
+                  });
+          final Map<String, Object> pkVals = new LinkedHashMap<>();
+          table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
+          updates.add(new PendingUpdate(table.name(), fkVals, pkVals));
+        }
+      }
+    }
   }
 
   private List<List<String>> extractUniqueKeysOnForeignKeys(final Table table) {

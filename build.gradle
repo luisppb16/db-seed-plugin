@@ -21,7 +21,7 @@ sourceSets {
 }
 
 group = 'com.LuisPPB16'
-version = '1.3.3'
+version = '1.3.4-BETA'
 
 intellijPlatform {
     signing.certificateChain.set(providers.environmentVariable("CERTIFICATE_CHAIN"))

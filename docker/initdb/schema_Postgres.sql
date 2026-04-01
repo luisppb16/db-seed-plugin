@@ -6,11 +6,12 @@
 CREATE TABLE public.users
 (
     id         UUID PRIMARY KEY,
-    profile_id UUID,
+    manager_id UUID,
     username   VARCHAR(50) UNIQUE,
     email      VARCHAR(100) UNIQUE,
     created_at TIMESTAMP DEFAULT now(),
-    is_active  BOOLEAN   DEFAULT TRUE
+    is_active  BOOLEAN   DEFAULT TRUE,
+    CONSTRAINT fk_user_manager FOREIGN KEY (manager_id) REFERENCES public.users (id)
 );
 
 CREATE TABLE public.user_profiles
@@ -121,9 +122,4 @@ CREATE TABLE public.articles
     created_at TIMESTAMP DEFAULT now()
 );
 
-ALTER TABLE public.users
-    ADD CONSTRAINT fk_users_profile
-        FOREIGN KEY (profile_id)
-            REFERENCES public.user_profiles (id)
-            DEFERRABLE INITIALLY DEFERRED;
 

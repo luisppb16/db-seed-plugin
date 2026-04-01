@@ -6,6 +6,7 @@
 CREATE TABLE public.users
 (
     id         UUID PRIMARY KEY,
+    profile_id UUID,
     username   VARCHAR(50) UNIQUE,
     email      VARCHAR(100) UNIQUE,
     created_at TIMESTAMP DEFAULT now(),
@@ -119,4 +120,10 @@ CREATE TABLE public.articles
     categories TEXT[],
     created_at TIMESTAMP DEFAULT now()
 );
+
+ALTER TABLE public.users
+    ADD CONSTRAINT fk_users_profile
+        FOREIGN KEY (profile_id)
+            REFERENCES public.user_profiles (id)
+            DEFERRABLE INITIALLY DEFERRED;
 

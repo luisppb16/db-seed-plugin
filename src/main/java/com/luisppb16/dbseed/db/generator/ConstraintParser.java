@@ -189,7 +189,7 @@ public final class ConstraintParser {
       parts.add(input.substring(lastSplit).trim());
     }
 
-    return parts.toArray(new String[0]);
+    return parts.toArray(String[]::new);
   }
 
   private static String cleanParens(final String s) {
@@ -201,38 +201,46 @@ public final class ConstraintParser {
   }
 
   private static Map<String, String> parseAndClause(final String clause) {
-    final Map<String, String> combination = new HashMap<>();
     final String[] conditions =
         clause.split("(?i)\\s+AND\\s+|(?<=\\))\\s*AND\\s*|\\s*AND\\s*(?=\\()");
-    for (final String cond : conditions) {
-      final String cleanCond = cleanParens(cond);
-      Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
-      if (m.find()) {
-        final String col = m.group(1).replace("\"", "");
-        final String val = stripQuotes(m.group(2));
-        combination.put(col, val);
-      } else {
-        m = COL_EQ_VAL_PATTERN_RELAXED.matcher(cleanCond);
-        if (m.find()) {
-          final String col = m.group(1).replace("\"", "");
-          final String val = stripQuotes(m.group(2));
-          combination.put(col, val);
-        } else {
-          return null;
-        }
-      }
+    final Map<String, String> combination =
+        Arrays.stream(conditions)
+            .map(ConstraintParser::parseCondition)
+            .collect(
+                HashMap::new,
+                (map, entry) -> {
+                  if (entry != null) map.put(entry.getKey(), entry.getValue());
+                },
+                HashMap::putAll);
+    return combination.isEmpty() && conditions.length > 0 ? null : combination;
+  }
+
+  private static Map.Entry<String, String> parseCondition(final String cond) {
+    final String cleanCond = cleanParens(cond);
+    Matcher m = COL_EQ_VAL_PATTERN.matcher(cleanCond);
+    if (m.find()) {
+      final String col = m.group(1).replace("\"", "");
+      final String val = stripQuotes(m.group(2));
+      return Map.entry(col, val);
     }
-    return combination;
+    m = COL_EQ_VAL_PATTERN_RELAXED.matcher(cleanCond);
+    if (m.find()) {
+      final String col = m.group(1).replace("\"", "");
+      final String val = stripQuotes(m.group(2));
+      return Map.entry(col, val);
+    }
+    return null;
   }
 
   private static boolean isWrappedInParens(final String s) {
     if (!s.startsWith("(") || !s.endsWith(")")) return false;
-    int balance = 0;
+    // Check if first opening paren is closed before the final closing paren
+    final int[] balance = {0};
     for (int i = 0; i < s.length() - 1; i++) {
       final char c = s.charAt(i);
-      if (c == '(') balance++;
-      else if (c == ')') balance--;
-      if (balance == 0) return false;
+      if (c == '(') balance[0]++;
+      else if (c == ')') balance[0]--;
+      if (balance[0] == 0) return false;
     }
     return true;
   }

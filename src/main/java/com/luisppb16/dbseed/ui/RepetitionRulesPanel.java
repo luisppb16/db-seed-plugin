@@ -368,10 +368,9 @@ public class RepetitionRulesPanel extends JPanel {
       }
     }
 
-    if (uiModel.count > 0) {
-      return new RepetitionRule(uiModel.count, fixedValues, randomConstant);
-    }
-    return null;
+    return uiModel.count > 0
+        ? new RepetitionRule(uiModel.count, fixedValues, randomConstant)
+        : null;
   }
 
   private record ColumnItem(Column column) {

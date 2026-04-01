@@ -112,6 +112,55 @@ class SqliteDatabaseSeedingIntegrationTest {
   }
 
   @Test
+  void testSoftDeleteColumns_withSpacesAndEmptyTokens_areApplied() throws Exception {
+    final String schemaSql =
+        """
+        CREATE TABLE items (
+            id INTEGER PRIMARY KEY,
+            deleted INTEGER,
+            archived INTEGER
+        );
+        """;
+
+    final IntegrationTestSupport.WorkflowOptions options =
+        new IntegrationTestSupport.WorkflowOptions(
+            4,
+            false,
+            Map.of(),
+            Map.of(),
+            Map.of(),
+            false,
+            false,
+            false,
+            " deleted, , archived ,",
+            false,
+            "1",
+            2,
+            Map.of(),
+            "");
+
+    final Path sqlitePath = IntegrationTestSupport.newTempSqlitePath("dbseed-soft-delete-csv");
+    try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
+      IntegrationTestSupport.applyInlineSql(
+          connection, schemaSql, IntegrationTestSupport.allStatements());
+
+      final IntegrationTestSupport.WorkflowResult outcome =
+          IntegrationTestSupport.runWorkflow(
+              connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
+
+      assertThat(outcome.generatedSql()).contains("INSERT INTO");
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(*) FROM items WHERE deleted = 1"))
+          .isEqualTo(4);
+      assertThat(
+              IntegrationTestSupport.queryForLong(
+                  connection, "SELECT COUNT(*) FROM items WHERE archived = 1"))
+          .isEqualTo(4);
+    }
+  }
+
+  @Test
   void testCycleHandling_nullableCycleProducesPendingUpdatesOnSqlite() throws Exception {
     final String schemaSql =
         """
@@ -546,19 +595,19 @@ class SqliteDatabaseSeedingIntegrationTest {
   private record OllamaGenerateHandler(String responseLines) implements HttpHandler {
 
     @Override
-      public void handle(final HttpExchange exchange) throws IOException {
-        final String requestBody =
-            new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        final String responseBody =
-            requestBody.contains("\"prompt\":\"\"")
-                ? "{\"response\":\"warm\"}"
-                : "{\"response\":\"" + escapeJson(responseLines) + "\"}";
+    public void handle(final HttpExchange exchange) throws IOException {
+      final String requestBody =
+          new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+      final String responseBody =
+          requestBody.contains("\"prompt\":\"\"")
+              ? "{\"response\":\"warm\"}"
+              : "{\"response\":\"" + escapeJson(responseLines) + "\"}";
 
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, responseBody.getBytes(StandardCharsets.UTF_8).length);
-        try (OutputStream outputStream = exchange.getResponseBody()) {
-          outputStream.write(responseBody.getBytes(StandardCharsets.UTF_8));
-        }
+      exchange.getResponseHeaders().add("Content-Type", "application/json");
+      exchange.sendResponseHeaders(200, responseBody.getBytes(StandardCharsets.UTF_8).length);
+      try (OutputStream outputStream = exchange.getResponseBody()) {
+        outputStream.write(responseBody.getBytes(StandardCharsets.UTF_8));
       }
     }
+  }
 }

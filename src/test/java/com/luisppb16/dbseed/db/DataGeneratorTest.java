@@ -194,6 +194,67 @@ class DataGeneratorTest {
     }
   }
 
+  @Test
+  void pkUuidOverrides_null_keepsOriginalPrimaryKeyType() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params = baseParams().tables(List.of(t)).pkUuidOverrides(null).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("id")).isInstanceOf(Integer.class);
+    }
+  }
+
+  @Test
+  void pkUuidOverride_onIntegerPrimaryKey_doesNotForceUuid() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams().tables(List.of(t)).pkUuidOverrides(Map.of("t", Map.of("id", "UUID"))).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("id")).isInstanceOf(Integer.class);
+    }
+  }
+
+  @Test
+  void pkUuidOverride_onAlreadyUuidColumn_keepsUuidGeneration() {
+    Column uuidPk =
+        Column.builder().name("id").jdbcType(Types.VARCHAR).primaryKey(true).uuid(true).build();
+    Table t =
+        new Table(
+            "t",
+            List.of(uuidPk, varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams().tables(List.of(t)).pkUuidOverrides(Map.of("t", Map.of("id", "UUID"))).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("id")).isInstanceOf(UUID.class);
+    }
+  }
+
   // ── Deferred ──
 
   @Test
@@ -392,6 +453,31 @@ class DataGeneratorTest {
         baseParams()
             .tables(List.of(t))
             .softDeleteColumns("deleted,archived")
+            .softDeleteUseSchemaDefault(true)
+            .build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("deleted")).isEqualTo(SqlKeyword.DEFAULT);
+      assertThat(r.values().get("archived")).isEqualTo(SqlKeyword.DEFAULT);
+    }
+  }
+
+  @Test
+  void softDelete_multipleColumns_withSpacesAndEmptyTokens_allApplied() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intCol("id"), intCol("deleted"), intCol("archived")),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(t))
+            .softDeleteColumns(" deleted, , archived ,")
             .softDeleteUseSchemaDefault(true)
             .build();
     GenerationResult result = DataGenerator.generate(params);

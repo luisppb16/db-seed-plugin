@@ -8,6 +8,7 @@ package com.luisppb16.dbseed.db;
 import com.intellij.openapi.progress.ProgressIndicator;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import lombok.Getter;
 
 /**
  * Real-time progress tracker that computes fraction from actual completed work units.
@@ -20,6 +21,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p>This class is thread-safe — multiple threads (e.g. AI column generators) can call {@code
  * advance} concurrently.
  */
+@Getter
 public final class ProgressTracker {
 
   private final ProgressIndicator indicator;

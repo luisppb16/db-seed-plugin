@@ -250,10 +250,9 @@ public class DataGenerator {
                                 || c.jdbcType() == Types.BIGINT
                                 || c.jdbcType() == Types.SMALLINT
                                 || c.jdbcType() == Types.TINYINT;
-                        if (forceUuid && !c.uuid() && !isIntegerType) {
-                          return c.toBuilder().uuid(true).build();
-                        }
-                        return c;
+                        return forceUuid && !c.uuid() && !isIntegerType
+                            ? c.toBuilder().uuid(true).build()
+                            : c;
                       })
                   .toList();
           overridden.put(t.name(), t.toBuilder().columns(newCols).build());

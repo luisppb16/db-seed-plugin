@@ -14,7 +14,7 @@ import java.util.List;
  * <p>Each dialect provides database-appropriate SQL statement generation, taking into account the
  * unique syntax and requirements of different database management systems.
  */
-public interface DatabaseDialect {
+public sealed interface DatabaseDialect permits AbstractDialect {
 
   /** Quotes an identifier (table or column name). */
   String quote(String identifier);

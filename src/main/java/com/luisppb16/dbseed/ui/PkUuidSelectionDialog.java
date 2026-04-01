@@ -174,13 +174,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private static String extractText(Component component) {
-    if (component instanceof final JCheckBox box) {
-      return box.getText();
-    }
-    if (component instanceof final JLabel label) {
-      return label.getText();
-    }
-    return null;
+    return component instanceof final JCheckBox box
+        ? box.getText()
+        : component instanceof final JLabel label ? label.getText() : null;
   }
 
   private void initDefaults() {

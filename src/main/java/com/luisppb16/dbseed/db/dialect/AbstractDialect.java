@@ -17,6 +17,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.stream.IntStream;
 
 /**
  * Property-driven foundation for database dialect implementations.
@@ -42,7 +43,7 @@ import java.util.UUID;
  *   <li>{@code supportsMultiRowInsert} — whether multi-row VALUES is supported (default true)
  * </ul>
  */
-public class AbstractDialect implements DatabaseDialect {
+public sealed class AbstractDialect implements DatabaseDialect permits StandardDialect {
 
   private static final String NULL_STR = "NULL";
   protected final Properties props = new Properties();
@@ -124,12 +125,14 @@ public class AbstractDialect implements DatabaseDialect {
 
   protected void formatArray(Object[] array, StringBuilder sb) {
     sb.append("ARRAY[");
-    for (int i = 0; i < array.length; i++) {
-      formatValue(array[i], sb);
-      if (i < array.length - 1) {
-        sb.append(", ");
-      }
-    }
+    IntStream.range(0, array.length)
+        .forEach(
+            i -> {
+              formatValue(array[i], sb);
+              if (i < array.length - 1) {
+                sb.append(", ");
+              }
+            });
     sb.append("]");
   }
 
@@ -149,10 +152,9 @@ public class AbstractDialect implements DatabaseDialect {
   }
 
   protected String formatDouble(double d) {
-    if (Double.isNaN(d) || Double.isInfinite(d)) {
-      return NULL_STR;
-    }
-    return BigDecimal.valueOf(d).stripTrailingZeros().toPlainString();
+    return Double.isNaN(d) || Double.isInfinite(d)
+        ? NULL_STR
+        : BigDecimal.valueOf(d).stripTrailingZeros().toPlainString();
   }
 
   protected String escapeSql(String s) {

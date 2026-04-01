@@ -24,6 +24,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
 import net.datafaker.Faker;
 
 /**
@@ -35,7 +36,7 @@ import net.datafaker.Faker;
  * meaningful sample data. The generator handles complex scenarios such as UUID uniqueness, numeric
  * range constraints, string length limitations, and database-specific type requirements.
  */
-public final class ValueGenerator {
+public record ValueGenerator(Faker faker, List<String> dictionaryWords, boolean useLatinDictionary, Set<UUID> usedUuids, int numericScale) {
 
   private static final int UUID_GENERATION_LIMIT = 1_000_000;
   private static final int DEFAULT_INT_MAX = 10_000;
@@ -59,12 +60,6 @@ public final class ValueGenerator {
 
   private static final int DATE_RANGE_DAYS = 3650;
   private static final int TIMESTAMP_RANGE_SECONDS = 31_536_000;
-
-  private final Faker faker;
-  private final List<String> dictionaryWords;
-  private final boolean useLatinDictionary;
-  private final Set<UUID> usedUuids;
-  private final int numericScale;
 
   public ValueGenerator(
       final Faker faker,
@@ -143,10 +138,7 @@ public final class ValueGenerator {
 
   public Object generateSoftDeleteValue(
       final Column column, final boolean useSchemaDefault, final String value) {
-    if (useSchemaDefault) {
-      return SqlKeyword.DEFAULT;
-    }
-    return convertStringValue(value, column);
+    return useSchemaDefault ? SqlKeyword.DEFAULT : convertStringValue(value, column);
   }
 
   private Object generateUuidValue(final Column column, final ParsedConstraint constraint) {
@@ -303,10 +295,9 @@ public final class ValueGenerator {
     if (value.length() > length) {
       return value.substring(0, length);
     }
-    if (jdbcType == Types.CHAR && value.length() < length) {
-      return value.concat(" ".repeat(length - value.length()));
-    }
-    return value;
+    return jdbcType == Types.CHAR && value.length() < length
+        ? value.concat(" ".repeat(length - value.length()))
+        : value;
   }
 
   private Object convertStringValue(final String value, final Column column) {
@@ -462,10 +453,7 @@ public final class ValueGenerator {
   private double[] getNumericBounds(final Column column) {
     final double min = getDoubleMin(column);
     final double max = getDoubleMax(column);
-    if (min > max) {
-      return new double[] {max, min};
-    }
-    return new double[] {min, max};
+    return min > max ? new double[] {max, min} : new double[] {min, max};
   }
 
   private double[] getNumericBoundsWithConstraint(final Column column, final ParsedConstraint pc) {
@@ -473,10 +461,7 @@ public final class ValueGenerator {
     final boolean hasMax = Objects.nonNull(pc) && Objects.nonNull(pc.max());
     final double min = hasMin ? pc.min() : getDoubleMin(column);
     final double max = hasMax ? pc.max() : getDoubleMax(column);
-    if (min > max) {
-      return new double[] {max, min};
-    }
-    return new double[] {min, max};
+    return min > max ? new double[] {max, min} : new double[] {min, max};
   }
 
   @SuppressWarnings("java:S2245")

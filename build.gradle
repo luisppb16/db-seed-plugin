@@ -28,6 +28,11 @@ intellijPlatform {
     signing.privateKey.set(providers.environmentVariable("PRIVATE_KEY"))
     signing.password.set(providers.environmentVariable("PRIVATE_KEY_PASSWORD"))
     publishing.token.set(providers.environmentVariable("PUBLISH_TOKEN"))
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
 }
 
 repositories {

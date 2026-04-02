@@ -20,6 +20,18 @@ matching, functional programming with Streams, `Optional` to avoid nulls, extens
 
 ---
 
+### ✅ Marketplace Compliance Notes
+
+To align with current JetBrains Marketplace approval criteria:
+
+- Plugin metadata now declares explicit compatibility (`since-build=242`, `until-build=242.*`) and Java module dependency.
+- JDBC driver download is **explicitly confirmed by the user** before any external artifact is fetched.
+- The plugin works locally by default; external network use is opt-in and user-triggered.
+- AI generation calls only a user-configured Ollama endpoint and uses user-provided context plus schema metadata (table/column names).
+- Generated SQL and settings remain local to the IDE/project unless the user exports or shares them manually.
+
+---
+
 ### 🚀 New Feature: Dynamic Drivers
 
 In previous versions, the plugin only included fixed support for PostgreSQL or loaded many drivers into memory.

@@ -6,7 +6,7 @@
 <idea-plugin>
     <id>com.luisppb16.dbseed</id>
     <name>DBSeed4SQL</name>
-    <vendor email="ironkrozz@gmail.com">Luis Pepe</vendor>
+    <vendor email="ironkrozz@gmail.com" url="https://github.com/luisppb16">Luis Pepe</vendor>
     <description>
         <![CDATA[
             A smart SQL seed generator that respects your schema's integrity.
@@ -20,10 +20,19 @@
               <li>Table sorting using Tarjan's algorithm to detect cycles.</li>
               <li>Synthetic data generation with DataFaker.</li>
               <li>Cycle handling with deferred constraints.</li>
-              <li>Support for multiple databases with dynamic driver downloads.</li>
+              <li>Support for multiple databases with dynamic driver downloads (explicit user confirmation).</li>
+            </ul>
+
+            <h2>Network and Privacy</h2>
+            <ul>
+              <li>The plugin works locally by default and stores settings in IDE-local configuration files.</li>
+              <li>Optional network actions are initiated by the user: JDBC driver downloads from Maven Central and AI calls to a user-configured Ollama server.</li>
+              <li>DBSeed4SQL does not upload database row contents. For AI generation, only metadata/context provided by the user (for example table/column names and app context text) is sent.</li>
             </ul>
         ]]>
     </description>
+
+    <idea-version since-build="242" until-build="242.*"/>
 
     <change-notes>
         <![CDATA[
@@ -106,6 +115,7 @@
     </change-notes>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
 
     <actions>
         <action id="SeedDatabaseAction"

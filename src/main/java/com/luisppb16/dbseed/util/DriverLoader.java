@@ -7,6 +7,7 @@ package com.luisppb16.dbseed.util;
 
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
@@ -64,6 +65,7 @@ public class DriverLoader {
   private static final Path DRIVER_DIR =
       Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
+  private static final String PREF_TRUST_DRIVER_DOWNLOADS = "dbseed.trust.driver.downloads";
   private static final Set<String> LOADED_DRIVERS = ConcurrentHashMap.newKeySet();
 
   /**
@@ -108,7 +110,7 @@ public class DriverLoader {
       final DriverInfo chosenDriver = chosenDriverOpt.get();
       props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
 
-      ensureDriverPresent(chosenDriver);
+      ensureDriverPresent(project, chosenDriver);
       return Optional.of(chosenDriver);
     } catch (final Exception ex) {
       log.error("Error selecting/loading driver", ex);
@@ -117,12 +119,12 @@ public class DriverLoader {
     }
   }
 
-  public static void ensureDriverPresent(final DriverInfo info)
+  public static void ensureDriverPresent(final Project project, final DriverInfo info)
       throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
     final Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
     if (!Files.exists(jarPath)) {
-      downloadDriver(info, jarPath);
+      downloadDriver(project, info, jarPath);
     }
 
     if (!LOADED_DRIVERS.contains(info.driverClass())) {
@@ -133,7 +135,13 @@ public class DriverLoader {
     }
   }
 
-  private static void downloadDriver(final DriverInfo info, final Path target)
+  // Kept for test compatibility and non-UI call sites.
+  public static void ensureDriverPresent(final DriverInfo info)
+      throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
+    ensureDriverPresent(null, info);
+  }
+
+  private static void downloadDriver(final Project project, final DriverInfo info, final Path target)
       throws IOException, URISyntaxException {
     final String groupPath = info.mavenGroupId().replace('.', '/');
     final String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";
@@ -141,11 +149,64 @@ public class DriverLoader {
         "https://repo1.maven.org/maven2/%s/%s/%s/%s"
             .formatted(groupPath, info.mavenArtifactId(), info.version(), jarFile);
 
+    if (!confirmDriverDownload(project, info, url, target)) {
+      throw new IOException("Driver download canceled by user.");
+    }
+
     log.info("Downloading driver from: {}", url);
     try (final InputStream in = new URI(url).toURL().openStream()) {
       Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
       log.info("Driver downloaded to: {}", target);
     }
+  }
+
+  private static boolean confirmDriverDownload(
+      final Project project, final DriverInfo info, final String sourceUrl, final Path targetPath) {
+    if (project == null) {
+      // Non-UI contexts (tests/headless) cannot show dialogs.
+      return true;
+    }
+
+    final PropertiesComponent props = PropertiesComponent.getInstance(project);
+    if (props.getBoolean(PREF_TRUST_DRIVER_DOWNLOADS, false)) {
+      return true;
+    }
+
+    final String message =
+        "DBSeed4SQL needs to download a JDBC driver to continue.\n\n"
+            + "Driver: "
+            + info.name()
+            + "\n"
+            + "Artifact: "
+            + info.mavenGroupId()
+            + ":"
+            + info.mavenArtifactId()
+            + ":"
+            + info.version()
+            + "\n"
+            + "Source: "
+            + sourceUrl
+            + "\n"
+            + "Destination: "
+            + targetPath
+            + "\n\n"
+            + "This action downloads external code from Maven Central.";
+
+    final int result =
+        Messages.showDialog(
+            project,
+            message,
+            "Confirm External JDBC Driver Download",
+            new String[] {"Download", "Cancel", "Always allow for this project"},
+            0,
+            Messages.getWarningIcon());
+
+    if (result == 2) {
+      props.setValue(PREF_TRUST_DRIVER_DOWNLOADS, true);
+      return true;
+    }
+
+    return result == 0;
   }
 
   private static void loadDriver(final URL jarUrl, final String driverClass)

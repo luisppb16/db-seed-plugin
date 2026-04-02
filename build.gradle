@@ -91,6 +91,9 @@ test {
         events "passed", "skipped", "failed"
     }
 
+    // Avoid noisy CDS warnings triggered by IntelliJ test classloader configuration.
+    jvmArgs '-Xshare:off'
+
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }

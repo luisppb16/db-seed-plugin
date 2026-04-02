@@ -126,7 +126,8 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getRepetitionRules(),
               pkDialog.getExcludedTables(),
               pkDialog.getAiColumnsByTable(),
-              pkDialog.getCircularReferences());
+              pkDialog.getCircularReferences(),
+              pkDialog.getCircularReferenceTerminationModes());
 
       final GenerationConfig finalConfig =
           config.toBuilder()
@@ -243,6 +244,7 @@ public final class GenerateSeedAction extends AnAction {
                 .numericScale(config.numericScale())
                 .aiColumns(selections.aiColumns())
                 .circularReferences(selections.circularReferences())
+                .circularReferenceTerminationModes(selections.circularReferenceTerminationModes())
                 .applicationContext(
                     settings.isUseAiGeneration() ? settings.getAiApplicationContext() : null)
                 .indicator(indicator)
@@ -288,5 +290,6 @@ public final class GenerateSeedAction extends AnAction {
       Map<String, List<RepetitionRule>> repetitionRules,
       Set<String> excludedTables,
       Map<String, Set<String>> aiColumns,
-      Map<String, Map<String, Integer>> circularReferences) {}
+      Map<String, Map<String, Integer>> circularReferences,
+      Map<String, Map<String, String>> circularReferenceTerminationModes) {}
 }

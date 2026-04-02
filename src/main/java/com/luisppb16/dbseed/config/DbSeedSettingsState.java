@@ -58,6 +58,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   private Map<String, Map<String, Integer>> circularReferences = new HashMap<>();
 
+  private Map<String, Map<String, String>> circularReferenceTerminationModes = new HashMap<>();
+
   public static DbSeedSettingsState getInstance() {
     return Objects.requireNonNull(
         ApplicationManager.getApplication().getService(DbSeedSettingsState.class),
@@ -97,6 +99,15 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.aiWordCount = state.aiWordCount > 0 ? state.aiWordCount : 1;
     this.aiRequestTimeoutSeconds =
         state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
+
+    this.repetitionRules =
+        Objects.nonNull(state.repetitionRules) ? state.repetitionRules : new HashMap<>();
+    this.circularReferences =
+        Objects.nonNull(state.circularReferences) ? state.circularReferences : new HashMap<>();
+    this.circularReferenceTerminationModes =
+        Objects.nonNull(state.circularReferenceTerminationModes)
+            ? state.circularReferenceTerminationModes
+            : new HashMap<>();
   }
 
   public Map<String, List<RepetitionRule>> getRepetitionRules() {
@@ -113,5 +124,14 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   public void setCircularReferences(Map<String, Map<String, Integer>> circularReferences) {
     this.circularReferences = circularReferences;
+  }
+
+  public Map<String, Map<String, String>> getCircularReferenceTerminationModes() {
+    return circularReferenceTerminationModes;
+  }
+
+  public void setCircularReferenceTerminationModes(
+      Map<String, Map<String, String>> circularReferenceTerminationModes) {
+    this.circularReferenceTerminationModes = circularReferenceTerminationModes;
   }
 }

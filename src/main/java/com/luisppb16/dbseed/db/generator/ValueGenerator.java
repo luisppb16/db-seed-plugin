@@ -24,7 +24,6 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
 import net.datafaker.Faker;
 
 /**
@@ -36,7 +35,12 @@ import net.datafaker.Faker;
  * meaningful sample data. The generator handles complex scenarios such as UUID uniqueness, numeric
  * range constraints, string length limitations, and database-specific type requirements.
  */
-public record ValueGenerator(Faker faker, List<String> dictionaryWords, boolean useLatinDictionary, Set<UUID> usedUuids, int numericScale) {
+public record ValueGenerator(
+    Faker faker,
+    List<String> dictionaryWords,
+    boolean useLatinDictionary,
+    Set<UUID> usedUuids,
+    int numericScale) {
 
   private static final int UUID_GENERATION_LIMIT = 1_000_000;
   private static final int DEFAULT_INT_MAX = 10_000;

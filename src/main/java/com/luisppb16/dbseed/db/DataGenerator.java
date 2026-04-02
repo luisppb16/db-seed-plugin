@@ -221,7 +221,12 @@ public class DataGenerator {
     tracker.setText("Resolving foreign keys...");
     tracker.setText2("Processing deferred FK dependencies");
     final ForeignKeyResolver fkResolver =
-        new ForeignKeyResolver(tableMap, data, params.deferred(), params.circularReferences());
+        new ForeignKeyResolver(
+            tableMap,
+            data,
+            params.deferred(),
+            params.circularReferences(),
+            params.circularReferenceTerminationModes());
     final List<PendingUpdate> updates = fkResolver.resolve(tracker);
 
     tracker.setText2(updates.size() + " deferred updates created");
@@ -475,7 +480,8 @@ public class DataGenerator {
       Map<String, Set<String>> aiColumns,
       String applicationContext,
       ProgressIndicator indicator,
-      Map<String, Map<String, Integer>> circularReferences) {}
+      Map<String, Map<String, Integer>> circularReferences,
+      Map<String, Map<String, String>> circularReferenceTerminationModes) {}
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

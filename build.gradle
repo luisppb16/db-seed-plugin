@@ -21,7 +21,7 @@ sourceSets {
 }
 
 group = 'com.LuisPPB16'
-version = '1.3.4-BETA'
+version = '1.3.4'
 
 intellijPlatform {
     signing.certificateChain.set(providers.environmentVariable("CERTIFICATE_CHAIN"))
@@ -82,8 +82,6 @@ java {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 21
-    options.compilerArgs << "-Xlint:deprecation"
-    options.compilerArgs << "-Xlint:unchecked"
 }
 
 

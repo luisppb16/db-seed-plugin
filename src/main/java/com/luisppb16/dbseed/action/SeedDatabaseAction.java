@@ -341,6 +341,8 @@ public final class SeedDatabaseAction extends AnAction {
                                   .numericScale(finalConfig.numericScale())
                                   .aiColumns(aiColumns)
                                   .circularReferences(pkDialog.getCircularReferences())
+                                  .circularReferenceTerminationModes(
+                                      pkDialog.getCircularReferenceTerminationModes())
                                   .applicationContext(
                                       settings.isUseAiGeneration()
                                           ? settings.getAiApplicationContext()

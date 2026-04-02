@@ -12,6 +12,7 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.db.PendingUpdate;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
+import com.luisppb16.dbseed.model.CircularReferenceTerminationMode;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
@@ -489,5 +490,80 @@ class ForeignKeyResolverTest {
     PendingUpdate update2 = updates.get(1);
     assertThat(update2.pkValues().get("id")).isEqualTo(2);
     assertThat(update2.fkValues().get("manager_id")).isEqualTo(1);
+  }
+
+  @Test
+  void circularReferences_nullTermination_deferred_createsHierarchy() {
+    Table table =
+        new Table(
+            "users",
+            List.of(intCol("id"), nullableCol("manager_id")),
+            List.of("id"),
+            List.of(new ForeignKey("fk_manager", "users", Map.of("manager_id", "id"), false)),
+            List.of(),
+            List.of());
+
+    List<Row> rows =
+        List.of(
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 3))),
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 4))),
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 5))));
+
+    Map<String, Table> tableMap = Map.of("users", table);
+    Map<Table, List<Row>> data = Map.of(table, rows);
+    Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 3));
+    Map<String, Map<String, String>> terminationModes =
+        Map.of("users", Map.of("fk_manager", CircularReferenceTerminationMode.NULL_FK.name()));
+
+    ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, circularReferences, terminationModes);
+
+    List<PendingUpdate> updates = resolver.resolve();
+
+    assertThat(updates).isEmpty();
+    assertThat(rows.get(0).values().get("manager_id")).isEqualTo(2);
+    assertThat(rows.get(1).values().get("manager_id")).isEqualTo(3);
+    assertThat(rows.get(2).values().get("manager_id")).isNull();
+    assertThat(rows.get(3).values().get("manager_id")).isEqualTo(5);
+    assertThat(rows.get(4).values().get("manager_id")).isNull();
+  }
+
+  @Test
+  void circularReferences_nullTermination_nonDeferred_skipsLastPendingUpdate() {
+    Table table =
+        new Table(
+            "users",
+            List.of(intCol("id"), nullableCol("manager_id")),
+            List.of("id"),
+            List.of(new ForeignKey("fk_manager", "users", Map.of("manager_id", "id"), false)),
+            List.of(),
+            List.of());
+
+    List<Row> rows =
+        List.of(
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new java.util.LinkedHashMap<>(Map.of("id", 3))));
+
+    Map<String, Table> tableMap = Map.of("users", table);
+    Map<Table, List<Row>> data = Map.of(table, rows);
+    Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 3));
+    Map<String, Map<String, String>> terminationModes =
+        Map.of("users", Map.of("fk_manager", CircularReferenceTerminationMode.NULL_FK.name()));
+
+    ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, circularReferences, terminationModes);
+
+    List<PendingUpdate> updates = resolver.resolve();
+
+    assertThat(updates).hasSize(2);
+    assertThat(rows).allSatisfy(row -> assertThat(row.values().get("manager_id")).isNull());
+
+    assertThat(updates)
+        .extracting(
+            update -> update.pkValues().get("id"), update -> update.fkValues().get("manager_id"))
+        .containsExactly(tuple(1, 2), tuple(2, 3));
   }
 }

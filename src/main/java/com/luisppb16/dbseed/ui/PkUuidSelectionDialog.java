@@ -934,6 +934,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return circularReferencesPanel.getCircularReferences();
   }
 
+  public Map<String, Map<String, String>> getCircularReferenceTerminationModes() {
+    return circularReferencesPanel.getCircularReferenceTerminationModes();
+  }
+
   public String getSoftDeleteColumns() {
     return softDeleteColumnsField.getText().trim();
   }

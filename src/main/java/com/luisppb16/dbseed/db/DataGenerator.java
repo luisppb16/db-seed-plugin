@@ -220,7 +220,13 @@ public class DataGenerator {
 
     tracker.setText("Resolving foreign keys...");
     tracker.setText2("Processing deferred FK dependencies");
-    final ForeignKeyResolver fkResolver = new ForeignKeyResolver(tableMap, data, params.deferred());
+    final ForeignKeyResolver fkResolver =
+        new ForeignKeyResolver(
+            tableMap,
+            data,
+            params.deferred(),
+            params.circularReferences(),
+            params.circularReferenceTerminationModes());
     final List<PendingUpdate> updates = fkResolver.resolve(tracker);
 
     tracker.setText2(updates.size() + " deferred updates created");
@@ -249,10 +255,9 @@ public class DataGenerator {
                                 || c.jdbcType() == Types.BIGINT
                                 || c.jdbcType() == Types.SMALLINT
                                 || c.jdbcType() == Types.TINYINT;
-                        if (forceUuid && !c.uuid() && !isIntegerType) {
-                          return c.toBuilder().uuid(true).build();
-                        }
-                        return c;
+                        return forceUuid && !c.uuid() && !isIntegerType
+                            ? c.toBuilder().uuid(true).build()
+                            : c;
                       })
                   .toList();
           overridden.put(t.name(), t.toBuilder().columns(newCols).build());
@@ -474,7 +479,9 @@ public class DataGenerator {
       int numericScale,
       Map<String, Set<String>> aiColumns,
       String applicationContext,
-      ProgressIndicator indicator) {}
+      ProgressIndicator indicator,
+      Map<String, Map<String, Integer>> circularReferences,
+      Map<String, Map<String, String>> circularReferenceTerminationModes) {}
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

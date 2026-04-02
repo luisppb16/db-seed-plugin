@@ -24,11 +24,11 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Window;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.IntStream;
 import javax.swing.Action;
 import javax.swing.DefaultCellEditor;
 import javax.swing.DefaultListModel;
@@ -216,18 +216,16 @@ public final class SchemaDesigner extends AnAction {
       if (tableNameField.getText().isBlank()) {
         return new ValidationInfo("Table name is required.", tableNameField);
       }
-      boolean hasValidColumn = false;
-      for (int i = 0; i < tableModel.getRowCount(); i++) {
-        final Object name = tableModel.getValueAt(i, 0);
-        if (Objects.nonNull(name) && !name.toString().isBlank()) {
-          hasValidColumn = true;
-          break;
-        }
-      }
-      if (!hasValidColumn) {
-        return new ValidationInfo("At least one column with a name is required.");
-      }
-      return null;
+      final boolean hasValidColumn =
+          IntStream.range(0, tableModel.getRowCount())
+              .anyMatch(
+                  i -> {
+                    final Object name = tableModel.getValueAt(i, 0);
+                    return Objects.nonNull(name) && !name.toString().isBlank();
+                  });
+      return !hasValidColumn
+          ? new ValidationInfo("At least one column with a name is required.")
+          : null;
     }
 
     @Override
@@ -279,19 +277,21 @@ public final class SchemaDesigner extends AnAction {
     }
 
     List<SchemaDsl.Column> getColumns() {
-      final List<SchemaDsl.Column> columns = new ArrayList<>();
-      for (int i = 0; i < tableModel.getRowCount(); i++) {
-        final Object nameObj = tableModel.getValueAt(i, 0);
-        if (Objects.isNull(nameObj) || nameObj.toString().isBlank()) {
-          continue;
-        }
-        final String name = nameObj.toString().trim();
-        Object typeObj = tableModel.getValueAt(i, 1);
-        final SqlType type = (typeObj instanceof SqlType st) ? st : SqlType.INT;
-        final boolean isPk = Boolean.TRUE.equals(tableModel.getValueAt(i, 2));
-        columns.add(isPk ? SchemaDsl.pk(name, type) : SchemaDsl.column(name, type));
-      }
-      return columns;
+      return IntStream.range(0, tableModel.getRowCount())
+          .mapToObj(
+              i -> {
+                final Object nameObj = tableModel.getValueAt(i, 0);
+                if (Objects.isNull(nameObj) || nameObj.toString().isBlank()) {
+                  return null;
+                }
+                final String name = nameObj.toString().trim();
+                final Object typeObj = tableModel.getValueAt(i, 1);
+                final SqlType type = (typeObj instanceof SqlType st) ? st : SqlType.INT;
+                final boolean isPk = Boolean.TRUE.equals(tableModel.getValueAt(i, 2));
+                return isPk ? SchemaDsl.pk(name, type) : SchemaDsl.column(name, type);
+              })
+          .filter(Objects::nonNull)
+          .toList();
     }
   }
 

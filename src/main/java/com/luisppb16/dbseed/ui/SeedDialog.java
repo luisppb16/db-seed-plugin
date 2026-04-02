@@ -225,10 +225,7 @@ public final class SeedDialog extends DialogWrapper {
       return stripped.endsWith(";") ? stripped.substring(0, stripped.length() - 1) : stripped;
     }
     int lastSlash = url.lastIndexOf('/');
-    if (lastSlash > 0 && lastSlash < url.length() - 1) {
-      return url.substring(0, lastSlash + 1);
-    }
-    return url;
+    return lastSlash > 0 && lastSlash < url.length() - 1 ? url.substring(0, lastSlash + 1) : url;
   }
 
   private boolean isSameDriverType(String template, String savedUrl) {

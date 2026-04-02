@@ -7,7 +7,6 @@ package com.luisppb16.dbseed.db;
 
 import static org.assertj.core.api.Assertions.*;
 
-import com.sun.net.httpserver.HttpServer;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationParameters;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationResult;
@@ -15,11 +14,12 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import com.sun.net.httpserver.HttpServer;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
-import java.sql.Types;
 import java.nio.charset.StandardCharsets;
+import java.sql.Types;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import org.junit.jupiter.api.AfterAll;
@@ -191,6 +191,67 @@ class DataGeneratorTest {
 
     for (Row r : result.rows().get(t)) {
       assertThat(r.values().get("id")).isInstanceOf(Integer.class);
+    }
+  }
+
+  @Test
+  void pkUuidOverrides_null_keepsOriginalPrimaryKeyType() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params = baseParams().tables(List.of(t)).pkUuidOverrides(null).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("id")).isInstanceOf(Integer.class);
+    }
+  }
+
+  @Test
+  void pkUuidOverride_onIntegerPrimaryKey_doesNotForceUuid() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams().tables(List.of(t)).pkUuidOverrides(Map.of("t", Map.of("id", "UUID"))).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("id")).isInstanceOf(Integer.class);
+    }
+  }
+
+  @Test
+  void pkUuidOverride_onAlreadyUuidColumn_keepsUuidGeneration() {
+    Column uuidPk =
+        Column.builder().name("id").jdbcType(Types.VARCHAR).primaryKey(true).uuid(true).build();
+    Table t =
+        new Table(
+            "t",
+            List.of(uuidPk, varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams().tables(List.of(t)).pkUuidOverrides(Map.of("t", Map.of("id", "UUID"))).build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("id")).isInstanceOf(UUID.class);
     }
   }
 
@@ -402,6 +463,31 @@ class DataGeneratorTest {
     }
   }
 
+  @Test
+  void softDelete_multipleColumns_withSpacesAndEmptyTokens_allApplied() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intCol("id"), intCol("deleted"), intCol("archived")),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(t))
+            .softDeleteColumns(" deleted, , archived ,")
+            .softDeleteUseSchemaDefault(true)
+            .build();
+    GenerationResult result = DataGenerator.generate(params);
+
+    for (Row r : result.rows().get(t)) {
+      assertThat(r.values().get("deleted")).isEqualTo(SqlKeyword.DEFAULT);
+      assertThat(r.values().get("archived")).isEqualTo(SqlKeyword.DEFAULT);
+    }
+  }
+
   // ── Excluded columns ──
 
   @Test
@@ -470,7 +556,8 @@ class DataGeneratorTest {
                 Thread.sleep(50L);
               } catch (final InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new IllegalStateException("Interrupted while handling fake Ollama request", e);
+                throw new IllegalStateException(
+                    "Interrupted while handling fake Ollama request", e);
               }
 
               responseBody = "{\"response\":\"__AI_VALUE__\\n__AI_VALUE_2__\"}";

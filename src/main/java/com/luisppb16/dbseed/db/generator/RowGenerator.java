@@ -291,10 +291,9 @@ public final class RowGenerator {
     final String colName = resolveColumnName(entry.getKey());
     final String expectedVal = entry.getValue();
     final Object actualVal = values.get(colName);
-    if (Objects.isNull(actualVal)) {
-      return "NULL".equalsIgnoreCase(expectedVal);
-    }
-    return String.valueOf(actualVal).equals(expectedVal);
+    return Objects.isNull(actualVal)
+        ? "NULL".equalsIgnoreCase(expectedVal)
+        : String.valueOf(actualVal).equals(expectedVal);
   }
 
   private boolean applyMultiColumnConstraints(final Map<String, Object> values) {

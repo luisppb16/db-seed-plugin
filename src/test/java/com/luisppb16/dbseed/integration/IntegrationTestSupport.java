@@ -148,7 +148,8 @@ final class IntegrationTestSupport {
                 .build());
 
     final String sql =
-        SqlGenerator.generate(generationResult.rows(), generationResult.updates(), effectiveDeferred, driverInfo);
+        SqlGenerator.generate(
+            generationResult.rows(), generationResult.updates(), effectiveDeferred, driverInfo);
 
     return new WorkflowResult(
         tables, sortResult, orderedTables, effectiveDeferred, generationResult, sql);
@@ -290,6 +291,14 @@ final class IntegrationTestSupport {
     return Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
   }
 
+  static Predicate<String> ddlOnly() {
+    return statement -> !statement.trim().toLowerCase(Locale.ROOT).startsWith("insert ");
+  }
+
+  static Predicate<String> allStatements() {
+    return statement -> true;
+  }
+
   @FunctionalInterface
   interface SqlConnectionSupplier {
     Connection open() throws SQLException;
@@ -330,15 +339,4 @@ final class IntegrationTestSupport {
       return displayName;
     }
   }
-
-  static Predicate<String> ddlOnly() {
-    return statement -> !statement.trim().toLowerCase(Locale.ROOT).startsWith("insert ");
-  }
-
-  static Predicate<String> allStatements() {
-    return statement -> true;
-  }
 }
-
-
-

@@ -66,15 +66,17 @@ class DatabaseSeedingIntegrationTest {
             IntegrationTestSupport.POSTGRES_DRIVER,
             "public",
             "docker/initdb/schema_Postgres.sql",
-            () -> DriverManager.getConnection(
-                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())),
+            () ->
+                DriverManager.getConnection(
+                    POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())),
         new IntegrationTestSupport.ContainerEngine(
             "MySQL",
             IntegrationTestSupport.MYSQL_DRIVER,
             MYSQL.getDatabaseName(),
             "docker/initdb/schema_MySQL.sql",
-            () -> DriverManager.getConnection(
-                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())));
+            () ->
+                DriverManager.getConnection(
+                    MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())));
   }
 
   @ParameterizedTest(name = "{0}")
@@ -87,7 +89,10 @@ class DatabaseSeedingIntegrationTest {
 
       final IntegrationTestSupport.WorkflowResult outcome =
           IntegrationTestSupport.runWorkflow(
-              connection, engine.schemaName(), engine.driverInfo(), IntegrationTestSupport.defaults(3));
+              connection,
+              engine.schemaName(),
+              engine.driverInfo(),
+              IntegrationTestSupport.defaults(3));
 
       assertThat(outcome.tables()).isNotEmpty();
       assertThat(outcome.orderedTables()).hasSize(outcome.tables().size());
@@ -160,8 +165,7 @@ class DatabaseSeedingIntegrationTest {
           .isZero();
       assertThat(
               IntegrationTestSupport.queryForLong(
-                  connection,
-                  "SELECT COUNT(*) FROM reviews WHERE rating < 1 OR rating > 5"))
+                  connection, "SELECT COUNT(*) FROM reviews WHERE rating < 1 OR rating > 5"))
           .isZero();
     }
   }
@@ -188,7 +192,8 @@ class DatabaseSeedingIntegrationTest {
 
     try (Connection connection =
         DriverManager.getConnection(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())) {
-      IntegrationTestSupport.applyInlineSql(connection, schemaSql, IntegrationTestSupport.allStatements());
+      IntegrationTestSupport.applyInlineSql(
+          connection, schemaSql, IntegrationTestSupport.allStatements());
 
       final IntegrationTestSupport.WorkflowResult outcome =
           IntegrationTestSupport.runWorkflow(
@@ -229,5 +234,3 @@ class DatabaseSeedingIntegrationTest {
     }
   }
 }
-
-

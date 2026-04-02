@@ -128,7 +128,6 @@ public class SchemaIntrospector {
     Objects.requireNonNull(conn, "Connection cannot be null");
     Objects.requireNonNull(dialect, "Dialect cannot be null");
     final DatabaseMetaData meta = conn.getMetaData();
-    final List<Table> tables = new ArrayList<>();
 
     final List<TableRawData> rawTables = loadAllTables(meta, schema);
     final Map<TableKey, List<ColumnRawData>> rawColumns = loadAllColumns(meta, schema);
@@ -140,24 +139,23 @@ public class SchemaIntrospector {
     final Map<TableKey, List<ForeignKey>> allFks =
         loadAllForeignKeys(meta, schema, rawTables, allUniqueKeys);
 
-    for (final TableRawData tableData : rawTables) {
-      final String tableName = tableData.name();
-      final String tableSchema = tableData.schema();
-      final TableKey key = new TableKey(tableSchema, tableName);
-
-      final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
-      final List<ColumnRawData> tableCols = rawColumns.getOrDefault(key, Collections.emptyList());
-
-      final List<String> pkCols = allPks.getOrDefault(key, Collections.emptyList());
-
-      final List<Column> columns = buildColumns(tableCols, pkCols, checks);
-      final List<List<String>> uniqueKeys =
-          allUniqueKeys.getOrDefault(key, Collections.emptyList());
-      final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
-
-      tables.add(new Table(tableName, columns, pkCols, fks, checks, uniqueKeys));
-    }
-    return tables;
+    return rawTables.stream()
+        .map(
+            tableData -> {
+              final String tableName = tableData.name();
+              final String tableSchema = tableData.schema();
+              final TableKey key = new TableKey(tableSchema, tableName);
+              final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
+              final List<ColumnRawData> tableCols =
+                  rawColumns.getOrDefault(key, Collections.emptyList());
+              final List<String> pkCols = allPks.getOrDefault(key, Collections.emptyList());
+              final List<Column> columns = buildColumns(tableCols, pkCols, checks);
+              final List<List<String>> uniqueKeys =
+                  allUniqueKeys.getOrDefault(key, Collections.emptyList());
+              final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
+              return new Table(tableName, columns, pkCols, fks, checks, uniqueKeys);
+            })
+        .toList();
   }
 
   private static List<TableRawData> loadAllTables(final DatabaseMetaData meta, final String schema)
@@ -337,34 +335,29 @@ public class SchemaIntrospector {
       final Map<TableKey, Map<String, String>> fkToPkTable,
       final Map<TableKey, List<List<String>>> allUniqueKeys) {
     final Map<TableKey, List<ForeignKey>> result = new LinkedHashMap<>();
-    for (final Map.Entry<TableKey, Map<String, Map<String, String>>> tableEntry :
-        groupedMappings.entrySet()) {
-      final TableKey key = tableEntry.getKey();
-      final List<ForeignKey> fks = new ArrayList<>();
-      final Map<String, Map<String, String>> fksForTable = tableEntry.getValue();
-      final List<List<String>> uniqueKeys =
-          allUniqueKeys.getOrDefault(key, Collections.emptyList());
-
-      for (final Map.Entry<String, Map<String, String>> fkEntry : fksForTable.entrySet()) {
-        final String fkName = fkEntry.getKey();
-        final Map<String, String> mapping = Map.copyOf(fkEntry.getValue());
-        final String pkTableName = fkToPkTable.get(key).get(fkName);
-        final boolean uniqueOnFk = isUniqueForeignKey(mapping.keySet(), uniqueKeys);
-        fks.add(new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk));
-      }
-      result.put(key, fks);
-    }
+    groupedMappings.forEach(
+        (key, fksForTable) -> {
+          final List<List<String>> uniqueKeys =
+              allUniqueKeys.getOrDefault(key, Collections.emptyList());
+          final List<ForeignKey> fks =
+              fksForTable.entrySet().stream()
+                  .map(
+                      fkEntry -> {
+                        final String fkName = fkEntry.getKey();
+                        final Map<String, String> mapping = Map.copyOf(fkEntry.getValue());
+                        final String pkTableName = fkToPkTable.get(key).get(fkName);
+                        final boolean uniqueOnFk = isUniqueForeignKey(mapping.keySet(), uniqueKeys);
+                        return new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk);
+                      })
+                  .toList();
+          result.put(key, fks);
+        });
     return result;
   }
 
   private static boolean isUniqueForeignKey(
       final Set<String> fkCols, final List<List<String>> uniqueKeys) {
-    for (final List<String> uk : uniqueKeys) {
-      if (uk.size() == fkCols.size() && fkCols.containsAll(uk)) {
-        return true;
-      }
-    }
-    return false;
+    return uniqueKeys.stream().anyMatch(uk -> uk.size() == fkCols.size() && fkCols.containsAll(uk));
   }
 
   private static Map<TableKey, List<List<String>>> loadAllUniqueKeys(

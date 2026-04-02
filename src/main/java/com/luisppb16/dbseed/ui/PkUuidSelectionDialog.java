@@ -95,6 +95,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public static final int BACK_EXIT_CODE = NEXT_USER_EXIT_CODE + 1;
   private static final String TREAT_AS_UUID_PREFIX = "Treat as UUID: ";
   private static final String IS_TABLE_PROPERTY = "isTable";
+  private static final String LABEL_DISABLED_FOREGROUND = "Label.disabledForeground";
 
   private final List<Table> tables;
   private final GenerationConfig initialConfig;
@@ -103,6 +104,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Set<String> excludedTables = new LinkedHashSet<>();
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
   private final RepetitionRulesPanel repetitionRulesPanel;
+  private final CircularReferencesPanel circularReferencesPanel;
 
   private final JBTextField softDeleteColumnsField = new JBTextField();
   private final JBCheckBox softDeleteUseSchemaDefaultBox =
@@ -123,6 +125,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     this.tables = Objects.requireNonNull(tables, "Table list cannot be null.");
     this.initialConfig = Objects.requireNonNull(initialConfig, "Initial config cannot be null.");
     this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
+    this.circularReferencesPanel = new CircularReferencesPanel(tables);
 
     final int initialScale = initialConfig.numericScale() >= 0 ? initialConfig.numericScale() : 2;
     this.scaleSpinner = new JSpinner(new SpinnerNumberModel(initialScale, 0, 10, 1));
@@ -171,13 +174,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private static String extractText(Component component) {
-    if (component instanceof final JCheckBox box) {
-      return box.getText();
-    }
-    if (component instanceof final JLabel label) {
-      return label.getText();
-    }
-    return null;
+    return component instanceof final JCheckBox box
+        ? box.getText()
+        : component instanceof final JLabel label ? label.getText() : null;
   }
 
   private void initDefaults() {
@@ -272,7 +271,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         wrapInScrollPane(repetitionRulesPanel),
         "Configure data repetition rules");
 
-    // Tab 5: Advanced Settings
+    // Tab 5: Circular References
+    tabbedPane.addTab(
+        "Circular References",
+        AllIcons.Nodes.Related,
+        wrapInScrollPane(circularReferencesPanel),
+        "Configure self-referencing circular dependencies");
+
+    // Tab 6: Advanced Settings
     tabbedPane.addTab(
         "Advanced",
         AllIcons.General.Settings,
@@ -311,7 +317,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     softDeleteSection.setBorder(BorderFactory.createTitledBorder("Soft Delete Settings"));
 
     // Section header
-    final JBLabel softDeleteTitle = new JBLabel("Soft Delete Configuration");
+    final JBLabel softDeleteTitle = new JBLabel("Soft delete configuration");
     softDeleteTitle.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
     softDeleteSection.add(softDeleteTitle);
     softDeleteSection.add(Box.createVerticalStrut(12));
@@ -345,7 +351,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     statusPanel.setOpaque(false);
     final JBLabel statusLabel = new JBLabel("Using global settings");
     statusLabel.setFont(JBUI.Fonts.smallFont());
-    statusLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+    statusLabel.setForeground(UIManager.getColor(LABEL_DISABLED_FOREGROUND));
     final JButton resetButton = new JButton("Restore Defaults");
     resetButton.putClientProperty("JButton.buttonType", "borderless");
     statusPanel.add(statusLabel, BorderLayout.WEST);
@@ -358,7 +364,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     numericSection.setBorder(BorderFactory.createTitledBorder("Numeric Scale"));
 
     // Section header
-    final JBLabel numericTitle = new JBLabel("Numeric Configuration");
+    final JBLabel numericTitle = new JBLabel("Numeric configuration");
     numericTitle.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
     numericSection.add(numericTitle);
     numericSection.add(Box.createVerticalStrut(12));
@@ -380,7 +386,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final JBLabel scaleTooltip =
         new JBLabel("Applied to DECIMAL/NUMERIC columns without explicit scale");
     scaleTooltip.setFont(JBUI.Fonts.smallFont());
-    scaleTooltip.setForeground(UIManager.getColor("Label.disabledForeground"));
+    scaleTooltip.setForeground(UIManager.getColor(LABEL_DISABLED_FOREGROUND));
     numericSection.add(scaleTooltip);
 
     // === Main panel ===
@@ -408,7 +414,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           statusLabel.setForeground(
               modified
                   ? UIManager.getColor("Label.infoForeground")
-                  : UIManager.getColor("Label.disabledForeground"));
+                  : UIManager.getColor(LABEL_DISABLED_FOREGROUND));
         };
 
     final DocumentListener listener =
@@ -833,9 +839,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         table -> {
           final Set<String> fkCols = table.fkColumnNames();
           final List<Column> stringColumns =
-              table.columns().stream()
-                  .filter(PkUuidSelectionDialog::isStringType)
-                  .toList();
+              table.columns().stream().filter(PkUuidSelectionDialog::isStringType).toList();
 
           if (stringColumns.isEmpty()) {
             return;
@@ -848,14 +852,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           final List<JCheckBox> tableBoxes = new ArrayList<>();
           stringColumns.forEach(
               column -> {
-                final boolean hasConstraint = column.primaryKey() || fkCols.contains(column.name()) || column.hasAllowedValues();
+                final boolean hasConstraint =
+                    column.primaryKey()
+                        || fkCols.contains(column.name())
+                        || column.hasAllowedValues();
                 final boolean preSelected = !hasConstraint && isDefaultAiCandidate(column.name());
                 final JCheckBox box = new JCheckBox(column.name());
 
                 if (hasConstraint) {
                   box.setSelected(false);
                   box.setEnabled(false);
-                  box.setToolTipText("Column has constraints (PK, FK, or allowed values). Will be generated by the random algorithm.");
+                  box.setToolTipText(
+                      "Column has constraints (PK, FK, or allowed values). Will be generated by the random algorithm.");
                 } else {
                   box.setSelected(preSelected);
                 }
@@ -920,6 +928,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   public Map<String, List<RepetitionRule>> getRepetitionRules() {
     return repetitionRulesPanel.getRules();
+  }
+
+  public Map<String, Map<String, Integer>> getCircularReferences() {
+    return circularReferencesPanel.getCircularReferences();
+  }
+
+  public Map<String, Map<String, String>> getCircularReferenceTerminationModes() {
+    return circularReferencesPanel.getCircularReferenceTerminationModes();
   }
 
   public String getSoftDeleteColumns() {

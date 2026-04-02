@@ -81,11 +81,9 @@ public class DialectFactory {
     }
 
     String detected = detectDialect(driver);
-    if (Objects.nonNull(detected)) {
-      return new StandardDialect(detected + ".properties");
-    }
-
-    return new StandardDialect();
+    return Objects.nonNull(detected)
+        ? new StandardDialect(detected + ".properties")
+        : new StandardDialect();
   }
 
   private static String detectDialect(DriverInfo driver) {

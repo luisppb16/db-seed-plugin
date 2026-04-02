@@ -20,6 +20,10 @@ class DialectFactoryTest {
     return DriverInfo.builder().dialect(dialect).build();
   }
 
+  private static DriverInfo driverWithMeta(String driverClass, String urlTemplate) {
+    return DriverInfo.builder().driverClass(driverClass).urlTemplate(urlTemplate).build();
+  }
+
   // ── Auto-detection from driverClass / urlTemplate ──
 
   static Stream<Arguments> dialectCases() {
@@ -71,5 +75,35 @@ class DialectFactoryTest {
   @Test
   void resolve_nullDialect_returnsStandard() {
     assertThat(DialectFactory.resolve(driver(null))).isInstanceOf(StandardDialect.class);
+  }
+
+  @Test
+  void resolve_detectsDialectFromDriverClassWhenDialectMissing() {
+    DriverInfo info = driverWithMeta("org.postgresql.Driver", null);
+
+    DatabaseDialect d = DialectFactory.resolve(info);
+
+    assertThat(d).isInstanceOf(StandardDialect.class);
+    assertThat(d.formatBoolean(true)).isEqualTo("TRUE");
+  }
+
+  @Test
+  void resolve_detectsDialectFromUrlWhenDriverClassIsNull() {
+    DriverInfo info = driverWithMeta(null, "jdbc:sqlserver://localhost:1433");
+
+    DatabaseDialect d = DialectFactory.resolve(info);
+
+    assertThat(d).isInstanceOf(StandardDialect.class);
+    assertThat(d.quote("col")).startsWith("[");
+  }
+
+  @Test
+  void resolve_unknownDriverAndUrl_fallsBackToStandard() {
+    DriverInfo info = driverWithMeta("com.acme.CustomDriver", "jdbc:custom://host/db");
+
+    DatabaseDialect d = DialectFactory.resolve(info);
+
+    assertThat(d).isInstanceOf(StandardDialect.class);
+    assertThat(d.quote("t")).isEqualTo("\"t\"");
   }
 }

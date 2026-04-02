@@ -14,6 +14,7 @@ import com.luisppb16.dbseed.config.DriverInfo;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.IntStream;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultComboBoxModel;
@@ -95,12 +96,12 @@ public class DriverSelectionDialog extends DialogWrapper {
                 drivers.stream().map(DriverInfo::name).toArray(String[]::new)));
 
     if (Objects.nonNull(lastDriverName)) {
-      for (int i = 0; i < drivers.size(); i++) {
-        if (drivers.get(i).name().equals(lastDriverName)) {
-          box.setSelectedIndex(i);
-          break;
-        }
-      }
+      final int selectedIndex =
+          IntStream.range(0, drivers.size())
+              .filter(i -> drivers.get(i).name().equals(lastDriverName))
+              .findFirst()
+              .orElse(0);
+      box.setSelectedIndex(selectedIndex);
     } else {
       box.setSelectedIndex(0);
     }
@@ -169,11 +170,9 @@ public class DriverSelectionDialog extends DialogWrapper {
     }
 
     DriverInfo selected = drivers.get(comboBox.getSelectedIndex());
-
-    if (GOOGLE_BIGQUERY.equalsIgnoreCase(selected.name())) {
-      return Optional.ofNullable(configureBigQueryDriver(selected));
-    }
-    return Optional.of(selected);
+    return GOOGLE_BIGQUERY.equalsIgnoreCase(selected.name())
+        ? Optional.ofNullable(configureBigQueryDriver(selected))
+        : Optional.of(selected);
   }
 
   private DriverInfo configureBigQueryDriver(final DriverInfo selectedDriver) {

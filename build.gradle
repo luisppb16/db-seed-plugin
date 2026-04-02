@@ -68,6 +68,8 @@ dependencies {
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
     testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.testcontainers:mysql:1.21.4'
+    testRuntimeOnly 'org.postgresql:postgresql:42.7.7'
+    testRuntimeOnly 'com.mysql:mysql-connector-j:9.3.0'
     testImplementation 'org.xerial:sqlite-jdbc:3.47.2.0'
 }
 
@@ -92,7 +94,11 @@ test {
     }
 
     // Avoid noisy CDS warnings triggered by IntelliJ test classloader configuration.
-    jvmArgs '-Xshare:off'
+    jvmArgs(
+        '-Xshare:off',
+        '-Dcom.mysql.cj.disableAbandonedConnectionCleanup=true',
+        '-Dpgjdbc.config.cleanup.thread.ttl=1'
+    )
 
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)

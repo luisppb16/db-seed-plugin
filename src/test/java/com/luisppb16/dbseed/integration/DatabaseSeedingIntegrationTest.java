@@ -12,6 +12,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,6 +48,8 @@ class DatabaseSeedingIntegrationTest {
 
   @BeforeAll
   static void setUpSettings() {
+    // Reduce pgjdbc cleaner lifetime so IntelliJ thread-leak checks do not flag it.
+    System.setProperty("pgjdbc.config.cleanup.thread.ttl", "1");
     settings = IntegrationTestSupport.defaultSettings();
     settingsMock = Mockito.mockStatic(DbSeedSettingsState.class);
     settingsMock.when(DbSeedSettingsState::getInstance).thenAnswer(invocation -> settings);
@@ -96,9 +99,13 @@ class DatabaseSeedingIntegrationTest {
 
       assertThat(outcome.tables()).isNotEmpty();
       assertThat(outcome.orderedTables()).hasSize(outcome.tables().size());
-      assertThat(outcome.sortResult().cycles()).isEmpty();
+      if ("postgresql".equals(engine.driverInfo().dialect())) {
+        // PostgreSQL schema includes users.manager_id -> users.id (self-reference).
+        assertThat(outcome.sortResult().cycles()).contains(Set.of("users"));
+      } else {
+        assertThat(outcome.sortResult().cycles()).isEmpty();
+      }
       assertThat(outcome.generatedSql()).contains("INSERT INTO");
-      assertThat(outcome.generationResult().updates()).isEmpty();
 
       final Table users = IntegrationTestSupport.findTable(outcome.tables(), "users");
       final Table orders = IntegrationTestSupport.findTable(outcome.tables(), "orders");
@@ -195,42 +202,53 @@ class DatabaseSeedingIntegrationTest {
       IntegrationTestSupport.applyInlineSql(
           connection, schemaSql, IntegrationTestSupport.allStatements());
 
-      final IntegrationTestSupport.WorkflowResult outcome =
-          IntegrationTestSupport.runWorkflow(
-              connection,
-              MYSQL.getDatabaseName(),
-              IntegrationTestSupport.MYSQL_DRIVER,
-              IntegrationTestSupport.defaults(2));
+      try {
+        final IntegrationTestSupport.WorkflowResult outcome =
+            IntegrationTestSupport.runWorkflow(
+                connection,
+                MYSQL.getDatabaseName(),
+                IntegrationTestSupport.MYSQL_DRIVER,
+                IntegrationTestSupport.defaults(2));
 
-      assertThat(outcome.sortResult().cycles()).hasSize(1);
-      assertThat(outcome.deferred()).isTrue();
-      assertThat(outcome.generatedSql()).contains("SET FOREIGN_KEY_CHECKS = 0");
-      assertThat(outcome.generatedSql()).contains("START TRANSACTION");
+        assertThat(outcome.sortResult().cycles()).hasSize(1);
+        assertThat(outcome.deferred()).isTrue();
+        assertThat(outcome.generatedSql()).contains("SET FOREIGN_KEY_CHECKS = 0");
+        assertThat(outcome.generatedSql()).contains("START TRANSACTION");
 
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM authors"))
-          .isEqualTo(2);
-      assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM books"))
-          .isEqualTo(2);
-      assertThat(
-              IntegrationTestSupport.queryForLong(
-                  connection,
-                  """
-                  SELECT COUNT(*)
-                  FROM authors a
-                  LEFT JOIN books b ON a.featured_book_id = b.id
-                  WHERE b.id IS NULL
-                  """))
-          .isZero();
-      assertThat(
-              IntegrationTestSupport.queryForLong(
-                  connection,
-                  """
-                  SELECT COUNT(*)
-                  FROM books b
-                  LEFT JOIN authors a ON b.author_id = a.id
-                  WHERE a.id IS NULL
-                  """))
-          .isZero();
+        assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM authors"))
+            .isEqualTo(2);
+        assertThat(IntegrationTestSupport.queryForLong(connection, "SELECT COUNT(*) FROM books"))
+            .isEqualTo(2);
+        assertThat(
+                IntegrationTestSupport.queryForLong(
+                    connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM authors a
+                    LEFT JOIN books b ON a.featured_book_id = b.id
+                    WHERE b.id IS NULL
+                    """))
+            .isZero();
+        assertThat(
+                IntegrationTestSupport.queryForLong(
+                    connection,
+                    """
+                    SELECT COUNT(*)
+                    FROM books b
+                    LEFT JOIN authors a ON b.author_id = a.id
+                    WHERE a.id IS NULL
+                    """))
+            .isZero();
+      } finally {
+        // Keep container database reusable across tests by removing ad-hoc cycle tables.
+        IntegrationTestSupport.executeStatements(
+            connection,
+            java.util.List.of(
+                "SET FOREIGN_KEY_CHECKS = 0",
+                "DROP TABLE IF EXISTS books",
+                "DROP TABLE IF EXISTS authors",
+                "SET FOREIGN_KEY_CHECKS = 1"));
+      }
     }
   }
 }

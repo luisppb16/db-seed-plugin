@@ -37,6 +37,7 @@ import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.ui.ValidationInfo;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import com.luisppb16.dbseed.config.DbSeedProjectState;
@@ -128,6 +129,25 @@ public final class SeedDialog extends DialogWrapper {
     }
     super.doOKAction();
     saveConfiguration();
+  }
+
+  @Nullable
+  @Override
+  protected ValidationInfo doValidate() {
+    String url = urlField.getText().trim();
+    if (url.isEmpty()) {
+      return new ValidationInfo("JDBC URL cannot be empty", urlField);
+    }
+    if (driverInfo.requiresUser() && userField.getText().trim().isEmpty()) {
+      return new ValidationInfo("User cannot be empty", userField);
+    }
+    if (driverInfo.requiresDatabaseName() && databaseField.getText().trim().isEmpty()) {
+      return new ValidationInfo("Database name cannot be empty", databaseField);
+    }
+    if (driverInfo.requiresSchema() && schemaField.getText().trim().isEmpty()) {
+      return new ValidationInfo("Schema cannot be empty", schemaField);
+    }
+    return super.doValidate();
   }
 
   private void loadConfiguration(@Nullable final String urlTemplate) {

@@ -15,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -302,19 +303,20 @@ public class OllamaClient {
   private List<String> parseModelsResponse(String responseBody) {
     List<String> models = new ArrayList<>();
     try {
-      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
+      JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
       if (json.has("models") && json.get("models").isJsonArray()) {
         json.getAsJsonArray("models")
             .forEach(
                 element -> {
                   if (element.isJsonObject()) {
-                    final JsonObject model = element.getAsJsonObject();
+                    JsonObject model = element.getAsJsonObject();
                     if (model.has("name")) {
                       models.add(model.get("name").getAsString());
                     }
                   }
                 });
       }
+      Collections.sort(models); // Sort models alphabetically
     } catch (Exception e) {
       log.warn("Failed to parse Ollama models response", e);
     }

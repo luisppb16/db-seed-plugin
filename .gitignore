@@ -30,11 +30,7 @@ replay_pid*
 .idea/sqldialects.xml
 .idea/workspace.xml
 /.idea
-/.idea
-/.idea
 /.idea/dataSources
-.idea/workspace.xml
-/.idea
 .DS_Store
 gradle/wrapper/gradle-wrapper.jar
 .intellijPlatform

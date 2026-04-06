@@ -669,9 +669,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       final BiConsumer<JPanel, String> filterLogic) {
     final JButton toggleButton = new JButton();
     final AtomicBoolean isBulkUpdating = new AtomicBoolean(false);
+    final JBLabel countLabel = new JBLabel();
+
+    final List<JCheckBox> itemBoxes = checkBoxes.stream()
+        .filter(b -> !Boolean.TRUE.equals(b.getClientProperty(IS_TABLE_PROPERTY)))
+        .toList();
 
     final Runnable updateButtonState =
         () -> {
+          final long selectedCount = itemBoxes.stream().filter(AbstractButton::isSelected).count();
+          final int totalCount = itemBoxes.size();
+          countLabel.setText(String.format("%d/%d selected", selectedCount, totalCount));
+
           final boolean allSelected = checkBoxes.stream().allMatch(AbstractButton::isSelected);
           toggleButton.setText(allSelected ? "Deselect All" : "Select All");
         };
@@ -712,6 +721,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     actionsPanel.setOpaque(false);
     toggleButton.putClientProperty("JButton.buttonType", "borderless");
     actionsPanel.add(toggleButton);
+    actionsPanel.add(Box.createHorizontalStrut(10));
+    actionsPanel.add(countLabel);
     topPanel.add(actionsPanel, BorderLayout.WEST);
 
     addSearchFunctionality(topPanel, listPanel, filterLogic);

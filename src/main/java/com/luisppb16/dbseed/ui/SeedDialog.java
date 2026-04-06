@@ -27,6 +27,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
+import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
@@ -34,8 +35,12 @@ import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
 import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
+import com.intellij.openapi.ui.ComboBox;
+import com.intellij.openapi.ui.Messages;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import com.luisppb16.dbseed.config.DbSeedProjectState;
+import com.luisppb16.dbseed.config.ConnectionProfile;
 
 /** Interactive database connection configuration wizard for the DBSeed plugin. */
 public final class SeedDialog extends DialogWrapper {
@@ -55,6 +60,10 @@ public final class SeedDialog extends DialogWrapper {
   private final JBTextField schemaField = new JBTextField();
   private final JSpinner rowsSpinner;
   private final JCheckBox deferredBox = new JCheckBox("Enable deferred constraints");
+
+  private final ComboBox<String> profileComboBox = new ComboBox<>();
+  private final JButton saveProfileBtn = new JButton("Save");
+  private final JButton deleteProfileBtn = new JButton("Delete");
 
   private String loadedSoftDeleteColumns;
   private boolean loadedSoftDeleteUseSchemaDefault;
@@ -90,7 +99,14 @@ public final class SeedDialog extends DialogWrapper {
     deferredBox.setToolTipText(
         "When enabled, foreign key constraints are deferred to avoid insertion order issues.");
 
-    loadConfiguration(driverInfo.urlTemplate());
+    setupProfileActions();
+    loadProfiles();
+
+    // Default configuration load behavior is now partly handled by profile selection
+    // but we can initialize defaults if nothing is selected.
+    if (profileComboBox.getItemCount() == 0 || profileComboBox.getSelectedItem() == null) {
+      loadConfiguration(driverInfo.urlTemplate());
+    }
 
     ComponentUtils.configureSpinnerArrowKeyControls(rowsSpinner);
 
@@ -243,7 +259,74 @@ public final class SeedDialog extends DialogWrapper {
     final Project project = getCurrentProject();
     if (Objects.nonNull(project)) {
       final GenerationConfig config = getConfiguration();
-      ConnectionConfigPersistence.save(project, config);
+      String selectedProfile = (String) profileComboBox.getSelectedItem();
+      if (selectedProfile == null || selectedProfile.trim().isEmpty()) {
+        selectedProfile = "Default";
+      }
+      ConnectionConfigPersistence.saveProfile(project, selectedProfile, config);
+    }
+  }
+
+  private void setupProfileActions() {
+    profileComboBox.addActionListener(e -> {
+      String selected = (String) profileComboBox.getSelectedItem();
+      if (selected != null) {
+        Project project = getCurrentProject();
+        if (project != null) {
+          GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
+          populateFields(config, true);
+          prefillUrlFields(config.url(), true);
+          DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
+        }
+      }
+    });
+
+    saveProfileBtn.addActionListener(e -> {
+      String name = Messages.showInputDialog(
+          getRootPane(),
+          "Enter profile name:",
+          "Save Profile",
+          null,
+          (String) profileComboBox.getSelectedItem(),
+          null);
+      if (name != null && !name.trim().isEmpty()) {
+        name = name.trim();
+        Project project = getCurrentProject();
+        if (project != null) {
+          ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
+          loadProfiles();
+          profileComboBox.setSelectedItem(name);
+        }
+      }
+    });
+
+    deleteProfileBtn.addActionListener(e -> {
+      String selected = (String) profileComboBox.getSelectedItem();
+      if (selected != null) {
+        Project project = getCurrentProject();
+        if (project != null) {
+          DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+          state.getProfiles().removeIf(p -> p.getName().equals(selected));
+          if (state.getActiveProfileName().equals(selected)) {
+            state.setActiveProfileName("Default");
+          }
+          loadProfiles();
+        }
+      }
+    });
+  }
+
+  private void loadProfiles() {
+    Project project = getCurrentProject();
+    if (project == null) return;
+    DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    profileComboBox.removeAllItems();
+    for (ConnectionProfile profile : state.getProfiles()) {
+      profileComboBox.addItem(profile.getName());
+    }
+    String active = state.getActiveProfileName();
+    if (active != null) {
+      profileComboBox.setSelectedItem(active);
     }
   }
 
@@ -261,6 +344,16 @@ public final class SeedDialog extends DialogWrapper {
 
   private JPanel createFormPanel() {
     final FormBuilder builder = FormBuilder.createFormBuilder();
+
+    // Profile Selection
+    JPanel profilePanel = new JPanel(new BorderLayout());
+    profilePanel.add(profileComboBox, BorderLayout.CENTER);
+    JPanel btnPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 5, 0));
+    btnPanel.add(saveProfileBtn);
+    btnPanel.add(deleteProfileBtn);
+    profilePanel.add(btnPanel, BorderLayout.EAST);
+
+    builder.addLabeledComponent("Profile:", profilePanel);
 
     // Connection Settings Section
     builder.addComponent(new TitledSeparator("Database Connection")).addVerticalGap(4);

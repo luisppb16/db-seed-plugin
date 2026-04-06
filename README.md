@@ -114,7 +114,8 @@ Circular dependencies between tables are now handled more predictably across sup
 
 - The planner first identifies strongly connected components (Tarjan) to isolate cyclic groups.
 - For engines that support it, inserts run with deferred constraints inside a transaction.
-- For engines without deferred constraints, DBSeed4SQL performs a two-step strategy (`INSERT` + targeted `UPDATE`) to resolve FK cycles safely.
+- For engines without deferred constraints, DBSeed4SQL performs a two-step strategy (`INSERT` + targeted `UPDATE`) to resolve FK cycles
+  safely.
 - Generated scripts keep referential integrity while reducing manual post-processing for cyclic schemas.
 
 ---
@@ -125,7 +126,8 @@ Circular dependencies between tables are now handled more predictably across sup
 - Table sorting with Tarjan's algorithm to detect cycles.
 - Synthetic data generation with [DataFaker](https://www.datafaker.net/) respecting PKs, FKs, uniqueness, and nullability.
 - Heuristics to recognize column names like `email`, `name`, or `uuid`.
-- Robust circular reference handling with deferred constraints (`SET CONSTRAINTS ALL DEFERRED`) or targeted post-insert updates (`PendingUpdate`).
+- Robust circular reference handling with deferred constraints (`SET CONSTRAINTS ALL DEFERRED`) or targeted post-insert updates (
+  `PendingUpdate`).
 - Interactive selection of UUIDs in PKs through a UI dialog.
 - Automatic opening of the generated SQL in the IntelliJ editor.
 - Standalone visual schema designer to prototype tables and generate creation SQL.

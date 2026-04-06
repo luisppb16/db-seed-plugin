@@ -8,11 +8,16 @@ package com.luisppb16.dbseed.ui;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
+import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
 import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
+import com.luisppb16.dbseed.config.ConnectionProfile;
+import com.luisppb16.dbseed.config.DbSeedProjectState;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -35,13 +40,8 @@ import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
 import javax.swing.JToggleButton;
 import javax.swing.SpinnerNumberModel;
-import com.intellij.openapi.ui.ComboBox;
-import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.ui.ValidationInfo;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import com.luisppb16.dbseed.config.DbSeedProjectState;
-import com.luisppb16.dbseed.config.ConnectionProfile;
 
 /** Interactive database connection configuration wizard for the DBSeed plugin. */
 public final class SeedDialog extends DialogWrapper {
@@ -288,52 +288,56 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private void setupProfileActions() {
-    profileComboBox.addActionListener(e -> {
-      String selected = (String) profileComboBox.getSelectedItem();
-      if (selected != null) {
-        Project project = getCurrentProject();
-        if (project != null) {
-          GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
-          populateFields(config, true);
-          prefillUrlFields(config.url(), true);
-          DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
-        }
-      }
-    });
-
-    saveProfileBtn.addActionListener(e -> {
-      String name = Messages.showInputDialog(
-          getRootPane(),
-          "Enter profile name:",
-          "Save Profile",
-          null,
-          (String) profileComboBox.getSelectedItem(),
-          null);
-      if (name != null && !name.trim().isEmpty()) {
-        name = name.trim();
-        Project project = getCurrentProject();
-        if (project != null) {
-          ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
-          loadProfiles();
-          profileComboBox.setSelectedItem(name);
-        }
-      }
-    });
-
-    deleteProfileBtn.addActionListener(e -> {
-      String selected = (String) profileComboBox.getSelectedItem();
-      if (selected != null) {
-        Project project = getCurrentProject();
-        if (project != null) {
-          DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-          state.getProfiles().removeIf(p -> p.getName().equals(selected));
-          if (state.getActiveProfileName().equals(selected)) {
-            state.setActiveProfileName("Default");
+    profileComboBox.addActionListener(
+        e -> {
+          String selected = (String) profileComboBox.getSelectedItem();
+          if (selected != null) {
+            Project project = getCurrentProject();
+            if (project != null) {
+              GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
+              populateFields(config, true);
+              prefillUrlFields(config.url(), true);
+              DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
+            }
           }
-          loadProfiles();
-        }
-      }
-    });
+        });
+
+    saveProfileBtn.addActionListener(
+        e -> {
+          String name =
+              Messages.showInputDialog(
+                  getRootPane(),
+                  "Enter profile name:",
+                  "Save Profile",
+                  null,
+                  (String) profileComboBox.getSelectedItem(),
+                  null);
+          if (name != null && !name.trim().isEmpty()) {
+            name = name.trim();
+            Project project = getCurrentProject();
+            if (project != null) {
+              ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
+              loadProfiles();
+              profileComboBox.setSelectedItem(name);
+            }
+          }
+        });
+
+    deleteProfileBtn.addActionListener(
+        e -> {
+          String selected = (String) profileComboBox.getSelectedItem();
+          if (selected != null) {
+            Project project = getCurrentProject();
+            if (project != null) {
+              DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+              state.getProfiles().removeIf(p -> p.getName().equals(selected));
+              if (state.getActiveProfileName().equals(selected)) {
+                state.setActiveProfileName("Default");
+              }
+              loadProfiles();
+            }
+          }
+        });
   }
 
   private void loadProfiles() {

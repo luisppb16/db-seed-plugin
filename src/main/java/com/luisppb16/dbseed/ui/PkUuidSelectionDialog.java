@@ -671,9 +671,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     final AtomicBoolean isBulkUpdating = new AtomicBoolean(false);
     final JBLabel countLabel = new JBLabel();
 
-    final List<JCheckBox> itemBoxes = checkBoxes.stream()
-        .filter(b -> !Boolean.TRUE.equals(b.getClientProperty(IS_TABLE_PROPERTY)))
-        .toList();
+    final List<JCheckBox> itemBoxes =
+        checkBoxes.stream()
+            .filter(b -> !Boolean.TRUE.equals(b.getClientProperty(IS_TABLE_PROPERTY)))
+            .toList();
 
     final Runnable updateButtonState =
         () -> {

@@ -100,9 +100,9 @@ test {
 
     // Avoid noisy CDS warnings triggered by IntelliJ test classloader configuration.
     jvmArgs(
-        '-Xshare:off',
-        '-Dcom.mysql.cj.disableAbandonedConnectionCleanup=true',
-        '-Dpgjdbc.config.cleanup.thread.ttl=1'
+            '-Xshare:off',
+            '-Dcom.mysql.cj.disableAbandonedConnectionCleanup=true',
+            '-Dpgjdbc.config.cleanup.thread.ttl=1'
     )
 
     javaLauncher = javaToolchains.launcherFor {

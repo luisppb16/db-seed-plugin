@@ -370,10 +370,10 @@ public class DataGenerator {
 
     final long totalAiColumns =
         aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
-    final AtomicInteger startedColumns = new AtomicInteger(0);
+    final AtomicInteger completedColumns = new AtomicInteger(0);
     final List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-    tracker.setText("Generating AI values...");
+    tracker.setText("AI column 0/" + totalAiColumns);
     tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
 
     for (final RowGenerator gen : aiGenerators) {
@@ -383,16 +383,17 @@ public class DataGenerator {
                 () -> {
                   if (tracker.isCanceled()) return;
 
-                  final int started = startedColumns.incrementAndGet();
-                  tracker.setText(
-                      "AI column "
-                          .concat(String.valueOf(started))
-                          .concat("/")
-                          .concat(String.valueOf(totalAiColumns)));
                   try {
                     gen.generateAiValuesForColumn(col);
                   } catch (final Exception ex) {
                     log.warn("AI generation failed for column {}: {}", col.name(), ex.getMessage());
+                  } finally {
+                    final int completed = completedColumns.incrementAndGet();
+                    tracker.setText(
+                        "AI column "
+                            .concat(String.valueOf(completed))
+                            .concat("/")
+                            .concat(String.valueOf(totalAiColumns)));
                   }
                 },
                 AI_COLUMN_EXECUTOR));

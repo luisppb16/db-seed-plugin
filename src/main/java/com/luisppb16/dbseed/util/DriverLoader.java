@@ -141,7 +141,8 @@ public class DriverLoader {
     ensureDriverPresent(null, info);
   }
 
-  private static void downloadDriver(final Project project, final DriverInfo info, final Path target)
+  private static void downloadDriver(
+      final Project project, final DriverInfo info, final Path target)
       throws IOException, URISyntaxException {
     final String groupPath = info.mavenGroupId().replace('.', '/');
     final String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";

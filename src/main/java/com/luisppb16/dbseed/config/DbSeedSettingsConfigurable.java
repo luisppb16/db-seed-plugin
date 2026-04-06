@@ -8,6 +8,7 @@ package com.luisppb16.dbseed.config;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.project.Project;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -19,7 +20,12 @@ import org.jetbrains.annotations.Nullable;
 /** IntelliJ settings configurable implementation for the DBSeed plugin configuration interface. */
 public class DbSeedSettingsConfigurable implements Configurable {
 
+  private final Project myProject;
   private DbSeedSettingsComponent mySettingsComponent;
+
+  public DbSeedSettingsConfigurable(Project project) {
+    this.myProject = project;
+  }
 
   @Nls(capitalization = Nls.Capitalization.Title)
   @Override
@@ -35,14 +41,17 @@ public class DbSeedSettingsConfigurable implements Configurable {
   @Nullable
   @Override
   public JComponent createComponent() {
-    mySettingsComponent = new DbSeedSettingsComponent();
+    mySettingsComponent = new DbSeedSettingsComponent(myProject);
     return mySettingsComponent.getPanel();
   }
 
   @Override
   public boolean isModified() {
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    return mySettingsComponent.getColumnSpinnerStep() != settings.getColumnSpinnerStep()
+    boolean isProfileModified = mySettingsComponent.isProfileModified();
+
+    return isProfileModified
+        || mySettingsComponent.getColumnSpinnerStep() != settings.getColumnSpinnerStep()
         || !Objects.equals(
             mySettingsComponent.getDefaultOutputDirectory(), settings.getDefaultOutputDirectory())
         || mySettingsComponent.getUseLatinDictionary() != settings.isUseLatinDictionary()
@@ -120,6 +129,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setOllamaModel(mySettingsComponent.getOllamaModel());
     settings.setAiWordCount(mySettingsComponent.getAiWordCount());
     settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
+
+    mySettingsComponent.applyProfileSettings();
   }
 
   @Override
@@ -141,6 +152,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setOllamaModel(settings.getOllamaModel());
     mySettingsComponent.setAiWordCount(settings.getAiWordCount());
     mySettingsComponent.setAiRequestTimeout(settings.getAiRequestTimeoutSeconds());
+
+    mySettingsComponent.resetProfileSettings();
   }
 
   @Override

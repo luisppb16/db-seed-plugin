@@ -31,6 +31,13 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.util.Objects;
+import com.intellij.openapi.project.Project;
+import com.intellij.ui.components.JBList;
+import com.intellij.ui.CollectionListModel;
+import com.intellij.ui.ToolbarDecorator;
+import java.util.List;
+import java.util.ArrayList;
+import javax.swing.ListSelectionModel;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
@@ -71,8 +78,13 @@ public class DbSeedSettingsComponent {
   private final JButton myRefreshModelsButton = new JButton("Get models");
   private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("OllamaLoading");
   private volatile boolean disposed = false;
+  private final Project myProject;
+  private final CollectionListModel<String> myProfilesModel = new CollectionListModel<>();
+  private final JBList<String> myProfilesList = new JBList<>(myProfilesModel);
+  private final List<String> originalProfiles = new ArrayList<>();
 
-  public DbSeedSettingsComponent() {
+  public DbSeedSettingsComponent(Project project) {
+    this.myProject = project;
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.getColumnSpinnerStep());
     myDefaultOutputDirectory.setText(settings.getDefaultOutputDirectory());
@@ -112,6 +124,7 @@ public class DbSeedSettingsComponent {
     // Create tabbed interface
     final JBTabbedPane tabbedPane = new JBTabbedPane();
     tabbedPane.addTab("General", createGeneralTab());
+    tabbedPane.addTab("Profiles", createProfilesTab());
     tabbedPane.addTab("Dictionaries", createDictionariesTab());
     tabbedPane.addTab("Soft Delete", createSoftDeleteTab());
     tabbedPane.addTab("AI/Ollama", createAiTab());
@@ -138,6 +151,89 @@ public class DbSeedSettingsComponent {
     scrollPane.setBorder(JBUI.Borders.empty());
     scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
     return scrollPane;
+  }
+
+  private JComponent createProfilesTab() {
+    myProfilesList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+    originalProfiles.clear();
+
+    if (myProject != null) {
+      DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
+      if (projectState != null) {
+        for (ConnectionProfile profile : projectState.getProfiles()) {
+          originalProfiles.add(profile.getName());
+          myProfilesModel.add(profile.getName());
+        }
+      }
+    }
+
+    JPanel listPanel = ToolbarDecorator.createDecorator(myProfilesList)
+        .disableAddAction()
+        .setRemoveAction(button -> {
+            int selectedIndex = myProfilesList.getSelectedIndex();
+            if (selectedIndex >= 0) {
+                myProfilesModel.remove(selectedIndex);
+            }
+        })
+        .createPanel();
+
+    final JBLabel description = new JBLabel(
+        "<html>Manage your saved database connection profiles for this project."
+            + "<br/>You can remove obsolete profiles here. Create new ones from the generator dialog.</html>");
+    description.setForeground(UIUtil.getContextHelpForeground());
+    description.setFont(JBUI.Fonts.smallFont());
+    description.setBorder(JBUI.Borders.emptyBottom(12));
+
+    final JPanel panel = FormBuilder.createFormBuilder()
+            .addComponent(description)
+            .addComponentFillVertically(listPanel, 0)
+            .getPanel();
+
+    final JBScrollPane scrollPane = new JBScrollPane(panel);
+    scrollPane.setBorder(JBUI.Borders.empty());
+    return scrollPane;
+  }
+
+  public boolean isProfileModified() {
+    if (myProject == null) return false;
+    List<String> currentList = myProfilesModel.getItems();
+    if (currentList.size() != originalProfiles.size()) return true;
+    for (int i = 0; i < currentList.size(); i++) {
+        if (!currentList.get(i).equals(originalProfiles.get(i))) return true;
+    }
+    return false;
+  }
+
+  public void applyProfileSettings() {
+    if (myProject == null) return;
+    DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
+    if (projectState == null) return;
+
+    List<String> currentList = myProfilesModel.getItems();
+    List<ConnectionProfile> toKeep = new ArrayList<>();
+    for (ConnectionProfile p : projectState.getProfiles()) {
+        if (currentList.contains(p.getName())) {
+            toKeep.add(p);
+        }
+    }
+    projectState.setProfiles(toKeep);
+    if (!toKeep.isEmpty() && toKeep.stream().noneMatch(p -> p.getName().equals(projectState.getActiveProfileName()))) {
+        projectState.setActiveProfileName(toKeep.get(0).getName());
+    }
+
+    originalProfiles.clear();
+    originalProfiles.addAll(currentList);
+  }
+
+  public void resetProfileSettings() {
+    if (myProject == null) return;
+    myProfilesModel.removeAll();
+    DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
+    if (projectState != null) {
+      for (ConnectionProfile profile : projectState.getProfiles()) {
+        myProfilesModel.add(profile.getName());
+      }
+    }
   }
 
   private JComponent createDictionariesTab() {

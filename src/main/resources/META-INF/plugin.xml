@@ -137,11 +137,8 @@
                            isLogByDefault="true"/>
         <applicationService serviceImplementation="com.luisppb16.dbseed.config.DbSeedSettingsState"/>
         <projectService serviceImplementation="com.luisppb16.dbseed.config.DbSeedProjectState"/>
-        <applicationConfigurable instance="com.luisppb16.dbseed.config.DbSeedSettingsConfigurable"
-                                 id="com.luisppb16.dbseed.config.DbSeedSettingsConfigurable"
-                                 displayName="DBSeed4SQL"/>
-        <projectConfigurable instance="com.luisppb16.dbseed.config.DbSeedProjectConfigurable"
-                             id="com.luisppb16.dbseed.config.DbSeedProjectConfigurable"
-                             displayName="DBSeed Profiles"/>
+        <projectConfigurable instance="com.luisppb16.dbseed.config.DbSeedSettingsConfigurable"
+                             id="com.luisppb16.dbseed.config.DbSeedSettingsConfigurable"
+                             displayName="DBSeed4SQL"/>
     </extensions>
 </idea-plugin>

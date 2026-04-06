@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.action;
@@ -20,7 +22,6 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -96,8 +97,8 @@ import org.jetbrains.annotations.NotNull;
  * functional programming concepts for data processing.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.0
- * @since 2024.1
+ * @version 1.3.5
+ * @since 2025.1
  * @see AnAction
  * @see SeedDialog
  * @see PkUuidSelectionDialog
@@ -295,8 +296,6 @@ public final class SeedDatabaseAction extends AnAction {
                 .softDeleteValue(pkDialog.getSoftDeleteValue())
                 .numericScale(pkDialog.getNumericScale())
                 .build();
-
-        ConnectionConfigPersistence.save(project, finalConfig);
 
         ProgressManager.getInstance()
             .run(

@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.config;
@@ -15,6 +17,7 @@ import java.util.Optional;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 /** Persistence utility for managing database connection configurations in IntelliJ projects. */
 @Slf4j
@@ -25,15 +28,24 @@ public class ConnectionConfigPersistence {
       @NotNull final Project project,
       @NotNull String profileName,
       @NotNull final GenerationConfig config) {
+    final String normalizedProfileName = profileName.trim();
+    if (!ConnectionProfile.isValidName(normalizedProfileName)) {
+      log.warn(
+          "Skipping saveProfile because profile name is blank for project {}.", project.getName());
+      return;
+    }
+
     DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
+
     ConnectionProfile profile =
         state.getProfiles().stream()
-            .filter(p -> p.getName().equals(profileName))
+            .filter(p -> normalizedProfileName.equals(p.getName().trim()))
             .findFirst()
             .orElseGet(
                 () -> {
                   ConnectionProfile newProfile = new ConnectionProfile();
-                  newProfile.setName(profileName);
+                  newProfile.setName(normalizedProfileName);
                   state.getProfiles().add(newProfile);
                   return newProfile;
                 });
@@ -48,28 +60,42 @@ public class ConnectionConfigPersistence {
     profile.setSoftDeleteValue(config.softDeleteValue());
     profile.setNumericScale(config.numericScale());
 
-    state.setActiveProfileName(profileName);
+    state.setActiveProfileName(normalizedProfileName);
 
-    final CredentialAttributes credAttributes = createCredentialAttributes(project, profileName);
+    final CredentialAttributes credAttributes =
+        createCredentialAttributes(project, normalizedProfileName);
     PasswordSafe.getInstance()
         .set(credAttributes, new Credentials(config.user(), config.password()));
 
     log.info(
         "Connection configuration saved for profile {} in project {}.",
-        profileName,
+        normalizedProfileName,
         project.getName());
-  }
-
-  public static void save(@NotNull final Project project, @NotNull final GenerationConfig config) {
-    saveProfile(project, "Default", config);
   }
 
   @NotNull
   public static GenerationConfig loadProfile(
-      @NotNull final Project project, @NotNull String profileName) {
+      @NotNull final Project project, @Nullable String profileName) {
+    final String normalizedProfileName = profileName == null ? "" : profileName.trim();
+    if (!ConnectionProfile.isValidName(normalizedProfileName)) {
+      return GenerationConfig.builder()
+          .url("")
+          .user("")
+          .password("")
+          .schema("")
+          .rowsPerTable(10)
+          .deferred(false)
+          .softDeleteUseSchemaDefault(true)
+          .numericScale(2)
+          .build();
+    }
+
     DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
     Optional<ConnectionProfile> profileOpt =
-        state.getProfiles().stream().filter(p -> p.getName().equals(profileName)).findFirst();
+        state.getProfiles().stream()
+            .filter(p -> normalizedProfileName.equals(p.getName().trim()))
+            .findFirst();
 
     if (profileOpt.isEmpty()) {
       return GenerationConfig.builder()
@@ -86,7 +112,8 @@ public class ConnectionConfigPersistence {
 
     ConnectionProfile profile = profileOpt.get();
 
-    final CredentialAttributes credAttributes = createCredentialAttributes(project, profileName);
+    final CredentialAttributes credAttributes =
+        createCredentialAttributes(project, normalizedProfileName);
     final Credentials credentials = PasswordSafe.getInstance().get(credAttributes);
     String password = "";
     if (Objects.nonNull(credentials)) {
@@ -118,11 +145,5 @@ public class ConnectionConfigPersistence {
     return new CredentialAttributes(
         CredentialAttributesKt.generateServiceName(
             "DBSeed", project.getName() + "-" + profileName));
-  }
-
-  // To keep backward compatibility or avoid modifying other method signatures if they expect simply
-  // `project`
-  private static CredentialAttributes createCredentialAttributes(@NotNull final Project project) {
-    return createCredentialAttributes(project, "Default");
   }
 }

@@ -1,4 +1,8 @@
 /*
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.config;
@@ -25,29 +29,43 @@ class DbSeedProjectStateTest {
   @Test
   void initialState_hasEmptyProfilesAndDefaultActiveProfile() {
     assertThat(state.getProfiles()).isEmpty();
-    assertThat(state.getActiveProfileName()).isEqualTo("Default");
+    assertThat(state.getActiveProfileName()).isEmpty();
     assertThat(state.getState()).isSameAs(state);
   }
 
   @Test
   void loadState_copiesProfilesAndActiveName() {
-    DbSeedProjectState newState = new DbSeedProjectState();
-
+    DbSeedProjectState other = new DbSeedProjectState();
     ConnectionProfile profile = new ConnectionProfile();
-    profile.setName("MyTestProfile");
-    profile.setUrl("jdbc:foo");
-    List<ConnectionProfile> profiles = new ArrayList<>();
-    profiles.add(profile);
+    profile.setName("SavedProfile");
+    other.getProfiles().add(profile);
+    other.setActiveProfileName("SavedProfile");
 
-    newState.setProfiles(profiles);
-    newState.setActiveProfileName("MyTestProfile");
+    state.loadState(other);
 
-    state.loadState(newState);
-
-    assertThat(state.getActiveProfileName()).isEqualTo("MyTestProfile");
     assertThat(state.getProfiles()).hasSize(1);
-    assertThat(state.getProfiles().get(0).getName()).isEqualTo("MyTestProfile");
-    assertThat(state.getProfiles().get(0).getUrl()).isEqualTo("jdbc:foo");
+    assertThat(state.getProfiles().get(0).getName()).isEqualTo("SavedProfile");
+    assertThat(state.getActiveProfileName()).isEqualTo("SavedProfile");
+  }
+
+  @Test
+  void loadState_removesBlankProfilesAndInvalidActiveName() {
+    DbSeedProjectState other = new DbSeedProjectState();
+
+    ConnectionProfile blankProfile = new ConnectionProfile();
+    blankProfile.setName("   ");
+
+    ConnectionProfile validProfile = new ConnectionProfile();
+    validProfile.setName("  SavedProfile  ");
+
+    other.setProfiles(new ArrayList<>(List.of(blankProfile, validProfile)));
+    other.setActiveProfileName("   ");
+
+    state.loadState(other);
+
+    assertThat(state.getProfiles()).hasSize(1);
+    assertThat(state.getProfiles().get(0).getName()).isEqualTo("SavedProfile");
+    assertThat(state.getActiveProfileName()).isEmpty();
   }
 
   @Test

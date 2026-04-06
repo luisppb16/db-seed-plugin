@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.config;
@@ -10,14 +12,18 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.ui.CollectionListModel;
 import com.intellij.ui.TitledSeparator;
+import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.JBTextArea;
@@ -30,18 +36,14 @@ import com.luisppb16.dbseed.ai.OllamaClient;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
-import java.util.Objects;
-import com.intellij.openapi.project.Project;
-import com.intellij.ui.components.JBList;
-import com.intellij.ui.CollectionListModel;
-import com.intellij.ui.ToolbarDecorator;
-import java.util.List;
 import java.util.ArrayList;
-import javax.swing.ListSelectionModel;
+import java.util.List;
+import java.util.Objects;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JSpinner;
+import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 
@@ -77,11 +79,11 @@ public class DbSeedSettingsComponent {
   private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
   private final JButton myRefreshModelsButton = new JButton("Get models");
   private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("OllamaLoading");
-  private volatile boolean disposed = false;
   private final Project myProject;
   private final CollectionListModel<String> myProfilesModel = new CollectionListModel<>();
   private final JBList<String> myProfilesList = new JBList<>(myProfilesModel);
   private final List<String> originalProfiles = new ArrayList<>();
+  private volatile boolean disposed = false;
 
   public DbSeedSettingsComponent(Project project) {
     this.myProject = project;
@@ -156,35 +158,48 @@ public class DbSeedSettingsComponent {
   private JComponent createProfilesTab() {
     myProfilesList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
     originalProfiles.clear();
+    myProfilesModel.removeAll();
 
     if (myProject != null) {
       DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
       if (projectState != null) {
+        List<ConnectionProfile> validProfiles = new ArrayList<>();
         for (ConnectionProfile profile : projectState.getProfiles()) {
-          originalProfiles.add(profile.getName());
-          myProfilesModel.add(profile.getName());
+          if (profile != null && profile.hasValidName()) {
+            profile.setName(profile.getName().trim());
+            validProfiles.add(profile);
+            originalProfiles.add(profile.getName());
+            myProfilesModel.add(profile.getName());
+          }
+        }
+        if (validProfiles.size() != projectState.getProfiles().size()) {
+          projectState.setProfiles(validProfiles);
         }
       }
     }
 
-    JPanel listPanel = ToolbarDecorator.createDecorator(myProfilesList)
-        .disableAddAction()
-        .setRemoveAction(button -> {
-            int selectedIndex = myProfilesList.getSelectedIndex();
-            if (selectedIndex >= 0) {
-                myProfilesModel.remove(selectedIndex);
-            }
-        })
-        .createPanel();
+    JPanel listPanel =
+        ToolbarDecorator.createDecorator(myProfilesList)
+            .disableAddAction()
+            .setRemoveAction(
+                button -> {
+                  int selectedIndex = myProfilesList.getSelectedIndex();
+                  if (selectedIndex >= 0) {
+                    myProfilesModel.remove(selectedIndex);
+                  }
+                })
+            .createPanel();
 
-    final JBLabel description = new JBLabel(
-        "<html>Manage your saved database connection profiles for this project."
-            + "<br/>You can remove obsolete profiles here. Create new ones from the generator dialog.</html>");
+    final JBLabel description =
+        new JBLabel(
+            "<html>Manage your saved database connection profiles for this project."
+                + "<br/>You can remove obsolete profiles here. Create new ones from the generator dialog.</html>");
     description.setForeground(UIUtil.getContextHelpForeground());
     description.setFont(JBUI.Fonts.smallFont());
     description.setBorder(JBUI.Borders.emptyBottom(12));
 
-    final JPanel panel = FormBuilder.createFormBuilder()
+    final JPanel panel =
+        FormBuilder.createFormBuilder()
             .addComponent(description)
             .addComponentFillVertically(listPanel, 0)
             .getPanel();
@@ -199,7 +214,7 @@ public class DbSeedSettingsComponent {
     List<String> currentList = myProfilesModel.getItems();
     if (currentList.size() != originalProfiles.size()) return true;
     for (int i = 0; i < currentList.size(); i++) {
-        if (!currentList.get(i).equals(originalProfiles.get(i))) return true;
+      if (!currentList.get(i).equals(originalProfiles.get(i))) return true;
     }
     return false;
   }
@@ -209,16 +224,26 @@ public class DbSeedSettingsComponent {
     DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
     if (projectState == null) return;
 
-    List<String> currentList = myProfilesModel.getItems();
+    List<String> currentList =
+        myProfilesModel.getItems().stream()
+            .filter(ConnectionProfile::isValidName)
+            .map(String::trim)
+            .toList();
     List<ConnectionProfile> toKeep = new ArrayList<>();
     for (ConnectionProfile p : projectState.getProfiles()) {
+      if (p != null && p.hasValidName()) {
+        p.setName(p.getName().trim());
         if (currentList.contains(p.getName())) {
-            toKeep.add(p);
+          toKeep.add(p);
         }
+      }
     }
     projectState.setProfiles(toKeep);
-    if (!toKeep.isEmpty() && toKeep.stream().noneMatch(p -> p.getName().equals(projectState.getActiveProfileName()))) {
-        projectState.setActiveProfileName(toKeep.get(0).getName());
+    if (toKeep.isEmpty()) {
+      projectState.setActiveProfileName("");
+    } else if (toKeep.stream()
+        .noneMatch(p -> p.getName().equals(projectState.getActiveProfileName()))) {
+      projectState.setActiveProfileName(toKeep.get(0).getName());
     }
 
     originalProfiles.clear();
@@ -231,7 +256,10 @@ public class DbSeedSettingsComponent {
     DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
     if (projectState != null) {
       for (ConnectionProfile profile : projectState.getProfiles()) {
-        myProfilesModel.add(profile.getName());
+        if (profile != null && profile.hasValidName()) {
+          profile.setName(profile.getName().trim());
+          myProfilesModel.add(profile.getName());
+        }
       }
     }
   }

@@ -1,58 +1,76 @@
+#
+# Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
+# All rights reserved.
+#
+# Release pipeline — triggered only when a GitHub Release is published.
+# Required repository secrets:
+#   CERTIFICATE_CHAIN      — PEM certificate chain for plugin signing
+#   PRIVATE_KEY            — PEM private key for plugin signing
+#   PRIVATE_KEY_PASSWORD   — Password for the private key
+#   PUBLISH_TOKEN          — JetBrains Marketplace publish token
+
 name: Build, Test, Sign, Release and Publish Plugin
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   release:
     types: [ published ]
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  release:
+    name: Sign, Package & Publish
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
-      checks: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
+          fetch-depth: 0
 
-      - name: Set up JDK
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
           cache: 'gradle'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Grant execute permission to Gradle wrapper
+        run: chmod +x gradlew
+
+      # ── Tests ──────────────────────────────────────────────────────────────
+      - name: Run tests and generate JaCoCo report
+        run: ./gradlew clean test jacocoTestReport --no-daemon
+        env:
+          GRADLE_OPTS: >-
+            -Dcom.mysql.cj.disableAbandonedConnectionCleanup=true
+            -Dpgjdbc.config.cleanup.thread.ttl=1
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
         with:
-          gradle-version: '9.4.0'
+          name: coverage-report
+          path: build/reports/jacoco/test/html/
 
-      - name: Run Gradle build, tests, and JaCoCo report
-        run: gradle clean buildPlugin jacocoTestReport
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build plugin
+        run: ./gradlew buildPlugin --no-daemon
 
-      - name: Build plugin distribution ZIP
-        if: github.event_name == 'release'
-        run: gradle clean buildPlugin
+      # ── Verify ────────────────────────────────────────────────────────────
+      - name: Verify plugin against recommended IDEs
+        run: ./gradlew verifyPlugin --no-daemon
 
-      - name: Sign plugin distribution ZIP
-        if: github.event_name == 'release'
+      # ── Sign ──────────────────────────────────────────────────────────────
+      - name: Sign plugin
+        run: ./gradlew signPlugin --no-daemon
         env:
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
-        run: gradle signPlugin
 
-      - name: Locate plugin ZIP
-        if: github.event_name == 'release'
+      # ── Locate the signed ZIP ─────────────────────────────────────────────
+      - name: Locate distributable ZIP
         id: locate-zip
         run: |
           ZIP_PATH=$(find build/distributions -type f -name "*-signed.zip" | head -n 1)
@@ -65,17 +83,18 @@ jobs:
           fi
           echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
 
+      # ── Attach ZIP to GitHub Release ──────────────────────────────────────
       - name: Upload ZIP to GitHub Release
-        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.locate-zip.outputs.zip_path }}
 
+      # ── Publish to JetBrains Marketplace ─────────────────────────────────
       - name: Publish plugin to JetBrains Marketplace
-        if: github.event_name == 'release'
+        run: ./gradlew publishPlugin --no-daemon
         env:
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
-        run: gradle publishPlugin
+

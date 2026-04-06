@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db;
@@ -67,8 +69,8 @@ import lombok.experimental.UtilityClass;
  * changes and adapts to varying table structures dynamically.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.0
- * @since 2024.1
+ * @version 1.3.5
+ * @since 2025.1
  * @see DatabaseDialect
  * @see DialectFactory
  * @see PendingUpdate

@@ -177,9 +177,16 @@ CREATE TABLE shopping_cart
     notes       VARCHAR(255)
 );
 
+
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
+ */
+
+
+/*
  */
 
 -- Sample Data

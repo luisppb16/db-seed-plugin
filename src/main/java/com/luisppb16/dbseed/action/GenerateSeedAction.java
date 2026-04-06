@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.action;
@@ -20,7 +22,6 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.testFramework.LightVirtualFile;
-import com.luisppb16.dbseed.config.ConnectionConfigPersistence;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
@@ -136,26 +137,6 @@ public final class GenerateSeedAction extends AnAction {
               .softDeleteValue(pkDialog.getSoftDeleteValue())
               .numericScale(pkDialog.getNumericScale())
               .build();
-
-      ConnectionConfigPersistence.save(project, finalConfig);
-
-      if (settings.isUseAiGeneration()
-          && (Objects.isNull(settings.getAiApplicationContext())
-              || settings.getAiApplicationContext().isBlank())) {
-        final int aiResult =
-            Messages.showYesNoDialog(
-                project,
-                "AI generation is enabled but the application context is empty.\n"
-                    + "Without context, the AI model may produce less relevant data.\n\n"
-                    + "Continue without application context?",
-                "Empty AI Application Context",
-                "Continue",
-                "Cancel",
-                Messages.getWarningIcon());
-        if (aiResult != Messages.YES) {
-          return;
-        }
-      }
 
       ProgressManager.getInstance()
           .run(

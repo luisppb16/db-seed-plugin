@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.dialect;
@@ -61,8 +63,8 @@ import lombok.experimental.UtilityClass;
  * resolution.
  *
  * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.0
- * @since 2024.1
+ * @version 1.3.5
+ * @since 2025.1
  * @see DatabaseDialect
  * @see StandardDialect
  * @see DriverInfo

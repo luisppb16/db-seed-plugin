@@ -1,4 +1,8 @@
 /*
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.config;
@@ -13,7 +17,7 @@ class ConnectionProfileTest {
   void testDefaultValues() {
     ConnectionProfile profile = new ConnectionProfile();
 
-    assertThat(profile.getName()).isEqualTo("Default");
+    assertThat(profile.getName()).isEqualTo("");
     assertThat(profile.getUrl()).isEmpty();
     assertThat(profile.getUser()).isEmpty();
     assertThat(profile.getSchema()).isEmpty();

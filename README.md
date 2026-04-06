@@ -154,8 +154,12 @@ The build is done with Gradle:
 The plugin is packaged as a `.zip` in `build/distributions/`, which is the installable artifact in IntelliJ via **Settings → Plugins →
 Install plugin from disk...**.
 
-The **GitHub Actions** pipeline compiles the project on JDK 25, runs the tests, and automatically attaches the `.zip` as a downloadable
-artifact in each published release.
+The **GitHub Actions** pipeline (`.github/workflows/`) has two workflows:
+
+- **`ci.yml`** — runs on every push and pull request: compiles, runs tests, generates a JaCoCo coverage report, and verifies the plugin
+  against the recommended IDE versions.
+- **`release.yml`** — triggered when a GitHub Release is published: runs tests, builds, verifies, signs the plugin with the JetBrains
+  signing certificate, uploads the signed `.zip` to the release, and publishes to the **JetBrains Marketplace** automatically.
 
 ---
 

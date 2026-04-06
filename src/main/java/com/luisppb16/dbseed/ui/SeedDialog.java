@@ -1,6 +1,8 @@
 /*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
+ * *****************************************************************************
+ *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
+ *  * All rights reserved.
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.ui;
@@ -27,6 +29,8 @@ import java.awt.Cursor;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -128,7 +132,6 @@ public final class SeedDialog extends DialogWrapper {
       // Invalid number typed; spinner retains its last valid value.
     }
     super.doOKAction();
-    saveConfiguration();
   }
 
   @Nullable
@@ -275,18 +278,6 @@ public final class SeedDialog extends DialogWrapper {
     return false;
   }
 
-  private void saveConfiguration() {
-    final Project project = getCurrentProject();
-    if (Objects.nonNull(project)) {
-      final GenerationConfig config = getConfiguration();
-      String selectedProfile = (String) profileComboBox.getSelectedItem();
-      if (selectedProfile == null || selectedProfile.trim().isEmpty()) {
-        selectedProfile = "Default";
-      }
-      ConnectionConfigPersistence.saveProfile(project, selectedProfile, config);
-    }
-  }
-
   private void setupProfileActions() {
     profileComboBox.addActionListener(
         e -> {
@@ -330,9 +321,9 @@ public final class SeedDialog extends DialogWrapper {
             Project project = getCurrentProject();
             if (project != null) {
               DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-              state.getProfiles().removeIf(p -> p.getName().equals(selected));
-              if (state.getActiveProfileName().equals(selected)) {
-                state.setActiveProfileName("Default");
+              state.getProfiles().removeIf(p -> p != null && selected.equals(p.getName()));
+              if (selected.equals(state.getActiveProfileName())) {
+                state.setActiveProfileName("");
               }
               loadProfiles();
             }
@@ -344,13 +335,34 @@ public final class SeedDialog extends DialogWrapper {
     Project project = getCurrentProject();
     if (project == null) return;
     DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    profileComboBox.removeAllItems();
+    List<ConnectionProfile> validProfiles = new ArrayList<>();
     for (ConnectionProfile profile : state.getProfiles()) {
+      if (profile != null && profile.hasValidName()) {
+        profile.setName(profile.getName().trim());
+        validProfiles.add(profile);
+      }
+    }
+    if (validProfiles.size() != state.getProfiles().size()) {
+      state.setProfiles(validProfiles);
+    }
+
+    profileComboBox.removeAllItems();
+    for (ConnectionProfile profile : validProfiles) {
       profileComboBox.addItem(profile.getName());
     }
     String active = state.getActiveProfileName();
-    if (active != null) {
-      profileComboBox.setSelectedItem(active);
+    if (ConnectionProfile.isValidName(active)) {
+      String normalizedActive = active.trim();
+      boolean activeExists =
+          validProfiles.stream().anyMatch(p -> normalizedActive.equals(p.getName()));
+      if (activeExists) {
+        state.setActiveProfileName(normalizedActive);
+        profileComboBox.setSelectedItem(normalizedActive);
+      } else {
+        state.setActiveProfileName("");
+      }
+    } else {
+      state.setActiveProfileName("");
     }
   }
 

@@ -5,18 +5,6 @@
  *  *****************************************************************************
  */
 
-/*
- * *****************************************************************************
- *  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
- *  * All rights reserved.
- *  *****************************************************************************
- */
-
-/*
- * Copyright (c) 2026 Luis Paolo Pepe Barra (@LuisPPB16).
- * All rights reserved.
- */
-
 CREATE TABLE public.users
 (
     id         UUID PRIMARY KEY,

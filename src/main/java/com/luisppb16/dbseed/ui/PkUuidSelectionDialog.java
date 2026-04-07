@@ -684,7 +684,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           final int totalCount = itemBoxes.size();
           countLabel.setText(String.format("%d/%d selected", selectedCount, totalCount));
 
-          final boolean allSelected = checkBoxes.stream().allMatch(AbstractButton::isSelected);
+          final List<JCheckBox> enabledBoxes =
+              checkBoxes.stream().filter(Component::isEnabled).toList();
+          final boolean allSelected =
+              !enabledBoxes.isEmpty() && enabledBoxes.stream().allMatch(AbstractButton::isSelected);
           toggleButton.setText(allSelected ? "Deselect All" : "Select All");
         };
 

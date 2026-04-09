@@ -2,13 +2,14 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * ****************************************************************************
  */
 
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -18,6 +19,7 @@ import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.GenerationConfig;
+import com.luisppb16.dbseed.db.ExclusionImpactAnalyzer;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
@@ -29,6 +31,8 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
 import java.sql.Types;
 import java.text.ParseException;
@@ -44,6 +48,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import javax.swing.AbstractAction;
 import javax.swing.AbstractButton;
@@ -53,6 +59,7 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -98,6 +105,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private static final String TREAT_AS_UUID_PREFIX = "Treat as UUID: ";
   private static final String IS_TABLE_PROPERTY = "isTable";
   private static final String LABEL_DISABLED_FOREGROUND = "Label.disabledForeground";
+  private static final int MAX_WARNINGS_IN_UI = 3;
+  private static final int MAX_WARNINGS_IN_DIALOG = 8;
+  private static final int STRING_REGEX_FIELD_COLUMNS = 30;
+  private static final String CUSTOM_REGEX_PRESET = "Custom";
+  private static final Map<String, String> STRING_REGEX_PRESETS = createStringRegexPresets();
 
   private final List<Table> tables;
   private final GenerationConfig initialConfig;
@@ -117,9 +129,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private final Map<String, Set<String>> aiColumnsByTable = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> aiCheckBoxes = new LinkedHashMap<>();
-
+  private final Map<String, Map<String, String>> stringRegexByTable = new LinkedHashMap<>();
+  private final Map<String, Map<String, JBTextField>> stringRegexFieldsByTable = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
+  private final JBLabel exclusionImpactLabel = new JBLabel();
+  private JBTextField focusedStringRegexField;
 
   public PkUuidSelectionDialog(
       @NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
@@ -181,6 +196,55 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         : component instanceof final JLabel label ? label.getText() : null;
   }
 
+  private static Map<String, String> createStringRegexPresets() {
+    final Map<String, String> presets = new LinkedHashMap<>();
+    presets.put(CUSTOM_REGEX_PRESET, "");
+    presets.put("Hex Color (#RRGGBB)", "^#[0-9A-Fa-f]{6}$");
+    presets.put("Email", "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$");
+    presets.put("Slug", "^[a-z0-9]+(?:-[a-z0-9]+)*$");
+    presets.put("Phone (international)", "^\\\\+?[0-9]{7,15}$");
+    presets.put("Postal code (5 digits)", "^[0-9]{5}$");
+    presets.put("Uppercase code (8 chars)", "^[A-Z0-9]{8}$");
+    return Map.copyOf(presets);
+  }
+
+  private static String formatBulleted(final List<String> lines, final int max) {
+    final int count = Math.min(lines.size(), max);
+    final StringBuilder builder = new StringBuilder();
+    for (int i = 0; i < count; i++) {
+      builder.append("- ").append(lines.get(i)).append("\n");
+    }
+    if (lines.size() > max) {
+      builder.append("- ...and ").append(lines.size() - max).append(" more\n");
+    }
+    return builder.toString();
+  }
+
+  private static String formatBulletedHtml(final List<String> lines, final int max) {
+    final int count = Math.min(lines.size(), max);
+    final StringBuilder builder = new StringBuilder();
+    for (int i = 0; i < count; i++) {
+      builder.append("&bull; ").append(escapeHtml(lines.get(i))).append("<br>");
+    }
+    if (lines.size() > max) {
+      builder
+          .append("&bull; ...and ")
+          .append(lines.size() - max)
+          .append(" more")
+          .append("<br>");
+    }
+    return builder.toString();
+  }
+
+  private static String escapeHtml(final String input) {
+    return input
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;");
+  }
+
   private void initDefaults() {
     tables.forEach(
         table -> {
@@ -219,6 +283,26 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected());
     softDeleteUseSchemaDefaultBox.addActionListener(
         e -> softDeleteValueField.setEnabled(!softDeleteUseSchemaDefaultBox.isSelected()));
+
+    final Map<String, Map<String, String>> initialRegexRules = initialConfig.stringRegexByTable();
+    if (Objects.nonNull(initialRegexRules)) {
+      initialRegexRules.forEach(
+          (table, columns) -> {
+            if (Objects.isNull(columns) || columns.isEmpty()) {
+              return;
+            }
+            final Map<String, String> nonBlankRules = new LinkedHashMap<>();
+            columns.forEach(
+                (column, regex) -> {
+                  if (Objects.nonNull(regex) && !regex.isBlank()) {
+                    nonBlankRules.put(column, regex.trim());
+                  }
+                });
+            if (!nonBlankRules.isEmpty()) {
+              stringRegexByTable.put(table, nonBlankRules);
+            }
+          });
+    }
   }
 
   @Override
@@ -233,6 +317,38 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     } catch (final ParseException ignored) {
       // Invalid number typed, spinner will retain last valid value.
     }
+
+    final ExclusionImpactAnalyzer.Result impact =
+        ExclusionImpactAnalyzer.analyze(tables, excludedColumnsByTable, excludedTables);
+    if (impact.hasWarnings()) {
+      final String message =
+          "Detected possible constraint/dependency issues before generating SQL:\n\n"
+              + formatBulleted(impact.risks(), MAX_WARNINGS_IN_DIALOG)
+              + "\nRecommendations:\n"
+              + formatBulleted(impact.recommendations(), MAX_WARNINGS_IN_DIALOG)
+              + "\nContinue anyway?";
+
+      final int response =
+          Messages.showDialog(
+              message,
+              "Potential Constraint Issues",
+              new String[] {"Continue", "Review Exclusions"},
+              0,
+              Messages.getWarningIcon());
+      if (response != 0) {
+        return;
+      }
+    }
+
+    final List<String> invalidRegex = collectInvalidRegexMessages();
+    if (!invalidRegex.isEmpty()) {
+      Messages.showErrorDialog(
+          "Please fix the following invalid regex rules before generating:\n\n"
+              + formatBulleted(invalidRegex, invalidRegex.size()),
+          "Invalid String Regex");
+      return;
+    }
+
     super.doOKAction();
   }
 
@@ -273,14 +389,21 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         wrapInScrollPane(repetitionRulesPanel),
         "Configure data repetition rules");
 
-    // Tab 5: Circular References
+    // Tab 5: String Formats
+    tabbedPane.addTab(
+        "String Formats",
+        AllIcons.FileTypes.Text,
+        wrapInScrollPane(createStringRegexPanel()),
+        "Define regex/format rules for string fields");
+
+    // Tab 6: Circular References
     tabbedPane.addTab(
         "Circular References",
         AllIcons.Nodes.Related,
         wrapInScrollPane(circularReferencesPanel),
         "Configure self-referencing circular dependencies");
 
-    // Tab 6: Advanced Settings
+    // Tab 7: Advanced Settings
     tabbedPane.addTab(
         "Advanced",
         AllIcons.General.Settings,
@@ -566,7 +689,18 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           c.gridy++;
         });
 
-    return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
+    final JComponent exclusionsList =
+        createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
+
+    final JPanel panel = new JPanel(new BorderLayout(0, 8));
+    panel.setOpaque(false);
+    panel.add(exclusionsList, BorderLayout.CENTER);
+
+    exclusionImpactLabel.setBorder(JBUI.Borders.empty(0, 2, 6, 2));
+    panel.add(exclusionImpactLabel, BorderLayout.NORTH);
+    refreshExclusionImpactLabel();
+
+    return panel;
   }
 
   private void onExcludeBoxChanged(String tableName, String columnName, boolean isSelected) {
@@ -585,6 +719,170 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         }
       }
     }
+
+    final JBTextField regexField =
+        stringRegexFieldsByTable.getOrDefault(tableName, Collections.emptyMap()).get(columnName);
+    if (Objects.nonNull(regexField)) {
+      regexField.setEnabled(!isSelected);
+    }
+
+    refreshExclusionImpactLabel();
+  }
+
+  private JComponent createStringRegexPanel() {
+    final JPanel panel = new JPanel();
+    panel.setOpaque(false);
+    panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+    final JBLabel help =
+        new JBLabel(
+            "Optional regex per string column. Example for hex colors: ^#[0-9A-Fa-f]{6}$");
+    help.setFont(JBUI.Fonts.smallFont());
+    help.setForeground(UIManager.getColor(LABEL_DISABLED_FOREGROUND));
+    panel.add(help);
+    panel.add(Box.createVerticalStrut(8));
+    panel.add(createRegexPresetPanel());
+    panel.add(Box.createVerticalStrut(8));
+
+    boolean hasStringColumns = false;
+    for (final Table table : tables) {
+      final List<Column> stringColumns =
+          table.columns().stream().filter(PkUuidSelectionDialog::isStringType).toList();
+      if (stringColumns.isEmpty()) {
+        continue;
+      }
+      hasStringColumns = true;
+      panel.add(createStringRegexTablePanel(table, stringColumns));
+      panel.add(Box.createVerticalStrut(8));
+    }
+
+    if (!hasStringColumns) {
+      final JBLabel empty = new JBLabel("No string columns detected in current schema.");
+      empty.setForeground(UIManager.getColor(LABEL_DISABLED_FOREGROUND));
+      panel.add(empty);
+    }
+
+    panel.add(Box.createVerticalGlue());
+    return panel;
+  }
+
+  private JComponent createRegexPresetPanel() {
+    final JPanel presetPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+    presetPanel.setOpaque(false);
+
+    final JBLabel presetLabel = new JBLabel("Quick templates:");
+    final JComboBox<String> presetCombo =
+        new JComboBox<>(STRING_REGEX_PRESETS.keySet().toArray(String[]::new));
+    final JButton applyPresetButton = new JButton("Apply to focused field");
+
+    applyPresetButton.addActionListener(
+        e -> {
+          final String selectedPreset = (String) presetCombo.getSelectedItem();
+          if (Objects.isNull(selectedPreset) || CUSTOM_REGEX_PRESET.equals(selectedPreset)) {
+            return;
+          }
+          if (Objects.isNull(focusedStringRegexField) || !focusedStringRegexField.isEnabled()) {
+            Messages.showInfoMessage(
+                "Click a Regex field first, then apply the quick template.",
+                "String Regex Templates");
+            return;
+          }
+          focusedStringRegexField.setText(STRING_REGEX_PRESETS.get(selectedPreset));
+        });
+
+    presetPanel.add(presetLabel);
+    presetPanel.add(presetCombo);
+    presetPanel.add(applyPresetButton);
+    return presetPanel;
+  }
+
+  private JPanel createStringRegexTablePanel(final Table table, final List<Column> stringColumns) {
+    final JPanel tablePanel = new JPanel(new GridBagLayout());
+    tablePanel.setOpaque(false);
+    tablePanel.setBorder(BorderFactory.createTitledBorder(table.name()));
+
+    final GridBagConstraints c = new GridBagConstraints();
+    c.gridx = 0;
+    c.gridy = 0;
+    c.insets = JBUI.insets(4);
+    c.anchor = GridBagConstraints.WEST;
+
+    for (final Column column : stringColumns) {
+      final JBLabel nameLabel = new JBLabel(column.name());
+      c.gridx = 0;
+      c.weightx = 0;
+      c.fill = GridBagConstraints.NONE;
+      tablePanel.add(nameLabel, c);
+
+      final JBTextField regexField = new JBTextField(STRING_REGEX_FIELD_COLUMNS);
+      regexField.getEmptyText().setText("Regex (optional)");
+      final String initialRegex =
+          stringRegexByTable
+              .getOrDefault(table.name(), Collections.emptyMap())
+              .getOrDefault(column.name(), "");
+      regexField.setText(initialRegex);
+      regexField.addFocusListener(
+          new FocusAdapter() {
+            @Override
+            public void focusGained(final FocusEvent e) {
+              focusedStringRegexField = regexField;
+            }
+          });
+      regexField.getDocument().addDocumentListener(
+          new DocumentAdapter() {
+            @Override
+            protected void textChanged(@NotNull final DocumentEvent e) {
+              onStringRegexChanged(table.name(), column.name(), regexField.getText());
+            }
+          });
+      regexField.setEnabled(
+          !excludedColumnsByTable
+              .getOrDefault(table.name(), Collections.emptySet())
+              .contains(column.name()));
+      stringRegexFieldsByTable
+          .computeIfAbsent(table.name(), key -> new LinkedHashMap<>())
+          .put(column.name(), regexField);
+
+      c.gridx = 1;
+      c.weightx = 1;
+      c.fill = GridBagConstraints.HORIZONTAL;
+      tablePanel.add(regexField, c);
+      c.gridy++;
+    }
+
+    return tablePanel;
+  }
+
+  private void onStringRegexChanged(
+      final String tableName, final String columnName, final String rawRegex) {
+    final String regex = Objects.nonNull(rawRegex) ? rawRegex.trim() : "";
+    final Map<String, String> tableRules =
+        stringRegexByTable.computeIfAbsent(tableName, key -> new LinkedHashMap<>());
+
+    if (regex.isEmpty()) {
+      tableRules.remove(columnName);
+      if (tableRules.isEmpty()) {
+        stringRegexByTable.remove(tableName);
+      }
+      return;
+    }
+
+    tableRules.put(columnName, regex);
+  }
+
+  private List<String> collectInvalidRegexMessages() {
+    final List<String> invalid = new ArrayList<>();
+    stringRegexByTable.forEach(
+        (table, columns) ->
+            columns.forEach(
+                (column, regex) -> {
+                  try {
+                    Pattern.compile(regex);
+                  } catch (final PatternSyntaxException ex) {
+                    invalid.add(table + "." + column + " -> " + ex.getDescription());
+                  }
+                }));
+    return invalid;
   }
 
   private void updateSelectionAndSync(
@@ -628,6 +926,30 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       colBox.setSelected(isSelected);
       onExcludeBoxChanged(tableName, colBox.getText(), isSelected);
     }
+
+    refreshExclusionImpactLabel();
+  }
+
+  private void refreshExclusionImpactLabel() {
+    final ExclusionImpactAnalyzer.Result impact =
+        ExclusionImpactAnalyzer.analyze(tables, excludedColumnsByTable, excludedTables);
+
+    if (!impact.hasWarnings()) {
+      exclusionImpactLabel.setIcon(AllIcons.General.InspectionsOK);
+      exclusionImpactLabel.setText(
+          "No immediate FK/PK risks detected with current exclusions.");
+      exclusionImpactLabel.setForeground(UIManager.getColor("Label.foreground"));
+      return;
+    }
+
+    exclusionImpactLabel.setIcon(AllIcons.General.Warning);
+    exclusionImpactLabel.setForeground(UIManager.getColor("Label.foreground"));
+    exclusionImpactLabel.setText(
+        "<html><b>Possible constraint risks:</b><br>"
+            + formatBulletedHtml(impact.risks(), MAX_WARNINGS_IN_UI)
+            + "<br><b>Recommended exclusions/changes:</b><br>"
+            + formatBulletedHtml(impact.recommendations(), MAX_WARNINGS_IN_UI)
+            + "</html>");
   }
 
   private JPanel createTablePanel(JComponent header, List<JCheckBox> columnBoxes) {
@@ -918,6 +1240,12 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public Map<String, Set<String>> getAiColumnsByTable() {
     final Map<String, Set<String>> out = new LinkedHashMap<>();
     aiColumnsByTable.forEach((k, v) -> out.put(k, Set.copyOf(v)));
+    return out;
+  }
+
+  public Map<String, Map<String, String>> getStringRegexByTable() {
+    final Map<String, Map<String, String>> out = new LinkedHashMap<>();
+    stringRegexByTable.forEach((table, rules) -> out.put(table, Map.copyOf(rules)));
     return out;
   }
 

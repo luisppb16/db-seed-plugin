@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * ****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
@@ -26,6 +26,9 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import net.datafaker.Faker;
 
 /**
@@ -66,6 +69,15 @@ public record ValueGenerator(
 
   private static final int DATE_RANGE_DAYS = 3650;
   private static final int TIMESTAMP_RANGE_SECONDS = 31_536_000;
+  private static final int REGEX_GENERATION_MAX_ATTEMPTS = 120;
+  private static final Pattern STRICT_HEX_PATTERN =
+      Pattern.compile("^\\^#?\\[0-9A-Fa-f]\\{(\\d+)}\\$$");
+  private static final Pattern STRICT_OPTIONAL_HEX_PATTERN =
+      Pattern.compile("^\\^#\\?\\[0-9A-Fa-f]\\{(\\d+)}\\$$");
+  private static final Pattern STRICT_DIGIT_PATTERN =
+      Pattern.compile("^\\^(?:\\\\d|\\[0-9])\\{(\\d+)}\\$$");
+  private static final Pattern STRICT_ALPHA_PATTERN =
+      Pattern.compile("^\\^\\[(?:A-Za-z|a-zA-Z)]\\{(\\d+)}\\$$");
 
   public ValueGenerator(
       final Faker faker,
@@ -111,6 +123,14 @@ public record ValueGenerator(
 
   public Object generateValue(
       final Column column, final ParsedConstraint constraint, final int rowIndex) {
+    return generateValue(column, constraint, rowIndex, null);
+  }
+
+  public Object generateValue(
+      final Column column,
+      final ParsedConstraint constraint,
+      final int rowIndex,
+      final String stringRegex) {
     if (column.nullable() && ThreadLocalRandom.current().nextDouble() < NULL_PROBABILITY) {
       return null;
     }
@@ -139,7 +159,106 @@ public record ValueGenerator(
     if (Objects.isNull(maxLen) || maxLen <= 0)
       maxLen = column.length() > 0 ? column.length() : null;
 
+    if (isStringJdbcType(column.jdbcType())
+        && Objects.nonNull(stringRegex)
+        && !stringRegex.isBlank()) {
+      return generateStringByRegex(stringRegex.trim(), maxLen, column.jdbcType(), rowIndex);
+    }
+
     return generateDefaultValue(column, rowIndex, maxLen);
+  }
+
+  private Object generateStringByRegex(
+      final String regex, final Integer maxLen, final int jdbcType, final int rowIndex) {
+    final Pattern pattern;
+    try {
+      pattern = Pattern.compile(regex);
+    } catch (final PatternSyntaxException ex) {
+      return generateString(maxLen, jdbcType);
+    }
+
+    for (int i = 0; i < REGEX_GENERATION_MAX_ATTEMPTS; i++) {
+      final String candidate = buildRegexCandidate(regex, maxLen, jdbcType);
+      if (pattern.matcher(candidate).matches()) {
+        return candidate;
+      }
+    }
+
+    final String fallback = generateString(maxLen, jdbcType);
+    return pattern.matcher(fallback).matches()
+        ? fallback
+        : normalizeToLength(sanitizeRegexLiteral(regex), resolveLength(maxLen), jdbcType);
+  }
+
+  private String buildRegexCandidate(final String regex, final Integer maxLen, final int jdbcType) {
+    final Integer optionalHexLength = extractPatternLength(regex, STRICT_OPTIONAL_HEX_PATTERN);
+    if (Objects.nonNull(optionalHexLength)) {
+      return normalizeToLength(
+          faker.bool().bool()
+              ? faker.regexify("[0-9A-Fa-f]{" + optionalHexLength + "}")
+              : "#" + faker.regexify("[0-9A-Fa-f]{" + optionalHexLength + "}"),
+          resolveLength(maxLen),
+          jdbcType);
+    }
+
+    final Integer fixedHexLength = extractPatternLength(regex, STRICT_HEX_PATTERN);
+    if (Objects.nonNull(fixedHexLength)) {
+      return normalizeToLength(
+          "#" + faker.regexify("[0-9A-Fa-f]{" + fixedHexLength + "}"),
+          resolveLength(maxLen),
+          jdbcType);
+    }
+
+    final Integer fixedDigitsLength = extractPatternLength(regex, STRICT_DIGIT_PATTERN);
+    if (Objects.nonNull(fixedDigitsLength)) {
+      return normalizeToLength(faker.regexify("[0-9]{" + fixedDigitsLength + "}"),
+          resolveLength(maxLen), jdbcType);
+    }
+
+    final Integer fixedAlphaLength = extractPatternLength(regex, STRICT_ALPHA_PATTERN);
+    if (Objects.nonNull(fixedAlphaLength)) {
+      return normalizeToLength(faker.regexify("[A-Za-z]{" + fixedAlphaLength + "}"),
+          resolveLength(maxLen), jdbcType);
+    }
+
+    // Generic fallback: small randomized string, validated against the regex by caller.
+    return normalizeToLength(
+        faker.lorem().characters(Math.min(resolveLength(maxLen), 24), true),
+        resolveLength(maxLen),
+        jdbcType);
+  }
+
+  private Integer extractPatternLength(final String regex, final Pattern parser) {
+    final Matcher matcher = parser.matcher(regex);
+    if (!matcher.matches()) {
+      return null;
+    }
+    for (int i = 1; i <= matcher.groupCount(); i++) {
+      final String value = matcher.group(i);
+      if (Objects.nonNull(value) && !value.isBlank()) {
+        return Integer.parseInt(value);
+      }
+    }
+    return null;
+  }
+
+  private int resolveLength(final Integer maxLen) {
+    return Objects.nonNull(maxLen) && maxLen > 0 ? maxLen : DEFAULT_STRING_LENGTH;
+  }
+
+  private String sanitizeRegexLiteral(final String regex) {
+    final String stripped = regex.replaceAll("[\\^$]", "");
+    final String cleaned = stripped.replaceAll("\\[[^]]*]", "X").replaceAll("\\{[^}]*}", "");
+    return cleaned.isBlank() ? "value" : cleaned;
+  }
+
+  private boolean isStringJdbcType(final int jdbcType) {
+    return jdbcType == Types.CHAR
+        || jdbcType == Types.VARCHAR
+        || jdbcType == Types.NCHAR
+        || jdbcType == Types.NVARCHAR
+        || jdbcType == Types.LONGVARCHAR
+        || jdbcType == Types.LONGNVARCHAR;
   }
 
   public Object generateSoftDeleteValue(

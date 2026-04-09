@@ -1,5 +1,5 @@
 services:
-  postgresql:
+  PostgreSQL:
     image: postgres:18
     container_name: postgres
     restart: unless-stopped
@@ -44,14 +44,11 @@ services:
       - ./sqlite_data:/var/lib/sqlite
       - ./initdb/schema_SQLite.sql:/docker-entrypoint-initdb.d/schema_SQLite.sql
     command: >
-      sh -c "sqlite3 /var/lib/sqlite/test.db < /docker-entrypoint-initdb.d/schema_SQLite.sql &&
-      chmod -R 777 /var/lib/sqlite &&
-      tail -f /dev/null"
+      sh -c "sqlite3 /var/lib/sqlite/test.db < /docker-entrypoint-initdb.d/schema_SQLite.sql && tail -f /dev/null"
     networks:
       - db_net
 
 volumes:
-  postgres_data: { }
   mysql_data: { }
 
 networks:

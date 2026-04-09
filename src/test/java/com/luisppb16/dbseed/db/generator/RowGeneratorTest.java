@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * ****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
@@ -50,6 +50,7 @@ class RowGeneratorTest {
         null,
         2,
         Set.of(),
+        Map.of(),
         1,
         null,
         null,
@@ -71,6 +72,7 @@ class RowGeneratorTest {
         null,
         2,
         Set.of(),
+        Map.of(),
         1,
         null,
         null,
@@ -232,6 +234,7 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
+            Map.of(),
             1,
             null,
             null,
@@ -267,6 +270,7 @@ class RowGeneratorTest {
             "1",
             2,
             Set.of(),
+            Map.of(),
             1,
             null,
             null,
@@ -305,6 +309,7 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
+            Map.of(),
             1,
             null,
             null,
@@ -341,6 +346,7 @@ class RowGeneratorTest {
             null,
             2,
             Set.of(),
+            Map.of(),
             1,
             null,
             null,

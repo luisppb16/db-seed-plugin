@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * ****************************************************************************
  */
 
 package com.luisppb16.dbseed.action;
@@ -127,6 +127,7 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getRepetitionRules(),
               pkDialog.getExcludedTables(),
               pkDialog.getAiColumnsByTable(),
+              pkDialog.getStringRegexByTable(),
               pkDialog.getCircularReferences(),
               pkDialog.getCircularReferenceTerminationModes());
 
@@ -136,6 +137,7 @@ public final class GenerateSeedAction extends AnAction {
               .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
               .softDeleteValue(pkDialog.getSoftDeleteValue())
               .numericScale(pkDialog.getNumericScale())
+              .stringRegexByTable(pkDialog.getStringRegexByTable())
               .build();
 
       ProgressManager.getInstance()
@@ -224,6 +226,7 @@ public final class GenerateSeedAction extends AnAction {
                 .softDeleteValue(config.softDeleteValue())
                 .numericScale(config.numericScale())
                 .aiColumns(selections.aiColumns())
+                .stringRegexByTable(selections.stringRegexByTable())
                 .circularReferences(selections.circularReferences())
                 .circularReferenceTerminationModes(selections.circularReferenceTerminationModes())
                 .applicationContext(
@@ -271,6 +274,7 @@ public final class GenerateSeedAction extends AnAction {
       Map<String, List<RepetitionRule>> repetitionRules,
       Set<String> excludedTables,
       Map<String, Set<String>> aiColumns,
+      Map<String, Map<String, String>> stringRegexByTable,
       Map<String, Map<String, Integer>> circularReferences,
       Map<String, Map<String, String>> circularReferenceTerminationModes) {}
 }

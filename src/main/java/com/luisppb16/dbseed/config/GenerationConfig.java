@@ -2,12 +2,11 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.config;
 
-import java.util.Map;
 import lombok.Builder;
 
 /**
@@ -24,5 +23,4 @@ public record GenerationConfig(
     String softDeleteColumns,
     boolean softDeleteUseSchemaDefault,
     String softDeleteValue,
-    int numericScale,
-    Map<String, Map<String, String>> stringRegexByTable) {}
+    int numericScale) {}

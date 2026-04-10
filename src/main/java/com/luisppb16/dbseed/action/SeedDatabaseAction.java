@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.action;
@@ -253,7 +253,6 @@ public final class SeedDatabaseAction extends AnAction {
         final Map<String, Set<String>> excludedColumnsSet = pkDialog.getExcludedColumnsByTable();
         final Map<String, List<RepetitionRule>> repetitionRules = pkDialog.getRepetitionRules();
         final Map<String, Set<String>> aiColumns = pkDialog.getAiColumnsByTable();
-        final Map<String, Map<String, String>> stringRegexByTable = pkDialog.getStringRegexByTable();
         final Set<String> excludedTables = pkDialog.getExcludedTables();
 
         final Map<String, Map<String, String>> pkUuidOverrides =
@@ -296,7 +295,6 @@ public final class SeedDatabaseAction extends AnAction {
                 .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
                 .softDeleteValue(pkDialog.getSoftDeleteValue())
                 .numericScale(pkDialog.getNumericScale())
-                .stringRegexByTable(stringRegexByTable)
                 .build();
 
         ProgressManager.getInstance()
@@ -341,7 +339,6 @@ public final class SeedDatabaseAction extends AnAction {
                                   .softDeleteValue(finalConfig.softDeleteValue())
                                   .numericScale(finalConfig.numericScale())
                                   .aiColumns(aiColumns)
-                                  .stringRegexByTable(stringRegexByTable)
                                   .circularReferences(pkDialog.getCircularReferences())
                                   .circularReferenceTerminationModes(
                                       pkDialog.getCircularReferenceTerminationModes())

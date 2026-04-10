@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db;
@@ -24,7 +24,6 @@ import java.nio.charset.StandardCharsets;
 import java.sql.Types;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
-import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -511,28 +510,6 @@ class DataGeneratorTest {
     for (Row r : result.rows().get(t)) {
       assertThat(r.values().get("secret")).isNull();
     }
-  }
-
-  @Test
-  void stringRegexByTable_generatesHexColorValues() {
-    final Column color =
-        Column.builder().name("color").jdbcType(Types.VARCHAR).length(7).nullable(false).build();
-    final Table t = new Table("palette", List.of(intPk("id"), color), List.of("id"), List.of(), List.of(), List.of());
-
-    final GenerationParameters params =
-        baseParams()
-            .tables(List.of(t))
-            .rowsPerTable(20)
-            .stringRegexByTable(Map.of("palette", Map.of("color", "^#[0-9A-Fa-f]{6}$")))
-            .build();
-    final GenerationResult result = DataGenerator.generate(params);
-
-    final Pattern hex = Pattern.compile("^#[0-9A-Fa-f]{6}$");
-    result
-        .rows()
-        .get(t)
-        .forEach(
-            row -> assertThat(hex.matcher(String.valueOf(row.values().get("color"))).matches()).isTrue());
   }
 
   @Test

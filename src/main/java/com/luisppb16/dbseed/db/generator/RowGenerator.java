@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
@@ -58,7 +58,6 @@ public final class RowGenerator {
   private final boolean softDeleteUseSchemaDefault;
   private final String softDeleteValue;
   private final Set<String> aiColumns;
-  private final Map<String, String> stringRegexByColumn;
   private final int aiWordCount;
   private final ValueGenerator valueGenerator;
   private final OllamaClient ollamaClient;
@@ -87,7 +86,6 @@ public final class RowGenerator {
       final String softDeleteValue,
       final int numericScale,
       final Set<String> aiColumns,
-      final Map<String, String> stringRegexByColumn,
       final int aiWordCount,
       final OllamaClient ollamaClient,
       final String applicationContext,
@@ -103,7 +101,6 @@ public final class RowGenerator {
     this.softDeleteUseSchemaDefault = softDeleteUseSchemaDefault;
     this.softDeleteValue = softDeleteValue;
     this.aiColumns = Objects.requireNonNullElse(aiColumns, Set.of());
-    this.stringRegexByColumn = Objects.requireNonNullElse(stringRegexByColumn, Map.of());
     this.aiWordCount = Math.max(aiWordCount, 1);
     final List<String> resolvedDictionaryWords =
         Objects.requireNonNullElse(dictionaryWords, List.of());
@@ -556,10 +553,7 @@ public final class RowGenerator {
           column, softDeleteUseSchemaDefault, softDeleteValue);
     }
     return valueGenerator.generateValue(
-        column,
-        constraints.get(column.name()),
-        generatedCount.get(),
-        stringRegexByColumn.get(column.name()));
+        column, constraints.get(column.name()), generatedCount.get());
   }
 
   private String resolveColumnName(final String constraintColName) {

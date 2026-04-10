@@ -2,13 +2,12 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.ComboBox;
@@ -31,9 +30,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -77,9 +74,6 @@ public final class SeedDialog extends DialogWrapper {
   private boolean loadedSoftDeleteUseSchemaDefault;
   private String loadedSoftDeleteValue;
   private int loadedNumericScale;
-  private Map<String, Map<String, String>> loadedStringRegexByTable = Map.of();
-  private boolean suppressProfileComboEvents;
-  private long passwordLoadRequestSeq;
 
   public SeedDialog(@NotNull final DriverInfo driverInfo) {
     super(true);
@@ -165,17 +159,11 @@ public final class SeedDialog extends DialogWrapper {
       return;
     }
 
-    final String activeProfileName = DbSeedProjectState.getInstance(project).getActiveProfileName();
-    final GenerationConfig savedConfig =
-        ConnectionConfigPersistence.loadProfileWithoutPassword(project, activeProfileName);
+    final GenerationConfig savedConfig = ConnectionConfigPersistence.load(project);
     final UrlResolution urlResolution = resolveUrl(urlTemplate, savedConfig);
 
     prefillUrlFields(urlResolution.urlToUse(), urlResolution.usingSavedConfig());
     populateFields(savedConfig, urlResolution.usingSavedConfig());
-
-    if (urlResolution.usingSavedConfig() && ConnectionProfile.isValidName(activeProfileName)) {
-      loadPasswordForSelectionAsync(project, activeProfileName.trim());
-    }
   }
 
   private void prefillUrlFields(final String urlToUse, final boolean usingSavedConfig) {
@@ -238,7 +226,6 @@ public final class SeedDialog extends DialogWrapper {
     loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
     loadedSoftDeleteValue = config.softDeleteValue();
     loadedNumericScale = config.numericScale() >= 0 ? config.numericScale() : 2;
-    loadedStringRegexByTable = copyNestedMap(config.stringRegexByTable());
   }
 
   private void populateFieldsWithDefaults(final GenerationConfig config) {
@@ -253,7 +240,6 @@ public final class SeedDialog extends DialogWrapper {
     loadedSoftDeleteUseSchemaDefault = globalSettings.isSoftDeleteUseSchemaDefault();
     loadedSoftDeleteValue = globalSettings.getSoftDeleteValue();
     loadedNumericScale = 2;
-    loadedStringRegexByTable = Map.of();
   }
 
   private UrlResolution resolveUrl(
@@ -295,14 +281,14 @@ public final class SeedDialog extends DialogWrapper {
   private void setupProfileActions() {
     profileComboBox.addActionListener(
         e -> {
-          if (suppressProfileComboEvents) {
-            return;
-          }
           String selected = (String) profileComboBox.getSelectedItem();
-          if (ConnectionProfile.isValidName(selected)) {
+          if (selected != null) {
             Project project = getCurrentProject();
             if (project != null) {
-              applyProfileSelection(project, selected.trim());
+              GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
+              populateFields(config, true);
+              prefillUrlFields(config.url(), true);
+              DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
             }
           }
         });
@@ -321,9 +307,7 @@ public final class SeedDialog extends DialogWrapper {
             name = name.trim();
             Project project = getCurrentProject();
             if (project != null) {
-              final GenerationConfig config = getConfiguration();
-              ConnectionConfigPersistence.saveProfileMetadata(project, name, config);
-              savePasswordAsync(project, name, config);
+              ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
               loadProfiles();
               profileComboBox.setSelectedItem(name);
             }
@@ -362,7 +346,6 @@ public final class SeedDialog extends DialogWrapper {
       state.setProfiles(validProfiles);
     }
 
-    suppressProfileComboEvents = true;
     profileComboBox.removeAllItems();
     for (ConnectionProfile profile : validProfiles) {
       profileComboBox.addItem(profile.getName());
@@ -381,77 +364,6 @@ public final class SeedDialog extends DialogWrapper {
     } else {
       state.setActiveProfileName("");
     }
-    suppressProfileComboEvents = false;
-
-    final String selected = (String) profileComboBox.getSelectedItem();
-    if (ConnectionProfile.isValidName(selected)) {
-      applyProfileSelection(project, selected.trim());
-    }
-  }
-
-  private void applyProfileSelection(@NotNull final Project project, @NotNull final String profileName) {
-    final GenerationConfig config =
-        ConnectionConfigPersistence.loadProfileWithoutPassword(project, profileName);
-    populateFields(config, true);
-    prefillUrlFields(config.url(), true);
-    DbSeedProjectState.getInstance(project).setActiveProfileName(profileName);
-    loadPasswordForSelectionAsync(project, profileName);
-  }
-
-  private void savePasswordAsync(
-      @NotNull final Project project,
-      @NotNull final String profileName,
-      @NotNull final GenerationConfig config) {
-    ApplicationManager.getApplication()
-        .executeOnPooledThread(
-            () ->
-                ConnectionConfigPersistence.savePasswordForProfile(
-                    project, profileName, config.user(), config.password()));
-  }
-
-  private void loadPasswordForSelectionAsync(
-      @NotNull final Project project, @NotNull final String profileName) {
-    setPasswordLoadingState(true);
-    final long requestId = nextPasswordLoadRequestId();
-    ApplicationManager.getApplication()
-        .executeOnPooledThread(
-            () -> {
-              final String loadedPassword =
-                  ConnectionConfigPersistence.loadPasswordForProfile(project, profileName);
-              ApplicationManager.getApplication()
-                  .invokeLater(
-                      () -> {
-                        if (isDisposed() || !isLatestPasswordLoadRequest(requestId)) {
-                          return;
-                        }
-                        final String selected =
-                            Objects.requireNonNullElse((String) profileComboBox.getSelectedItem(), "")
-                                .trim();
-                        if (!profileName.equals(selected)) {
-                          return;
-                        }
-                        passwordField.setText(loadedPassword);
-                        setPasswordLoadingState(false);
-                      });
-            });
-  }
-
-  private synchronized long nextPasswordLoadRequestId() {
-    passwordLoadRequestSeq++;
-    return passwordLoadRequestSeq;
-  }
-
-  private synchronized boolean isLatestPasswordLoadRequest(final long requestId) {
-    return requestId == passwordLoadRequestSeq;
-  }
-
-  private void setPasswordLoadingState(final boolean loading) {
-    if (!driverInfo.requiresPassword()) {
-      return;
-    }
-    passwordField.setEnabled(!loading);
-    passwordField.setToolTipText(
-        loading ? "Loading saved password..." : "Database password for authentication.");
   }
 
   private Project getCurrentProject() {
@@ -574,23 +486,7 @@ public final class SeedDialog extends DialogWrapper {
         .softDeleteUseSchemaDefault(loadedSoftDeleteUseSchemaDefault)
         .softDeleteValue(loadedSoftDeleteValue)
         .numericScale(loadedNumericScale)
-        .stringRegexByTable(copyNestedMap(loadedStringRegexByTable))
         .build();
-  }
-
-  private static Map<String, Map<String, String>> copyNestedMap(
-      final Map<String, Map<String, String>> source) {
-    if (Objects.isNull(source) || source.isEmpty()) {
-      return Map.of();
-    }
-    final Map<String, Map<String, String>> copy = new LinkedHashMap<>();
-    source.forEach(
-        (table, columns) -> {
-          if (Objects.nonNull(table) && Objects.nonNull(columns)) {
-            copy.put(table, new LinkedHashMap<>(columns));
-          }
-        });
-    return copy;
   }
 
   private record UrlResolution(String urlToUse, boolean usingSavedConfig) {}

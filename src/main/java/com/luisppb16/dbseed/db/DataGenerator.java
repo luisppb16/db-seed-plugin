@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db;
@@ -207,7 +207,6 @@ public class DataGenerator {
             params.softDeleteValue(),
             params.numericScale(),
             aiColumns,
-            params.stringRegexByTable(),
             aiWordCount,
             ollamaClient,
             Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
@@ -295,7 +294,6 @@ public class DataGenerator {
       final String softDeleteValue,
       final int numericScale,
       final Map<String, Set<String>> aiColumns,
-      final Map<String, Map<String, String>> stringRegexByTable,
       final int aiWordCount,
       final OllamaClient ollamaClient,
       final String applicationContext,
@@ -304,8 +302,6 @@ public class DataGenerator {
     final int totalTables = orderedTables.size();
     final long startTime = System.currentTimeMillis();
     final List<RowGenerator> generators = new ArrayList<>();
-    final Map<String, Map<String, String>> effectiveStringRegexByTable =
-        Objects.nonNull(stringRegexByTable) ? stringRegexByTable : Map.of();
 
     IntStream.range(0, totalTables)
         .forEach(
@@ -345,7 +341,6 @@ public class DataGenerator {
                       softDeleteValue,
                       numericScale,
                       aiColumns.getOrDefault(table.name(), Set.of()),
-                      effectiveStringRegexByTable.getOrDefault(table.name(), Map.of()),
                       aiWordCount,
                       ollamaClient,
                       applicationContext,
@@ -486,7 +481,6 @@ public class DataGenerator {
       String softDeleteValue,
       int numericScale,
       Map<String, Set<String>> aiColumns,
-      Map<String, Map<String, String>> stringRegexByTable,
       String applicationContext,
       ProgressIndicator indicator,
       Map<String, Map<String, Integer>> circularReferences,

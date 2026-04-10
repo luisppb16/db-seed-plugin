@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- * ****************************************************************************
+ *  *****************************************************************************
  */
 
 package com.luisppb16.dbseed.config;
@@ -12,8 +12,6 @@ import com.intellij.credentialStore.CredentialAttributesKt;
 import com.intellij.credentialStore.Credentials;
 import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.openapi.project.Project;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.experimental.UtilityClass;
@@ -30,19 +28,10 @@ public class ConnectionConfigPersistence {
       @NotNull final Project project,
       @NotNull String profileName,
       @NotNull final GenerationConfig config) {
-    saveProfileMetadata(project, profileName, config);
-    savePasswordForProfile(project, profileName, config.user(), config.password());
-  }
-
-  public static void saveProfileMetadata(
-      @NotNull final Project project,
-      @NotNull String profileName,
-      @NotNull final GenerationConfig config) {
     final String normalizedProfileName = profileName.trim();
     if (!ConnectionProfile.isValidName(normalizedProfileName)) {
       log.warn(
-          "Skipping saveProfileMetadata because profile name is blank for project {}.",
-          project.getName());
+          "Skipping saveProfile because profile name is blank for project {}.", project.getName());
       return;
     }
 
@@ -70,32 +59,16 @@ public class ConnectionConfigPersistence {
     profile.setSoftDeleteUseSchemaDefault(config.softDeleteUseSchemaDefault());
     profile.setSoftDeleteValue(config.softDeleteValue());
     profile.setNumericScale(config.numericScale());
-    profile.setStringRegexByTable(copyNestedMap(config.stringRegexByTable()));
 
     state.setActiveProfileName(normalizedProfileName);
 
-    log.info(
-        "Connection configuration metadata saved for profile {} in project {}.",
-        normalizedProfileName,
-        project.getName());
-  }
-
-  public static void savePasswordForProfile(
-      @NotNull final Project project,
-      @Nullable final String profileName,
-      @Nullable final String user,
-      @Nullable final String password) {
-    final String normalizedProfileName = profileName == null ? "" : profileName.trim();
-    if (!ConnectionProfile.isValidName(normalizedProfileName)) {
-      return;
-    }
-
     final CredentialAttributes credAttributes =
         createCredentialAttributes(project, normalizedProfileName);
-    PasswordSafe.getInstance().set(credAttributes, new Credentials(user, password));
+    PasswordSafe.getInstance()
+        .set(credAttributes, new Credentials(config.user(), config.password()));
 
     log.info(
-        "Connection password saved for profile {} in project {}.",
+        "Connection configuration saved for profile {} in project {}.",
         normalizedProfileName,
         project.getName());
   }
@@ -103,20 +76,18 @@ public class ConnectionConfigPersistence {
   @NotNull
   public static GenerationConfig loadProfile(
       @NotNull final Project project, @Nullable String profileName) {
-    final GenerationConfig metadataOnly = loadProfileWithoutPassword(project, profileName);
     final String normalizedProfileName = profileName == null ? "" : profileName.trim();
     if (!ConnectionProfile.isValidName(normalizedProfileName)) {
-      return metadataOnly;
-    }
-    return withPassword(metadataOnly, loadPasswordForProfile(project, normalizedProfileName));
-  }
-
-  @NotNull
-  public static GenerationConfig loadProfileWithoutPassword(
-      @NotNull final Project project, @Nullable String profileName) {
-    final String normalizedProfileName = profileName == null ? "" : profileName.trim();
-    if (!ConnectionProfile.isValidName(normalizedProfileName)) {
-      return emptyConfig();
+      return GenerationConfig.builder()
+          .url("")
+          .user("")
+          .password("")
+          .schema("")
+          .rowsPerTable(10)
+          .deferred(false)
+          .softDeleteUseSchemaDefault(true)
+          .numericScale(2)
+          .build();
     }
 
     DbSeedProjectState state = DbSeedProjectState.getInstance(project);
@@ -127,33 +98,19 @@ public class ConnectionConfigPersistence {
             .findFirst();
 
     if (profileOpt.isEmpty()) {
-      return emptyConfig();
+      return GenerationConfig.builder()
+          .url("")
+          .user("")
+          .password("")
+          .schema("")
+          .rowsPerTable(10)
+          .deferred(false)
+          .softDeleteUseSchemaDefault(true)
+          .numericScale(2)
+          .build();
     }
 
     ConnectionProfile profile = profileOpt.get();
-
-    return GenerationConfig.builder()
-        .url(profile.getUrl())
-        .user(profile.getUser())
-        .password("")
-        .schema(profile.getSchema())
-        .rowsPerTable(profile.getRowsPerTable())
-        .deferred(profile.isDeferred())
-        .softDeleteColumns(profile.getSoftDeleteColumns())
-        .softDeleteUseSchemaDefault(profile.isSoftDeleteUseSchemaDefault())
-        .softDeleteValue(profile.getSoftDeleteValue())
-        .numericScale(profile.getNumericScale())
-        .stringRegexByTable(copyNestedMap(profile.getStringRegexByTable()))
-        .build();
-  }
-
-  @NotNull
-  public static String loadPasswordForProfile(
-      @NotNull final Project project, @Nullable String profileName) {
-    final String normalizedProfileName = profileName == null ? "" : profileName.trim();
-    if (!ConnectionProfile.isValidName(normalizedProfileName)) {
-      return "";
-    }
 
     final CredentialAttributes credAttributes =
         createCredentialAttributes(project, normalizedProfileName);
@@ -162,26 +119,19 @@ public class ConnectionConfigPersistence {
     if (Objects.nonNull(credentials)) {
       password = Objects.requireNonNullElse(credentials.getPasswordAsString(), "");
     }
-    return password;
-  }
 
-  private static GenerationConfig emptyConfig() {
     return GenerationConfig.builder()
-        .url("")
-        .user("")
-        .password("")
-        .schema("")
-        .rowsPerTable(10)
-        .deferred(false)
-        .softDeleteUseSchemaDefault(true)
-        .numericScale(2)
-        .stringRegexByTable(Map.of())
+        .url(profile.getUrl())
+        .user(profile.getUser())
+        .password(password)
+        .schema(profile.getSchema())
+        .rowsPerTable(profile.getRowsPerTable())
+        .deferred(profile.isDeferred())
+        .softDeleteColumns(profile.getSoftDeleteColumns())
+        .softDeleteUseSchemaDefault(profile.isSoftDeleteUseSchemaDefault())
+        .softDeleteValue(profile.getSoftDeleteValue())
+        .numericScale(profile.getNumericScale())
         .build();
-  }
-
-  private static GenerationConfig withPassword(
-      final GenerationConfig config, final String password) {
-    return config.toBuilder().password(Objects.requireNonNullElse(password, "")).build();
   }
 
   @NotNull
@@ -195,20 +145,5 @@ public class ConnectionConfigPersistence {
     return new CredentialAttributes(
         CredentialAttributesKt.generateServiceName(
             "DBSeed", project.getName() + "-" + profileName));
-  }
-
-  private static Map<String, Map<String, String>> copyNestedMap(
-      final Map<String, Map<String, String>> source) {
-    if (Objects.isNull(source) || source.isEmpty()) {
-      return Map.of();
-    }
-    final Map<String, Map<String, String>> copy = new LinkedHashMap<>();
-    source.forEach(
-        (table, columns) -> {
-          if (Objects.nonNull(table) && Objects.nonNull(columns)) {
-            copy.put(table, new LinkedHashMap<>(columns));
-          }
-        });
-    return copy;
   }
 }

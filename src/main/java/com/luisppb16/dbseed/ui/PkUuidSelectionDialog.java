@@ -9,6 +9,7 @@ package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
@@ -120,6 +121,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
+  private final Map<String, JBLabel> tableWarningLabels = new LinkedHashMap<>();
 
   public PkUuidSelectionDialog(
       @NotNull final List<Table> tables, @NotNull final GenerationConfig initialConfig) {
@@ -233,7 +235,106 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     } catch (final ParseException ignored) {
       // Invalid number typed, spinner will retain last valid value.
     }
+
+    final List<String> warnings = validateExclusions();
+    if (!warnings.isEmpty()) {
+      final int result =
+          Messages.showYesNoDialog(
+              "The following excluded tables or columns might cause foreign key constraint violations during insert:\n\n"
+                  + String.join("\n", warnings)
+                  + "\n\nDo you want to proceed anyway?",
+              "Foreign Key Exclusions Detected",
+              Messages.getWarningIcon());
+      if (result != Messages.YES) {
+        return;
+      }
+    }
+
     super.doOKAction();
+  }
+
+  private List<String> validateExclusions() {
+    final List<String> warnings = new ArrayList<>();
+    getExclusionWarnings().forEach((tableName, tblWarnings) -> tblWarnings.forEach(warnings::add));
+    return warnings.stream().distinct().limit(15).toList();
+  }
+
+  private Map<String, List<String>> getExclusionWarnings() {
+    final Map<String, List<String>> warningsByTable = new LinkedHashMap<>();
+
+    for (final Table table : tables) {
+      if (excludedTables.contains(table.name())) {
+        continue;
+      }
+
+      for (final com.luisppb16.dbseed.model.ForeignKey fk : table.foreignKeys()) {
+        final String pkTable = fk.pkTable();
+
+        // Check if the referenced table is completely excluded
+        if (excludedTables.contains(pkTable)) {
+          warningsByTable
+              .computeIfAbsent(table.name(), k -> new ArrayList<>())
+              .add(
+                  String.format(
+                      "• Table '%s' requires table '%s' (excluded) for foreign key '%s'.",
+                      table.name(), pkTable, fk.name()));
+        } else {
+          // Check if any specific referenced columns are excluded
+          final Set<String> pkTableExclusions =
+              excludedColumnsByTable.getOrDefault(pkTable, Set.of());
+          for (final String pkCol : fk.columnMapping().values()) {
+            if (pkTableExclusions.contains(pkCol)) {
+              warningsByTable
+                  .computeIfAbsent(table.name(), k -> new ArrayList<>())
+                  .add(
+                      String.format(
+                          "• Table '%s' references excluded column '%s.%s' for foreign key '%s'.",
+                          table.name(), pkTable, pkCol, fk.name()));
+            }
+          }
+        }
+
+        // Check if referencing (child) columns are excluded and NOT NULL
+        final Set<String> thisTableExclusions =
+            excludedColumnsByTable.getOrDefault(table.name(), Set.of());
+        for (final String fkCol : fk.columnMapping().keySet()) {
+          if (thisTableExclusions.contains(fkCol)) {
+            final Column col = table.column(fkCol);
+            if (Objects.nonNull(col) && !col.nullable()) {
+              warningsByTable
+                  .computeIfAbsent(table.name(), k -> new ArrayList<>())
+                  .add(
+                      String.format(
+                          "• Required foreign key column '%s.%s' is excluded but is NOT NULL.",
+                          table.name(), fkCol));
+            } else if (Objects.nonNull(col)) {
+              warningsByTable
+                  .computeIfAbsent(table.name(), k -> new ArrayList<>())
+                  .add(
+                      String.format(
+                          "• Foreign key column '%s.%s' is excluded.", table.name(), fkCol));
+            }
+          }
+        }
+      }
+    }
+
+    return warningsByTable;
+  }
+
+  private void updateWarningLabels() {
+    final Map<String, List<String>> warnings = getExclusionWarnings();
+    tableWarningLabels.forEach(
+        (tableName, label) -> {
+          final List<String> tableWarnings = warnings.get(tableName);
+          if (tableWarnings != null && !tableWarnings.isEmpty()) {
+            label.setVisible(true);
+            label.setToolTipText("<html>" + String.join("<br>", tableWarnings) + "</html>");
+          } else {
+            label.setVisible(false);
+            label.setToolTipText(null);
+          }
+        });
   }
 
   @Override
@@ -501,7 +602,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
               .primaryKey()
               .forEach(
                   pkCol -> {
-                    final JCheckBox box = new JCheckBox(TREAT_AS_UUID_PREFIX + pkCol);
+                    final String boxText =
+                        table.fkColumnNames().contains(pkCol)
+                            ? TREAT_AS_UUID_PREFIX + pkCol + " (FK)"
+                            : TREAT_AS_UUID_PREFIX + pkCol;
+                    final JCheckBox box = new JCheckBox(boxText);
                     box.setSelected(
                         selectionByTable.getOrDefault(table.name(), Set.of()).contains(pkCol));
                     pkCheckBoxes
@@ -537,12 +642,25 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           tblBox.setFont(tblBox.getFont().deriveFont(Font.BOLD));
           tblBox.setSelected(excludedTables.contains(table.name()));
 
+          final JBLabel warningLabel = new JBLabel(AllIcons.General.Warning);
+          warningLabel.setVisible(false);
+          tableWarningLabels.put(table.name(), warningLabel);
+
+          final JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+          headerPanel.setOpaque(false);
+          headerPanel.add(tblBox);
+          headerPanel.add(warningLabel);
+
           final List<JCheckBox> currentTableColumnBoxes = new ArrayList<>();
           table
               .columns()
               .forEach(
                   column -> {
-                    final JCheckBox box = new JCheckBox(column.name());
+                    final String boxText =
+                        table.fkColumnNames().contains(column.name())
+                            ? column.name() + " (FK)"
+                            : column.name();
+                    final JCheckBox box = new JCheckBox(boxText);
                     box.setSelected(
                         excludedColumnsByTable
                             .getOrDefault(table.name(), Set.of())
@@ -562,9 +680,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                       table.name(), tblBox.isSelected(), currentTableColumnBoxes));
           checkBoxes.add(tblBox);
 
-          listPanel.add(createTablePanel(tblBox, currentTableColumnBoxes), c);
+          listPanel.add(createTablePanel(headerPanel, currentTableColumnBoxes), c);
           c.gridy++;
         });
+
+    updateWarningLabels();
 
     return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
   }
@@ -585,6 +705,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         }
       }
     }
+
+    updateWarningLabels();
   }
 
   private void updateSelectionAndSync(
@@ -628,6 +750,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       colBox.setSelected(isSelected);
       onExcludeBoxChanged(tableName, colBox.getText(), isSelected);
     }
+
+    updateWarningLabels();
   }
 
   private JPanel createTablePanel(JComponent header, List<JCheckBox> columnBoxes) {
@@ -874,7 +998,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                         || fkCols.contains(column.name())
                         || column.hasAllowedValues();
                 final boolean preSelected = !hasConstraint && isDefaultAiCandidate(column.name());
-                final JCheckBox box = new JCheckBox(column.name());
+                final String boxText =
+                    table.fkColumnNames().contains(column.name())
+                        ? column.name() + " (FK)"
+                        : column.name();
+                final JCheckBox box = new JCheckBox(boxText);
 
                 if (hasConstraint) {
                   box.setSelected(false);

@@ -2,12 +2,13 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationParameters;
@@ -17,17 +18,24 @@ import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.sql.Types;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 class DataGeneratorTest {
 
@@ -37,7 +45,7 @@ class DataGeneratorTest {
   static void setUp() {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(false);
-    settingsMock = org.mockito.Mockito.mockStatic(DbSeedSettingsState.class);
+    settingsMock = Mockito.mockStatic(DbSeedSettingsState.class);
     settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
   }
 
@@ -401,7 +409,7 @@ class DataGeneratorTest {
             .orElseThrow();
     for (Row r : rows) {
       Object val = r.values().get("amount");
-      if (val instanceof java.math.BigDecimal bd) {
+      if (val instanceof BigDecimal bd) {
         assertThat(bd.scale()).isEqualTo(2);
       }
     }
@@ -537,7 +545,7 @@ class DataGeneratorTest {
             List.of(),
             List.of());
 
-    ExecutorService serverExecutor = java.util.concurrent.Executors.newCachedThreadPool();
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
     HttpServer server = null;
 
     try {
@@ -588,7 +596,7 @@ class DataGeneratorTest {
       assertThat(result.rows().get(products).getFirst().values())
           .containsEntry("description", "__AI_VALUE__");
       assertThat(result.rows().get(users).getFirst().values()).containsEntry("bio", "__AI_VALUE__");
-    } catch (final java.io.IOException e) {
+    } catch (final IOException e) {
       throw new IllegalStateException("Failed to start fake Ollama server", e);
     } finally {
       if (Objects.nonNull(server)) {

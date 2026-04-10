@@ -2,19 +2,22 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.dialect;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 

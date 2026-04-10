@@ -2,13 +2,16 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.db.PendingUpdate;
@@ -18,7 +21,12 @@ import com.luisppb16.dbseed.model.CircularReferenceTerminationMode;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ForeignKeyResolverTest {
@@ -74,7 +82,7 @@ class ForeignKeyResolverTest {
     data.put(child, List.of(childRow));
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
     resolver.resolve();
     assertThat(childRow.values().get("parent_id")).isEqualTo(100);
   }
@@ -125,7 +133,7 @@ class ForeignKeyResolverTest {
     data.put(child, List.of(childRow));
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
     resolver.resolve();
     assertThat(childRow.values().get("fk_id")).isNull();
   }
@@ -156,7 +164,7 @@ class ForeignKeyResolverTest {
     assertThatThrownBy(
             () -> {
               ForeignKeyResolver resolver =
-                  new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+                  new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
               resolver.resolve();
             })
         .isInstanceOf(IllegalArgumentException.class);
@@ -193,7 +201,7 @@ class ForeignKeyResolverTest {
     data.put(child, List.of(childRow));
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
     resolver.resolve();
     assertThat(childRow.values().get("fk1")).isEqualTo(10);
     assertThat(childRow.values().get("fk2")).isEqualTo(20);
@@ -229,7 +237,7 @@ class ForeignKeyResolverTest {
     data.put(b, List.of(rowB));
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, true, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, true, Collections.emptyMap());
     List<PendingUpdate> updates = resolver.resolve();
     // With deferred=true, both resolve directly (no pending updates)
     assertThat(updates).isEmpty();
@@ -262,7 +270,7 @@ class ForeignKeyResolverTest {
     ProgressTracker tracker = new ProgressTracker(indicator, 2);
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
     resolver.resolve(tracker);
 
     verify(indicator).setFraction(0.5d);
@@ -294,7 +302,7 @@ class ForeignKeyResolverTest {
     data.put(b, List.of(rowB));
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
     List<PendingUpdate> updates = resolver.resolve();
     // A processed first, B not inserted yet, FK is nullable → pending update
     assertThat(updates).isNotEmpty();
@@ -329,7 +337,7 @@ class ForeignKeyResolverTest {
     assertThatThrownBy(
             () -> {
               ForeignKeyResolver resolver =
-                  new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+                  new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
               resolver.resolve();
             })
         .isInstanceOf(IllegalStateException.class)
@@ -365,7 +373,7 @@ class ForeignKeyResolverTest {
     data.put(child, List.of(c1, c2));
 
     ForeignKeyResolver resolver =
-        new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
     resolver.resolve();
     // Each child should get a distinct parent
     Set<Object> parentIds = new HashSet<>();
@@ -404,7 +412,7 @@ class ForeignKeyResolverTest {
     assertThatThrownBy(
             () -> {
               ForeignKeyResolver resolver =
-                  new ForeignKeyResolver(tableMap, data, false, java.util.Collections.emptyMap());
+                  new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
               resolver.resolve();
             })
         .isInstanceOf(IllegalStateException.class)
@@ -424,11 +432,11 @@ class ForeignKeyResolverTest {
 
     List<Row> rows =
         List.of(
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 1))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 2))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 3))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 4))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 5))));
+            new Row(new LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new LinkedHashMap<>(Map.of("id", 3))),
+            new Row(new LinkedHashMap<>(Map.of("id", 4))),
+            new Row(new LinkedHashMap<>(Map.of("id", 5))));
 
     Map<String, Table> tableMap = Map.of("users", table);
     Map<Table, List<Row>> data = Map.of(table, rows);
@@ -466,8 +474,8 @@ class ForeignKeyResolverTest {
 
     List<Row> rows =
         List.of(
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 1))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 2))));
+            new Row(new LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new LinkedHashMap<>(Map.of("id", 2))));
 
     Map<String, Table> tableMap = Map.of("users", table);
     Map<Table, List<Row>> data = Map.of(table, rows);
@@ -507,11 +515,11 @@ class ForeignKeyResolverTest {
 
     List<Row> rows =
         List.of(
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 1))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 2))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 3))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 4))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 5))));
+            new Row(new LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new LinkedHashMap<>(Map.of("id", 3))),
+            new Row(new LinkedHashMap<>(Map.of("id", 4))),
+            new Row(new LinkedHashMap<>(Map.of("id", 5))));
 
     Map<String, Table> tableMap = Map.of("users", table);
     Map<Table, List<Row>> data = Map.of(table, rows);
@@ -545,9 +553,9 @@ class ForeignKeyResolverTest {
 
     List<Row> rows =
         List.of(
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 1))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 2))),
-            new Row(new java.util.LinkedHashMap<>(Map.of("id", 3))));
+            new Row(new LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new LinkedHashMap<>(Map.of("id", 3))));
 
     Map<String, Table> tableMap = Map.of("users", table);
     Map<Table, List<Row>> data = Map.of(table, rows);

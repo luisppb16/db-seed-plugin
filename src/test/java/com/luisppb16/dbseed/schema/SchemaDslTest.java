@@ -2,14 +2,23 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.schema;
 
-import static com.luisppb16.dbseed.schema.SchemaDsl.*;
-import static org.assertj.core.api.Assertions.*;
+import static com.luisppb16.dbseed.schema.SchemaDsl.column;
+import static com.luisppb16.dbseed.schema.SchemaDsl.fk;
+import static com.luisppb16.dbseed.schema.SchemaDsl.pk;
+import static com.luisppb16.dbseed.schema.SchemaDsl.schema;
+import static com.luisppb16.dbseed.schema.SchemaDsl.table;
+import static com.luisppb16.dbseed.schema.SchemaDsl.toSql;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
+import com.luisppb16.dbseed.schema.SchemaDsl.Column;
+import com.luisppb16.dbseed.schema.SchemaDsl.Schema;
+import com.luisppb16.dbseed.schema.SchemaDsl.Table;
 import org.junit.jupiter.api.Test;
 
 class SchemaDslTest {

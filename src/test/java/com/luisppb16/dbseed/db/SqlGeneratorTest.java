@@ -2,17 +2,21 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class SqlGeneratorTest {

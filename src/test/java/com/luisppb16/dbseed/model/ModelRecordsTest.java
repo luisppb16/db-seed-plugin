@@ -2,14 +2,22 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.model;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNullPointerException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.*;
+import com.luisppb16.dbseed.db.PendingUpdate;
+import com.luisppb16.dbseed.db.Row;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ModelRecordsTest {
@@ -144,14 +152,13 @@ class ModelRecordsTest {
 
   @Test
   void row_valuesAccessible() {
-    com.luisppb16.dbseed.db.Row row = new com.luisppb16.dbseed.db.Row(Map.of("id", 1));
+    Row row = new Row(Map.of("id", 1));
     assertThat(row.values()).containsEntry("id", 1);
   }
 
   @Test
   void pendingUpdate_fieldsAccessible() {
-    com.luisppb16.dbseed.db.PendingUpdate pu =
-        new com.luisppb16.dbseed.db.PendingUpdate("t", Map.of("fk", 1), Map.of("pk", 2));
+    PendingUpdate pu = new PendingUpdate("t", Map.of("fk", 1), Map.of("pk", 2));
     assertThat(pu.table()).isEqualTo("t");
     assertThat(pu.fkValues()).containsEntry("fk", 1);
     assertThat(pu.pkValues()).containsEntry("pk", 2);

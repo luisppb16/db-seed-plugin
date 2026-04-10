@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
@@ -24,6 +24,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import net.datafaker.Faker;
@@ -274,6 +276,46 @@ public record ValueGenerator(
       final String phrase = String.join(" ", faker.lorem().words(numWords));
       return normalizeToLength(phrase, len, jdbcType);
     }
+  }
+
+  /**
+   * Generates a string from a user-provided regex pattern.
+   *
+   * <p>Returns {@code null} if the pattern is invalid or no value could be produced within the
+   * configured max length.
+   */
+  @SuppressWarnings("java:S2245")
+  public String generateStringFromRegex(
+      final String regexPattern, final Integer maxLen, final int jdbcType) {
+    if (Objects.isNull(regexPattern) || regexPattern.isBlank()) {
+      return null;
+    }
+
+    try {
+      Pattern.compile(regexPattern);
+    } catch (final PatternSyntaxException ex) {
+      return null;
+    }
+
+    final int attempts = 50;
+    for (int i = 0; i < attempts; i++) {
+      try {
+        final String candidate = faker.regexify(regexPattern);
+        if (Objects.isNull(candidate)) {
+          continue;
+        }
+        if (Objects.nonNull(maxLen) && maxLen > 0 && candidate.length() > maxLen) {
+          continue;
+        }
+        return Objects.nonNull(maxLen) && maxLen > 0
+            ? normalizeToLength(candidate, maxLen, jdbcType)
+            : candidate;
+      } catch (final RuntimeException ex) {
+        return null;
+      }
+    }
+
+    return null;
   }
 
   @SuppressWarnings("java:S2245")

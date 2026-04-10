@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
@@ -188,6 +188,8 @@ public final class RowGenerator {
         rule -> {
           final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
 
+          baseValues.putAll(buildRegexBasedFixedValues(rule.regexPatterns()));
+
           baseValues
               .entrySet()
               .forEach(
@@ -223,6 +225,48 @@ public final class RowGenerator {
                     }
                   });
         });
+  }
+
+  private Map<String, Object> buildRegexBasedFixedValues(final Map<String, String> regexPatterns) {
+    if (Objects.isNull(regexPatterns) || regexPatterns.isEmpty()) {
+      return Map.of();
+    }
+
+    final Map<String, Object> generatedValues = new HashMap<>();
+    regexPatterns.forEach(
+        (columnName, regexPattern) -> {
+          final Column column = table.column(columnName);
+          if (Objects.isNull(column)
+              || Objects.isNull(regexPattern)
+              || regexPattern.isBlank()
+              || !supportsRegexGeneration(column)) {
+            return;
+          }
+
+          final String generated =
+              valueGenerator.generateStringFromRegex(
+                  regexPattern, column.length() > 0 ? column.length() : null, column.jdbcType());
+          if (Objects.nonNull(generated)) {
+            generatedValues.put(columnName, generated);
+          }
+        });
+
+    return generatedValues;
+  }
+
+  private boolean supportsRegexGeneration(final Column column) {
+    return switch (column.jdbcType()) {
+      case Types.CHAR,
+          Types.VARCHAR,
+          Types.NCHAR,
+          Types.NVARCHAR,
+          Types.LONGVARCHAR,
+          Types.LONGNVARCHAR,
+          Types.CLOB,
+          Types.NCLOB ->
+          true;
+      default -> false;
+    };
   }
 
   private void fillRemainingRows() {

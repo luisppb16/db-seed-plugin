@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.ui;
@@ -367,9 +367,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         wrapInScrollPane(createColumnExclusionPanel()),
         "Exclude tables and columns from generation");
 
-    // Tab 4: Repetition Rules
+    // Tab 4: Columns Behaviour
     tabbedPane.addTab(
-        "Repetition Rules",
+        "Columns Behaviour",
         AllIcons.Actions.Refresh,
         wrapInScrollPane(repetitionRulesPanel),
         "Configure data repetition rules");

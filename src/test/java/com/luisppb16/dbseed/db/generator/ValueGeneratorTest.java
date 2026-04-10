@@ -2,12 +2,12 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.luisppb16.dbseed.db.generator.ConstraintParser.ParsedConstraint;
 import com.luisppb16.dbseed.model.Column;
@@ -16,7 +16,11 @@ import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import net.datafaker.Faker;
 import org.junit.jupiter.api.BeforeEach;
@@ -352,5 +356,18 @@ class ValueGeneratorTest {
   void outsideBounds_nonNumericString() {
     ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     assertThat(ValueGenerator.isNumericOutsideBounds("abc", pc)).isTrue();
+  }
+
+  @Test
+  void regexGeneration_returnsValueMatchingPattern() {
+    final String regex = "#[0-9A-F]{6}";
+    final String generated = gen.generateStringFromRegex(regex, 7, Types.VARCHAR);
+    assertThat(generated).isNotNull();
+    assertThat(Pattern.matches(regex, generated)).isTrue();
+  }
+
+  @Test
+  void regexGeneration_invalidPattern_returnsNull() {
+    assertThat(gen.generateStringFromRegex("[", 10, Types.VARCHAR)).isNull();
   }
 }

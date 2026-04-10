@@ -2,12 +2,12 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.db.generator;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
@@ -17,7 +17,11 @@ import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Types;
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 import net.datafaker.Faker;
 import org.junit.jupiter.api.Test;
 
@@ -289,7 +293,7 @@ class RowGeneratorTest {
             List.of(),
             List.of(),
             List.of());
-    RepetitionRule rule = new RepetitionRule(3, Map.of("type", "fixed"), Set.of());
+    RepetitionRule rule = new RepetitionRule(3, Map.of("type", "fixed"), Set.of(), Map.of());
     RowGenerator gen =
         new RowGenerator(
             t,
@@ -325,7 +329,7 @@ class RowGeneratorTest {
             List.of(),
             List.of(),
             List.of());
-    RepetitionRule rule = new RepetitionRule(3, Map.of(), Set.of());
+    RepetitionRule rule = new RepetitionRule(3, Map.of(), Set.of(), Map.of());
     RowGenerator gen =
         new RowGenerator(
             t,
@@ -347,6 +351,57 @@ class RowGeneratorTest {
             new ProgressTracker(null, 0));
     List<Row> rows = gen.generate();
     assertThat(rows).hasSize(10);
+  }
+
+  @Test
+  void repetitionRules_regexPatternAppliedOnStringColumns() {
+    Table t =
+        new Table(
+            "t",
+            List.of(intCol("id"), varcharCol("hex_color")),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of());
+    RepetitionRule rule =
+        new RepetitionRule(
+            3,
+            Map.of("hex_color", "ignored-when-regex-present"),
+            Set.of(),
+            Map.of("hex_color", "#[0-9A-F]{6}"));
+
+    RowGenerator gen =
+        new RowGenerator(
+            t,
+            5,
+            Set.of(),
+            List.of(rule),
+            new Faker(),
+            new HashSet<>(),
+            List.of(),
+            false,
+            Set.of(),
+            false,
+            null,
+            2,
+            Set.of(),
+            1,
+            null,
+            null,
+            new ProgressTracker(null, 0));
+
+    List<Row> rows = gen.generate();
+    assertThat(rows).hasSize(5);
+    final Pattern hexColorPattern = Pattern.compile("#[0-9A-F]{6}");
+    assertThat(rows)
+        .extracting(r -> r.values().get("hex_color"))
+        .allSatisfy(v -> assertThat(v).isInstanceOf(String.class));
+    final long matchingHexColors =
+        rows.stream()
+            .map(r -> (String) r.values().get("hex_color"))
+            .filter(v -> hexColorPattern.matcher(v).matches())
+            .count();
+    assertThat(matchingHexColors).isGreaterThanOrEqualTo(3);
   }
 
   // ── getConstraints ──

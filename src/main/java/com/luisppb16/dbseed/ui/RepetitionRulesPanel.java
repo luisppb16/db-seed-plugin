@@ -2,13 +2,15 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.ComboBox;
+import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ui.JBUI;
@@ -21,19 +23,27 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
@@ -80,6 +90,8 @@ public class RepetitionRulesPanel extends JPanel {
 
   private static final String STRATEGY_CONSTANT_RANDOM = "Constant (Random)";
   private static final String STRATEGY_CONSTANT_VALUE = "Constant (Value)";
+  private static final String REGEX_VALID_TITLE = "Regex Validation";
+  private static final String REGEX_INVALID_TITLE = "Regex Validation Error";
 
   private final Map<String, List<RuleUiModel>> rulesByTable = new HashMap<>();
   private final JPanel rightPanelContainer;
@@ -161,6 +173,40 @@ public class RepetitionRulesPanel extends JPanel {
     if (!listModel.isEmpty()) {
       tableList.setSelectedIndex(0);
     }
+  }
+
+  private static void updateRegexPresentation(
+      final JButton regexButton, final String regexPattern) {
+    final boolean configured = Objects.nonNull(regexPattern) && !regexPattern.isBlank();
+    regexButton.setText(configured ? "Regex*" : "Regex");
+    regexButton.setToolTipText(
+        configured
+            ? "Regex configured for this column. Click to edit or clear it."
+            : "Generate values from a regex pattern for this string column.");
+  }
+
+  private static boolean isStringType(final Column column) {
+    if (Objects.isNull(column)) {
+      return false;
+    }
+
+    final int jdbcType = column.jdbcType();
+    final boolean stringJdbcType =
+        jdbcType == Types.CHAR
+            || jdbcType == Types.VARCHAR
+            || jdbcType == Types.NCHAR
+            || jdbcType == Types.NVARCHAR
+            || jdbcType == Types.LONGVARCHAR
+            || jdbcType == Types.LONGNVARCHAR
+            || jdbcType == Types.CLOB
+            || jdbcType == Types.NCLOB
+            || jdbcType == Types.ARRAY;
+
+    final boolean arrayByName =
+        Objects.nonNull(column.typeName())
+            && column.typeName().toLowerCase(Locale.ROOT).endsWith("[]");
+
+    return stringJdbcType || arrayByName;
   }
 
   private Table findParentTable(final List<Table> tables, final Column column) {
@@ -280,6 +326,8 @@ public class RepetitionRulesPanel extends JPanel {
   private void addOverrideRow(
       final JPanel container, final Table table, final RuleUiModel ruleModel) {
     final JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
+    final Map<String, Column> columnsByName = new HashMap<>();
+    table.columns().forEach(col -> columnsByName.put(col.name(), col));
 
     final String[] colNames =
         table.columns().stream().map(Column::name).sorted().toArray(String[]::new);
@@ -290,10 +338,9 @@ public class RepetitionRulesPanel extends JPanel {
 
     final JTextField valueField = new JTextField(15);
     valueField.setEnabled(false);
-
-    strategyCombo.addActionListener(
-        e ->
-            valueField.setEnabled(STRATEGY_CONSTANT_VALUE.equals(strategyCombo.getSelectedItem())));
+    final JButton regexButton = new JButton("Regex");
+    regexButton.setToolTipText("Generate values from a regex pattern for this string column.");
+    final AtomicBoolean syncingValueField = new AtomicBoolean(false);
 
     final JButton removeBtn = new JButton(AllIcons.General.Remove);
 
@@ -304,9 +351,84 @@ public class RepetitionRulesPanel extends JPanel {
 
     ruleModel.overrides.add(overrideModel);
 
-    colCombo.addActionListener(e -> overrideModel.columnName = (String) colCombo.getSelectedItem());
+    final Runnable syncRowState =
+        () -> {
+          final boolean isConstantValueStrategy =
+              STRATEGY_CONSTANT_VALUE.equals(strategyCombo.getSelectedItem());
+          final String selectedColumnName = (String) colCombo.getSelectedItem();
+          final Column selectedColumn = columnsByName.get(selectedColumnName);
+          final boolean isStringColumn = isStringType(selectedColumn);
+          final boolean hasRegex = !overrideModel.regexPattern.isBlank();
+
+          valueField.setEnabled(isConstantValueStrategy && (!isStringColumn || !hasRegex));
+          regexButton.setVisible(isStringColumn);
+          regexButton.setEnabled(isConstantValueStrategy && isStringColumn);
+          valueField.setToolTipText(
+              hasRegex && isStringColumn ? "Generated automatically from regex pattern." : null);
+
+          syncingValueField.set(true);
+          try {
+            if (hasRegex && isStringColumn) {
+              overrideModel.value = "";
+              final String regexPattern = overrideModel.regexPattern;
+              if (!regexPattern.equals(valueField.getText())) {
+                valueField.setText(regexPattern);
+              }
+            } else if (!Objects.equals(valueField.getText(), overrideModel.value)) {
+              valueField.setText(overrideModel.value);
+            }
+          } finally {
+            syncingValueField.set(false);
+          }
+
+          if (!isStringColumn && !overrideModel.regexPattern.isBlank()) {
+            overrideModel.regexPattern = "";
+            updateRegexPresentation(regexButton, overrideModel.regexPattern);
+          }
+
+          updateRegexPresentation(regexButton, overrideModel.regexPattern);
+        };
+
+    colCombo.addActionListener(
+        e -> {
+          overrideModel.columnName = (String) colCombo.getSelectedItem();
+          syncRowState.run();
+        });
     strategyCombo.addActionListener(
-        e -> overrideModel.strategy = (String) strategyCombo.getSelectedItem());
+        e -> {
+          overrideModel.strategy = (String) strategyCombo.getSelectedItem();
+          syncRowState.run();
+        });
+
+    regexButton.addActionListener(
+        e -> {
+          final RegexPatternDialog dialog = new RegexPatternDialog(overrideModel.regexPattern);
+          if (!dialog.showAndGet()) {
+            return;
+          }
+
+          final String trimmedPattern = dialog.getPattern().trim();
+          if (trimmedPattern.isEmpty()) {
+            overrideModel.regexPattern = "";
+            updateRegexPresentation(regexButton, overrideModel.regexPattern);
+            syncRowState.run();
+            return;
+          }
+
+          try {
+            Pattern.compile(trimmedPattern);
+            overrideModel.regexPattern = trimmedPattern;
+            updateRegexPresentation(regexButton, overrideModel.regexPattern);
+            syncRowState.run();
+          } catch (final PatternSyntaxException ex) {
+            Messages.showErrorDialog(
+                this, "Invalid regex pattern: " + ex.getDescription(), "Regex Validation Error");
+          }
+        });
+
+    updateRegexPresentation(regexButton, overrideModel.regexPattern);
+    syncRowState.run();
+
     valueField
         .getDocument()
         .addDocumentListener(
@@ -324,7 +446,18 @@ public class RepetitionRulesPanel extends JPanel {
               }
 
               void update() {
-                overrideModel.value = valueField.getText();
+                if (syncingValueField.get()) {
+                  return;
+                }
+
+                final String selectedColumnName = (String) colCombo.getSelectedItem();
+                final Column selectedColumn = columnsByName.get(selectedColumnName);
+                final boolean isRegexDrivenValue =
+                    STRATEGY_CONSTANT_VALUE.equals(strategyCombo.getSelectedItem())
+                        && isStringType(selectedColumn)
+                        && !overrideModel.regexPattern.isBlank();
+
+                overrideModel.value = isRegexDrivenValue ? "" : valueField.getText();
               }
             });
 
@@ -339,6 +472,7 @@ public class RepetitionRulesPanel extends JPanel {
     row.add(colCombo);
     row.add(strategyCombo);
     row.add(valueField);
+    row.add(regexButton);
     row.add(removeBtn);
 
     container.add(row);
@@ -361,9 +495,14 @@ public class RepetitionRulesPanel extends JPanel {
   private RepetitionRule convertToRule(final RuleUiModel uiModel) {
     final Map<String, Object> fixedValues = new HashMap<>();
     final Set<String> randomConstant = new HashSet<>();
+    final Map<String, String> regexPatterns = new HashMap<>();
 
     for (final ColumnOverrideModel override : uiModel.overrides) {
       if (STRATEGY_CONSTANT_VALUE.equals(override.strategy)) {
+        if (Objects.nonNull(override.regexPattern) && !override.regexPattern.isBlank()) {
+          regexPatterns.put(override.columnName, override.regexPattern);
+          continue;
+        }
         fixedValues.put(override.columnName, override.value);
       } else if (STRATEGY_CONSTANT_RANDOM.equals(override.strategy)) {
         randomConstant.add(override.columnName);
@@ -371,7 +510,7 @@ public class RepetitionRulesPanel extends JPanel {
     }
 
     return uiModel.count > 0
-        ? new RepetitionRule(uiModel.count, fixedValues, randomConstant)
+        ? new RepetitionRule(uiModel.count, fixedValues, randomConstant, regexPatterns)
         : null;
   }
 
@@ -391,5 +530,90 @@ public class RepetitionRulesPanel extends JPanel {
     String columnName;
     String strategy;
     String value;
+    String regexPattern = "";
+  }
+
+  private static class RegexPatternDialog extends DialogWrapper {
+
+    private final JTextField patternField = new JTextField(28);
+
+    RegexPatternDialog(final String initialPattern) {
+      super(true);
+      setTitle("Confirm Regex Pattern");
+      patternField.setText(Objects.nonNull(initialPattern) ? initialPattern : "");
+      init();
+    }
+
+    @Override
+    protected JComponent createCenterPanel() {
+      final JPanel panel = new JPanel(new GridBagLayout());
+      final GridBagConstraints gbc = new GridBagConstraints();
+      gbc.insets = JBUI.insets(4);
+      gbc.anchor = GridBagConstraints.WEST;
+
+      gbc.gridx = 0;
+      gbc.gridy = 0;
+      gbc.gridwidth = 2;
+      panel.add(
+          new JLabel(
+              "Enter a Java regex pattern used to generate values for this column (e.g. #[0-9A-F]{6})."),
+          gbc);
+
+      gbc.gridy = 1;
+      gbc.gridwidth = 1;
+      gbc.weightx = 1;
+      gbc.fill = GridBagConstraints.HORIZONTAL;
+      panel.add(patternField, gbc);
+
+      final JButton validateButton = new JButton("Validate Regex");
+      validateButton.addActionListener(e -> validatePattern());
+
+      gbc.gridx = 1;
+      gbc.weightx = 0;
+      gbc.fill = GridBagConstraints.NONE;
+      panel.add(validateButton, gbc);
+
+      return panel;
+    }
+
+    @Override
+    protected void doOKAction() {
+      final String candidate = getPattern().trim();
+      if (!candidate.isEmpty()) {
+        try {
+          Pattern.compile(candidate);
+        } catch (final PatternSyntaxException ex) {
+          Messages.showErrorDialog(
+              getContentPane(),
+              "Invalid regex pattern: " + ex.getDescription(),
+              REGEX_INVALID_TITLE);
+          return;
+        }
+      }
+      super.doOKAction();
+    }
+
+    String getPattern() {
+      return patternField.getText();
+    }
+
+    private void validatePattern() {
+      final String candidate = getPattern().trim();
+      if (candidate.isEmpty()) {
+        Messages.showInfoMessage(
+            getContentPane(),
+            "Regex is empty (it will clear the current regex).",
+            REGEX_VALID_TITLE);
+        return;
+      }
+
+      try {
+        Pattern.compile(candidate);
+        Messages.showInfoMessage(getContentPane(), "Regex is valid.", REGEX_VALID_TITLE);
+      } catch (final PatternSyntaxException ex) {
+        Messages.showErrorDialog(
+            getContentPane(), "Invalid regex pattern: " + ex.getDescription(), REGEX_INVALID_TITLE);
+      }
+    }
   }
 }

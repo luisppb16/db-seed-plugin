@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.integration;
@@ -14,6 +14,8 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.Types;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
@@ -121,7 +123,7 @@ class DatabaseSeedingIntegrationTest {
         final Table articles = IntegrationTestSupport.findTable(outcome.tables(), "articles");
         final Column tagsColumn = articles.column("tags");
         assertThat(tagsColumn).isNotNull();
-        assertThat(tagsColumn.jdbcType()).isEqualTo(java.sql.Types.ARRAY);
+        assertThat(tagsColumn.jdbcType()).isEqualTo(Types.ARRAY);
         assertThat(tagsColumn.typeName()).containsIgnoringCase("text");
       }
 
@@ -245,7 +247,7 @@ class DatabaseSeedingIntegrationTest {
         // Keep container database reusable across tests by removing ad-hoc cycle tables.
         IntegrationTestSupport.executeStatements(
             connection,
-            java.util.List.of(
+            List.of(
                 "SET FOREIGN_KEY_CHECKS = 0",
                 "DROP TABLE IF EXISTS books",
                 "DROP TABLE IF EXISTS authors",

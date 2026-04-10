@@ -2,12 +2,13 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.model;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -40,6 +41,19 @@ import java.util.Set;
  *     repetition
  * @param randomConstantColumns A set of column names that should have randomly generated values
  *     that remain constant across repetitions
+ * @param regexPatterns A mapping of column names to regex patterns used to synthesize formatted
+ *     string values (for example, hex color codes)
  */
 public record RepetitionRule(
-    int count, Map<String, Object> fixedValues, Set<String> randomConstantColumns) {}
+    int count,
+    Map<String, Object> fixedValues,
+    Set<String> randomConstantColumns,
+    Map<String, String> regexPatterns) {
+
+  public RepetitionRule {
+    fixedValues = Objects.nonNull(fixedValues) ? Map.copyOf(fixedValues) : Map.of();
+    randomConstantColumns =
+        Objects.nonNull(randomConstantColumns) ? Set.copyOf(randomConstantColumns) : Set.of();
+    regexPatterns = Objects.nonNull(regexPatterns) ? Map.copyOf(regexPatterns) : Map.of();
+  }
+}

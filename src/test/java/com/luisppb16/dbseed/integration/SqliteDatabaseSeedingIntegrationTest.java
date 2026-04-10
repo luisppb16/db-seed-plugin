@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.integration;
@@ -15,21 +15,25 @@ import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.dialect.DialectFactory;
+import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.util.DriverLoader;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -71,8 +75,7 @@ class SqliteDatabaseSeedingIntegrationTest {
   }
 
   private static Path resolveClasspathArtifact(final String artifactFragment) {
-    return java.util.Arrays.stream(
-            System.getProperty("java.class.path", "").split(java.io.File.pathSeparator))
+    return Arrays.stream(System.getProperty("java.class.path", "").split(File.pathSeparator))
         .map(Path::of)
         .filter(path -> path.getFileName() != null)
         .filter(path -> path.getFileName().toString().contains(artifactFragment))
@@ -343,7 +346,7 @@ class SqliteDatabaseSeedingIntegrationTest {
 
     final Path sourceJar = resolveClasspathArtifact("sqlite-jdbc");
     final Path cachedJar = cacheDirectory.resolve("sqlite-jdbc-3.46.1.3.jar");
-    Files.copy(sourceJar, cachedJar, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    Files.copy(sourceJar, cachedJar, StandardCopyOption.REPLACE_EXISTING);
 
     DriverLoader.ensureDriverPresent(IntegrationTestSupport.SQLITE_DRIVER);
 
@@ -467,9 +470,8 @@ class SqliteDatabaseSeedingIntegrationTest {
           "CREATE TABLE company (id INTEGER PRIMARY KEY, name TEXT NOT NULL, industry TEXT NOT NULL, hq TEXT NOT NULL)",
           IntegrationTestSupport.allStatements());
 
-      final com.luisppb16.dbseed.model.RepetitionRule rule =
-          new com.luisppb16.dbseed.model.RepetitionRule(
-              3, Map.of("industry", "Tech"), Set.of("hq"));
+      final RepetitionRule rule =
+          new RepetitionRule(3, Map.of("industry", "Tech"), Set.of("hq"), Map.of());
 
       final IntegrationTestSupport.WorkflowOptions options =
           new IntegrationTestSupport.WorkflowOptions(

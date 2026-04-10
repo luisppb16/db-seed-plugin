@@ -2,7 +2,7 @@
  * *****************************************************************************
  * Copyright (c)  2026 Luis Paolo Pepe Barra (@LuisPPB16).
  * All rights reserved.
- *  *****************************************************************************
+ * *****************************************************************************
  */
 
 package com.luisppb16.dbseed.ui;
@@ -26,6 +26,7 @@ import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.Cursor;
+import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
@@ -384,7 +385,7 @@ public final class SeedDialog extends DialogWrapper {
     // Profile Selection
     JPanel profilePanel = new JPanel(new BorderLayout());
     profilePanel.add(profileComboBox, BorderLayout.CENTER);
-    JPanel btnPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.RIGHT, 5, 0));
+    JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
     btnPanel.add(saveProfileBtn);
     btnPanel.add(deleteProfileBtn);
     profilePanel.add(btnPanel, BorderLayout.EAST);

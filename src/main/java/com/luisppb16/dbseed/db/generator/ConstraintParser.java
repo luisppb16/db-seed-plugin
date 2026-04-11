@@ -12,12 +12,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -205,16 +205,16 @@ public final class ConstraintParser {
   private static Map<String, String> parseAndClause(final String clause) {
     final String[] conditions =
         clause.split("(?i)\\s+AND\\s+|(?<=\\))\\s*AND\\s*|\\s*AND\\s*(?=\\()");
-    final Map<String, String> combination =
-        Arrays.stream(conditions)
-            .map(ConstraintParser::parseCondition)
-            .collect(
-                HashMap::new,
-                (map, entry) -> {
-                  if (entry != null) map.put(entry.getKey(), entry.getValue());
-                },
-                HashMap::putAll);
-    return combination.isEmpty() && conditions.length > 0 ? null : combination;
+    final Map<String, String> combination = new HashMap<>();
+    for (String cond : conditions) {
+      Map.Entry<String, String> entry = parseCondition(cond);
+      if (entry == null) {
+        // Non-equality condition found — skip entire AND clause
+        return null;
+      }
+      combination.put(entry.getKey(), entry.getValue());
+    }
+    return combination.isEmpty() ? null : combination;
   }
 
   private static Map.Entry<String, String> parseCondition(final String cond) {
@@ -391,11 +391,13 @@ public final class ConstraintParser {
       final String num = ml.group(2);
       try {
         final int v = Integer.parseInt(num);
-        if ("<=".equals(op) || "=".equals(op)) {
-          newMaxLen = Objects.isNull(newMaxLen) ? v : Math.min(newMaxLen, v);
-        } else if ("<".equals(op)) {
-          final int exclusive = v - 1;
-          newMaxLen = Objects.isNull(newMaxLen) ? exclusive : Math.min(newMaxLen, exclusive);
+        switch (op) {
+          case "<=", "=" -> newMaxLen = Objects.isNull(newMaxLen) ? v : Math.min(newMaxLen, v);
+          case "<" -> {
+            final int exclusive = v - 1;
+            newMaxLen = Objects.isNull(newMaxLen) ? exclusive : Math.min(newMaxLen, exclusive);
+          }
+          default -> {}
         }
       } catch (final NumberFormatException ignored) {
       }
@@ -438,12 +440,16 @@ public final class ConstraintParser {
   private record ColumnPatterns(
       Pattern between, Pattern range, Pattern in, Pattern anyArray, Pattern eq, Pattern len) {
     private static final int MAX_CACHE_SIZE = 500;
-    private static final Map<String, ColumnPatterns> CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, ColumnPatterns> CACHE =
+        Collections.synchronizedMap(
+            new LinkedHashMap<>(16, 0.75f, true) {
+              @Override
+              protected boolean removeEldestEntry(Map.Entry<String, ColumnPatterns> eldest) {
+                return size() > MAX_CACHE_SIZE;
+              }
+            });
 
     static ColumnPatterns forColumn(final String columnName) {
-      if (CACHE.size() >= MAX_CACHE_SIZE) {
-        CACHE.clear();
-      }
       return CACHE.computeIfAbsent(columnName, ColumnPatterns::create);
     }
 

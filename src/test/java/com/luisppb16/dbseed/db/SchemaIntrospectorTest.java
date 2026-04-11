@@ -43,17 +43,17 @@ class SchemaIntrospectorTest {
     conn.close();
   }
 
-  private void exec(String sql) throws SQLException {
+  private void exec(final String sql) throws SQLException {
     try (Statement stmt = conn.createStatement()) {
       stmt.execute(sql);
     }
   }
 
-  private Table findTable(List<Table> tables, String name) {
+  private Table findTable(final List<Table> tables, final String name) {
     return tables.stream().filter(t -> t.name().equalsIgnoreCase(name)).findFirst().orElse(null);
   }
 
-  private Column findColumn(Table table, String name) {
+  private Column findColumn(final Table table, final String name) {
     return table.columns().stream()
         .filter(c -> c.name().equalsIgnoreCase(name))
         .findFirst()
@@ -65,7 +65,7 @@ class SchemaIntrospectorTest {
   @Test
   void singleTable() throws SQLException {
     exec("CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100))");
-    List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
+    final List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
     assertThat(tables).hasSize(1);
     assertThat(tables.get(0).name()).isEqualToIgnoringCase("users");
   }
@@ -74,13 +74,13 @@ class SchemaIntrospectorTest {
   void multipleTables() throws SQLException {
     exec("CREATE TABLE a (id INT PRIMARY KEY)");
     exec("CREATE TABLE b (id INT PRIMARY KEY)");
-    List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
+    final List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
     assertThat(tables).hasSize(2);
   }
 
   @Test
   void noTables() throws SQLException {
-    List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
+    final List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
     assertThat(tables).isEmpty();
   }
 
@@ -95,40 +95,40 @@ class SchemaIntrospectorTest {
   @Test
   void column_intType() throws SQLException {
     exec("CREATE TABLE t (val INT)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "VAL");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "VAL");
     assertThat(c.jdbcType()).isEqualTo(Types.INTEGER);
   }
 
   @Test
   void column_varcharLength() throws SQLException {
     exec("CREATE TABLE t (name VARCHAR(50))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "NAME");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "NAME");
     assertThat(c.length()).isEqualTo(50);
   }
 
   @Test
   void column_nullable() throws SQLException {
     exec("CREATE TABLE t (val INT)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "VAL");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "VAL");
     assertThat(c.nullable()).isTrue();
   }
 
   @Test
   void column_notNull() throws SQLException {
     exec("CREATE TABLE t (val INT NOT NULL)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "VAL");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "VAL");
     assertThat(c.nullable()).isFalse();
   }
 
   @Test
   void column_decimalScalePrecision() throws SQLException {
     exec("CREATE TABLE t (price DECIMAL(10, 3))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "PRICE");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "PRICE");
     assertThat(c.length()).isEqualTo(10);
     assertThat(c.scale()).isEqualTo(3);
   }
@@ -136,8 +136,8 @@ class SchemaIntrospectorTest {
   @Test
   void column_uuidFlag() throws SQLException {
     exec("CREATE TABLE t (id UUID PRIMARY KEY)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "ID");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "ID");
     assertThat(c.uuid()).isTrue();
   }
 
@@ -146,21 +146,21 @@ class SchemaIntrospectorTest {
   @Test
   void singlePk() throws SQLException {
     exec("CREATE TABLE t (id INT PRIMARY KEY, name VARCHAR(50))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.primaryKey()).containsExactly("ID");
   }
 
   @Test
   void compositePk() throws SQLException {
     exec("CREATE TABLE t (a INT, b INT, PRIMARY KEY (a, b))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.primaryKey()).containsExactlyInAnyOrder("A", "B");
   }
 
   @Test
   void noPk() throws SQLException {
     exec("CREATE TABLE t (val INT)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.primaryKey()).isEmpty();
   }
 
@@ -170,9 +170,9 @@ class SchemaIntrospectorTest {
   void singleFkMapping() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))");
-    Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
     assertThat(child.foreignKeys()).hasSize(1);
-    ForeignKey fk = child.foreignKeys().get(0);
+    final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.pkTable()).isEqualToIgnoringCase("parent");
     assertThat(fk.columnMapping()).containsEntry("PARENT_ID", "ID");
   }
@@ -182,8 +182,8 @@ class SchemaIntrospectorTest {
     exec("CREATE TABLE parent (a INT, b INT, PRIMARY KEY (a, b))");
     exec(
         "CREATE TABLE child (id INT PRIMARY KEY, fa INT, fb INT, FOREIGN KEY (fa, fb) REFERENCES parent(a, b))");
-    Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
-    ForeignKey fk = child.foreignKeys().get(0);
+    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.columnMapping()).hasSize(2);
   }
 
@@ -191,8 +191,8 @@ class SchemaIntrospectorTest {
   void fkWithUnique_uniqueOnFkTrue() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT UNIQUE REFERENCES parent(id))");
-    Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
-    ForeignKey fk = child.foreignKeys().get(0);
+    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.uniqueOnFk()).isTrue();
   }
 
@@ -200,8 +200,8 @@ class SchemaIntrospectorTest {
   void fkWithoutUnique() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))");
-    Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
-    ForeignKey fk = child.foreignKeys().get(0);
+    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.uniqueOnFk()).isFalse();
   }
 
@@ -210,8 +210,8 @@ class SchemaIntrospectorTest {
   @Test
   void checkConstraint_betweenBounds() throws SQLException {
     exec("CREATE TABLE t (val INT CHECK (val BETWEEN 1 AND 100))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "VAL");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "VAL");
     assertThat(c.minValue()).isEqualTo(1);
     assertThat(c.maxValue()).isEqualTo(100);
   }
@@ -219,15 +219,15 @@ class SchemaIntrospectorTest {
   @Test
   void checkConstraint_inListAllowedValues() throws SQLException {
     exec("CREATE TABLE t (status VARCHAR(20) CHECK (status IN ('A', 'B', 'C')))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "STATUS");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "STATUS");
     assertThat(c.allowedValues()).containsExactlyInAnyOrder("A", "B", "C");
   }
 
   @Test
   void checkConstraint_rawCheckInTable() throws SQLException {
     exec("CREATE TABLE t (val INT CHECK (val >= 5 AND val <= 50))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.checks()).isNotEmpty();
   }
 
@@ -236,7 +236,7 @@ class SchemaIntrospectorTest {
   @Test
   void uniqueConstraint() throws SQLException {
     exec("CREATE TABLE t (id INT PRIMARY KEY, email VARCHAR(100) UNIQUE)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.uniqueKeys()).isNotEmpty();
     assertThat(t.uniqueKeys().stream().anyMatch(uk -> uk.contains("EMAIL"))).isTrue();
   }
@@ -244,7 +244,7 @@ class SchemaIntrospectorTest {
   @Test
   void compositeUnique() throws SQLException {
     exec("CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT, UNIQUE(a, b))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.uniqueKeys().stream().anyMatch(uk -> uk.containsAll(List.of("A", "B")))).isTrue();
   }
 
@@ -253,32 +253,32 @@ class SchemaIntrospectorTest {
   @Test
   void column_uuidByTypeName_detected() throws SQLException {
     exec("CREATE TABLE t (id UUID)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "ID");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "ID");
     assertThat(c.uuid()).isTrue();
   }
 
   @Test
   void column_regularVarchar_notUuid() throws SQLException {
     exec("CREATE TABLE t (name VARCHAR(100))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "NAME");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "NAME");
     assertThat(c.uuid()).isFalse();
   }
 
   @Test
   void column_intType_notUuid() throws SQLException {
     exec("CREATE TABLE t (id INT)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "ID");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "ID");
     assertThat(c.uuid()).isFalse();
   }
 
   @Test
   void column_booleanType_notUuid() throws SQLException {
     exec("CREATE TABLE t (active BOOLEAN)");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "ACTIVE");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "ACTIVE");
     assertThat(c.uuid()).isFalse();
   }
 
@@ -287,8 +287,8 @@ class SchemaIntrospectorTest {
   @Test
   void checkConstraint_largeBoundsStillWorks() throws SQLException {
     exec("CREATE TABLE t (val INT CHECK (val BETWEEN 0 AND 2147483647))");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
-    Column c = findColumn(t, "VAL");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column c = findColumn(t, "VAL");
     assertThat(c.minValue()).isEqualTo(0);
     assertThat(c.maxValue()).isEqualTo(2147483647);
   }
@@ -296,7 +296,7 @@ class SchemaIntrospectorTest {
   @Test
   void checkConstraint_noExceptionOnExtremeValues() throws SQLException {
     exec("CREATE TABLE t (val BIGINT CHECK (val >= -100 AND val <= 100))");
-    List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
+    final List<Table> tables = SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect);
     assertThat(tables).isNotEmpty();
   }
 
@@ -313,7 +313,7 @@ class SchemaIntrospectorTest {
             + "created TIMESTAMP, "
             + "uid UUID"
             + ")");
-    Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
     assertThat(t.columns()).hasSize(6);
     assertThat(findColumn(t, "ID").jdbcType()).isEqualTo(Types.INTEGER);
     assertThat(findColumn(t, "NAME").jdbcType()).isEqualTo(Types.VARCHAR);
@@ -328,7 +328,7 @@ class SchemaIntrospectorTest {
     exec("CREATE TABLE test_schema.t1 (id INT PRIMARY KEY)");
     exec("CREATE TABLE t2 (id INT PRIMARY KEY)");
 
-    List<Table> filtered = SchemaIntrospector.introspect(conn, "TEST_SCHEMA", h2Dialect);
+    final List<Table> filtered = SchemaIntrospector.introspect(conn, "TEST_SCHEMA", h2Dialect);
     assertThat(filtered).hasSize(1);
     assertThat(filtered.get(0).name()).isEqualToIgnoringCase("T1");
   }

@@ -7,12 +7,9 @@
 
 package com.luisppb16.dbseed.config;
 
-import lombok.Builder;
-
 /**
  * Immutable configuration record for database generation parameters in the DBSeed plugin ecosystem.
  */
-@Builder(toBuilder = true)
 public record GenerationConfig(
     String url,
     String user,
@@ -23,4 +20,23 @@ public record GenerationConfig(
     String softDeleteColumns,
     boolean softDeleteUseSchemaDefault,
     String softDeleteValue,
-    int numericScale) {}
+    int numericScale) {
+
+  public GenerationConfig withSoftDeleteSettings(
+      final String softDeleteColumns,
+      final boolean softDeleteUseSchemaDefault,
+      final String softDeleteValue,
+      final int numericScale) {
+    return new GenerationConfig(
+        url,
+        user,
+        password,
+        schema,
+        rowsPerTable,
+        deferred,
+        softDeleteColumns,
+        softDeleteUseSchemaDefault,
+        softDeleteValue,
+        numericScale);
+  }
+}

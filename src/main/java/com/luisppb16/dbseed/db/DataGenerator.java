@@ -18,7 +18,6 @@ import com.luisppb16.dbseed.db.generator.ValueGenerator;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,7 +35,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import lombok.Builder;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
@@ -155,7 +153,7 @@ public class DataGenerator {
 
     // ── Calculate TOTAL real work units up-front ──────────────────────────────
     // 1 unit per row to generate (rows phase)
-    final long rowWork = (long) orderedTables.size() * params.rowsPerTable();
+    final long rowWork = orderedTables.size() * (long) params.rowsPerTable();
     // 1 unit per AI-column×row (AI phase) — 0 when no AI
     final long aiWork =
         Objects.nonNull(ollamaClient)
@@ -249,17 +247,10 @@ public class DataGenerator {
                   .map(
                       c -> {
                         final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
-                        final boolean isIntegerType =
-                            c.jdbcType() == Types.INTEGER
-                                || c.jdbcType() == Types.BIGINT
-                                || c.jdbcType() == Types.SMALLINT
-                                || c.jdbcType() == Types.TINYINT;
-                        return forceUuid && !c.uuid() && !isIntegerType
-                            ? c.toBuilder().uuid(true).build()
-                            : c;
+                        return forceUuid && !c.uuid() ? c.withUuid(true) : c;
                       })
                   .toList();
-          overridden.put(t.name(), t.toBuilder().columns(newCols).build());
+          overridden.put(t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
         });
     return List.copyOf(overridden.values());
   }
@@ -459,12 +450,14 @@ public class DataGenerator {
                   val = vg.generateNumericWithinBounds(col, pc);
                   attempts++;
                 }
+                if (ValueGenerator.isNumericOutsideBounds(val, pc)) {
+                  val = vg.clampToNearestBound(val, pc);
+                }
                 row.values().put(col.name(), val);
               }
             });
   }
 
-  @Builder
   public record GenerationParameters(
       List<Table> tables,
       int rowsPerTable,
@@ -483,7 +476,148 @@ public class DataGenerator {
       String applicationContext,
       ProgressIndicator indicator,
       Map<String, Map<String, Integer>> circularReferences,
-      Map<String, Map<String, String>> circularReferenceTerminationModes) {}
+      Map<String, Map<String, String>> circularReferenceTerminationModes) {
+
+    public static Builder builder() {
+      return new Builder();
+    }
+
+    public static final class Builder {
+      private List<Table> tables;
+      private int rowsPerTable;
+      private boolean deferred;
+      private Map<String, Map<String, String>> pkUuidOverrides;
+      private Map<String, List<String>> excludedColumns;
+      private Map<String, List<RepetitionRule>> repetitionRules;
+      private boolean useLatinDictionary;
+      private boolean useEnglishDictionary;
+      private boolean useSpanishDictionary;
+      private String softDeleteColumns;
+      private boolean softDeleteUseSchemaDefault;
+      private String softDeleteValue;
+      private int numericScale;
+      private Map<String, Set<String>> aiColumns;
+      private String applicationContext;
+      private ProgressIndicator indicator;
+      private Map<String, Map<String, Integer>> circularReferences;
+      private Map<String, Map<String, String>> circularReferenceTerminationModes;
+
+      private Builder() {}
+
+      public Builder tables(final List<Table> tables) {
+        this.tables = tables;
+        return this;
+      }
+
+      public Builder rowsPerTable(final int rowsPerTable) {
+        this.rowsPerTable = rowsPerTable;
+        return this;
+      }
+
+      public Builder deferred(final boolean deferred) {
+        this.deferred = deferred;
+        return this;
+      }
+
+      public Builder pkUuidOverrides(final Map<String, Map<String, String>> pkUuidOverrides) {
+        this.pkUuidOverrides = pkUuidOverrides;
+        return this;
+      }
+
+      public Builder excludedColumns(final Map<String, List<String>> excludedColumns) {
+        this.excludedColumns = excludedColumns;
+        return this;
+      }
+
+      public Builder repetitionRules(final Map<String, List<RepetitionRule>> repetitionRules) {
+        this.repetitionRules = repetitionRules;
+        return this;
+      }
+
+      public Builder useLatinDictionary(final boolean useLatinDictionary) {
+        this.useLatinDictionary = useLatinDictionary;
+        return this;
+      }
+
+      public Builder useEnglishDictionary(final boolean useEnglishDictionary) {
+        this.useEnglishDictionary = useEnglishDictionary;
+        return this;
+      }
+
+      public Builder useSpanishDictionary(final boolean useSpanishDictionary) {
+        this.useSpanishDictionary = useSpanishDictionary;
+        return this;
+      }
+
+      public Builder softDeleteColumns(final String softDeleteColumns) {
+        this.softDeleteColumns = softDeleteColumns;
+        return this;
+      }
+
+      public Builder softDeleteUseSchemaDefault(final boolean softDeleteUseSchemaDefault) {
+        this.softDeleteUseSchemaDefault = softDeleteUseSchemaDefault;
+        return this;
+      }
+
+      public Builder softDeleteValue(final String softDeleteValue) {
+        this.softDeleteValue = softDeleteValue;
+        return this;
+      }
+
+      public Builder numericScale(final int numericScale) {
+        this.numericScale = numericScale;
+        return this;
+      }
+
+      public Builder aiColumns(final Map<String, Set<String>> aiColumns) {
+        this.aiColumns = aiColumns;
+        return this;
+      }
+
+      public Builder applicationContext(final String applicationContext) {
+        this.applicationContext = applicationContext;
+        return this;
+      }
+
+      public Builder indicator(final ProgressIndicator indicator) {
+        this.indicator = indicator;
+        return this;
+      }
+
+      public Builder circularReferences(final Map<String, Map<String, Integer>> circularReferences) {
+        this.circularReferences = circularReferences;
+        return this;
+      }
+
+      public Builder circularReferenceTerminationModes(
+          final Map<String, Map<String, String>> circularReferenceTerminationModes) {
+        this.circularReferenceTerminationModes = circularReferenceTerminationModes;
+        return this;
+      }
+
+      public GenerationParameters build() {
+        return new GenerationParameters(
+            tables,
+            rowsPerTable,
+            deferred,
+            pkUuidOverrides,
+            excludedColumns,
+            repetitionRules,
+            useLatinDictionary,
+            useEnglishDictionary,
+            useSpanishDictionary,
+            softDeleteColumns,
+            softDeleteUseSchemaDefault,
+            softDeleteValue,
+            numericScale,
+            aiColumns,
+            applicationContext,
+            indicator,
+            circularReferences,
+            circularReferenceTerminationModes);
+      }
+    }
+  }
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
 }

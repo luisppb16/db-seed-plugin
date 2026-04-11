@@ -359,15 +359,9 @@ class SqliteDatabaseSeedingIntegrationTest {
   @Test
   void testDriverLoader_invalidCoordinatesFailDuringDownload() throws Exception {
     final DriverInfo invalidDriver =
-        DriverInfo.builder()
-            .name("Invalid JDBC")
-            .mavenGroupId("invalid.group")
-            .mavenArtifactId("missing-driver")
-            .version("0.0.0")
-            .driverClass("invalid.Driver")
-            .urlTemplate("jdbc:invalid://localhost/test")
-            .dialect("standard")
-            .build();
+        new DriverInfo(
+            "Invalid JDBC", "invalid.group", "missing-driver", "0.0.0", "invalid.Driver",
+            "jdbc:invalid://localhost/test", false, false, false, false, "standard");
 
     final Path cachedJar =
         Path.of(

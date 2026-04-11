@@ -16,7 +16,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.stream.Collectors;
-import lombok.Builder;
 
 /**
  * Immutable representation of a database table structure in the DBSeed plugin ecosystem.
@@ -50,7 +49,6 @@ import lombok.Builder;
  * @param checks The list of check constraints
  * @param uniqueKeys The list of unique key constraints
  */
-@Builder(toBuilder = true)
 public record Table(
     String name,
     List<Column> columns,

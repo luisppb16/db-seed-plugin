@@ -11,7 +11,6 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import lombok.Builder;
 
 /**
  * Immutable representation of a foreign key relationship in the DBSeed plugin ecosystem.
@@ -46,7 +45,6 @@ import lombok.Builder;
  *     (in the parent table)
  * @param uniqueOnFk Flag indicating whether this foreign key enforces uniqueness (1:1 relationship)
  */
-@Builder(toBuilder = true)
 public record ForeignKey(
     String name, String pkTable, Map<String, String> columnMapping, boolean uniqueOnFk) {
 

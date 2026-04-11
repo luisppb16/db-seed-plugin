@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.ai;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -17,7 +18,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -115,7 +115,8 @@ public class OllamaClient {
    * shutdown, so no explicit shutdown is required — the lifecycle is tied to the plugin/JVM.
    */
   private static final ExecutorService HTTP_EXECUTOR =
-      Executors.newCachedThreadPool(
+      Executors.newFixedThreadPool(
+          Runtime.getRuntime().availableProcessors(),
           r -> {
             Thread t = new Thread(r, "ollama-http");
             t.setDaemon(true);
@@ -146,7 +147,7 @@ public class OllamaClient {
     this.requestTimeoutSeconds = Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds);
   }
 
-  private static String normalizeUrl(String url) {
+  private static String normalizeUrl(final String url) {
     String normalized = url;
     if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
       normalized = "http://" + normalized;
@@ -157,7 +158,7 @@ public class OllamaClient {
     return normalized;
   }
 
-  private static String sanitizeAiOutput(String value, @Nullable String columnName) {
+  private static String sanitizeAiOutput(final String value, @Nullable final String columnName) {
     if (Objects.isNull(value)) return null;
     String cleaned = value.lines().findFirst().orElse("").trim();
 
@@ -182,7 +183,7 @@ public class OllamaClient {
     return cleaned;
   }
 
-  private static String stripSurroundingQuotes(String text) {
+  private static String stripSurroundingQuotes(final String text) {
     if (text.length() >= 2
         && ((text.startsWith("\"") && text.endsWith("\""))
             || (text.startsWith("'") && text.endsWith("'")))) {
@@ -191,8 +192,8 @@ public class OllamaClient {
     return text;
   }
 
-  private static boolean isAiPreamble(String text) {
-    String lower = text.toLowerCase();
+  private static boolean isAiPreamble(final String text) {
+    final String lower = text.toLowerCase();
     return lower.startsWith("here are")
         || lower.startsWith("here is")
         || lower.startsWith("sure,")
@@ -206,8 +207,8 @@ public class OllamaClient {
         || lower.contains("values for column");
   }
 
-  private static boolean isAiRefusal(String text) {
-    String lower = text.toLowerCase();
+  private static boolean isAiRefusal(final String text) {
+    final String lower = text.toLowerCase();
     return lower.startsWith("i cannot")
         || lower.startsWith("i can't")
         || lower.startsWith("i'm sorry")
@@ -218,9 +219,9 @@ public class OllamaClient {
         || lower.startsWith("i am not able");
   }
 
-  private static String stripColumnPrefix(String text, String columnName) {
-    String lower = text.toLowerCase();
-    String colLower = columnName.toLowerCase();
+  private static String stripColumnPrefix(final String text, final String columnName) {
+    final String lower = text.toLowerCase();
+    final String colLower = columnName.toLowerCase();
     if (lower.startsWith(colLower)) {
       String rest = text.substring(columnName.length()).trim();
       if (rest.startsWith("=") || rest.startsWith(":")) {
@@ -231,11 +232,11 @@ public class OllamaClient {
     return text;
   }
 
-  private static boolean isArrayType(String sqlType) {
+  private static boolean isArrayType(final String sqlType) {
     if (Objects.isNull(sqlType) || sqlType.isBlank()) {
       return false;
     }
-    String lower = sqlType.toLowerCase(Locale.ROOT);
+    final String lower = sqlType.toLowerCase(Locale.ROOT);
     // PostgreSQL array types: TEXT[], _text, INTEGER[], etc.
     // Also handles ARRAY keyword
     return lower.endsWith("[]") || lower.startsWith("_") || lower.contains("array");
@@ -248,7 +249,7 @@ public class OllamaClient {
    */
   public CompletableFuture<Void> ping() {
     try {
-      HttpRequest request =
+      final HttpRequest request =
           HttpRequest.newBuilder()
               .uri(URI.create(normalizedUrl))
               .timeout(Duration.ofSeconds(PING_TIMEOUT_SECONDS))
@@ -276,7 +277,7 @@ public class OllamaClient {
    */
   public CompletableFuture<List<String>> listModels() {
     try {
-      HttpRequest request =
+      final HttpRequest request =
           HttpRequest.newBuilder()
               .uri(URI.create(normalizedUrl + "/api/tags"))
               .timeout(Duration.ofSeconds(LIST_MODELS_TIMEOUT_SECONDS))
@@ -299,24 +300,21 @@ public class OllamaClient {
     }
   }
 
-  private List<String> parseModelsResponse(String responseBody) {
-    List<String> models = new ArrayList<>();
+  private List<String> parseModelsResponse(final String responseBody) {
+    final List<String> models = new ArrayList<>();
     try {
-      JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
+      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
       if (json.has("models") && json.get("models").isJsonArray()) {
-        json.getAsJsonArray("models")
-            .forEach(
-                element -> {
-                  if (element.isJsonObject()) {
-                    JsonObject model = element.getAsJsonObject();
-                    if (model.has("name")) {
-                      models.add(model.get("name").getAsString());
-                    }
-                  }
-                });
+        models.addAll(
+            json.getAsJsonArray("models").asList().stream()
+                .filter(JsonElement::isJsonObject)
+                .map(JsonElement::getAsJsonObject)
+                .filter(obj -> obj.has("name"))
+                .map(obj -> obj.get("name").getAsString())
+                .sorted()
+                .toList());
       }
-      Collections.sort(models); // Sort models alphabetically
-    } catch (Exception e) {
+    } catch (final Exception e) {
       log.warn("Failed to parse Ollama models response", e);
     }
     return models;
@@ -336,8 +334,8 @@ public class OllamaClient {
     final boolean isArrayType = isArrayType(sqlType);
 
     try {
-      String prompt;
-      int numPredict;
+      final String prompt;
+      final int numPredict;
 
       if (isArrayType) {
         final int elementCount = 3;
@@ -380,9 +378,9 @@ public class OllamaClient {
         }
       }
 
-      String requestBody = buildGenerateRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
+      final String requestBody = buildGenerateRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
 
-      HttpRequest request =
+      final HttpRequest request =
           HttpRequest.newBuilder()
               .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
@@ -406,9 +404,9 @@ public class OllamaClient {
     }
   }
 
-  private List<String> parseBatchResponse(String responseBody, String columnName) {
+  private List<String> parseBatchResponse(final String responseBody, final String columnName) {
     try {
-      String raw = extractRawResponse(responseBody);
+      final String raw = extractRawResponse(responseBody);
       return raw.lines()
           .map(line -> sanitizeAiOutput(line, columnName))
           .filter(Objects::nonNull)
@@ -421,7 +419,7 @@ public class OllamaClient {
     }
   }
 
-  private String extractRawResponse(String responseBody) throws IOException {
+  private String extractRawResponse(final String responseBody) throws IOException {
     try {
       final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
       // /api/generate format: { "response": "..." }
@@ -439,7 +437,7 @@ public class OllamaClient {
     }
   }
 
-  private String buildGenerateRequestBody(String prompt, double temperature, int numPredict) {
+  private String buildGenerateRequestBody(final String prompt, final double temperature, final int numPredict) {
     final JsonObject options = new JsonObject();
     options.addProperty("temperature", temperature);
     options.addProperty("num_predict", numPredict);
@@ -475,7 +473,7 @@ public class OllamaClient {
       body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
       body.add("options", options);
 
-      HttpRequest request =
+      final HttpRequest request =
           HttpRequest.newBuilder()
               .uri(URI.create(normalizedUrl + "/api/generate"))
               .header("Content-Type", "application/json")
@@ -500,7 +498,7 @@ public class OllamaClient {
   }
 
   public static class OllamaException extends RuntimeException {
-    public OllamaException(String message) {
+    public OllamaException(final String message) {
       super(message);
     }
   }

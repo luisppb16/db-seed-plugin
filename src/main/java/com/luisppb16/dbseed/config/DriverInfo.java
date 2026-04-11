@@ -7,8 +7,6 @@
 
 package com.luisppb16.dbseed.config;
 
-import lombok.Builder;
-
 /**
  * Immutable data record representing database driver metadata for the DBSeed plugin ecosystem.
  *
@@ -17,23 +15,6 @@ import lombok.Builder;
  * the driver in Maven repositories, connection configuration templates, and behavioral flags that
  * determine UI requirements for different database systems. The class serves as a central data
  * model for driver management operations including dynamic driver loading and connection setup.
- *
- * <p>Key responsibilities include:
- *
- * <ul>
- *   <li>Storing Maven coordinates for driver artifact identification and retrieval
- *   <li>Providing connection URL templates for different database systems
- *   <li>Defining UI requirements for database connection parameters
- *   <li>Representing driver-specific configuration needs and behaviors
- *   <li>Enabling dynamic driver loading and configuration in the plugin
- *   <li>Providing immutable data structure for thread-safe operations
- * </ul>
- *
- * <p>The implementation uses Java Records to ensure immutability and provides a builder pattern
- * through Lombok annotations for flexible instantiation. The class includes flags to indicate which
- * connection parameters are required by each specific driver, enabling the UI to show only the
- * necessary input fields for each database system. This allows for a consistent user experience
- * across different database vendors while adapting to their specific connection requirements.
  *
  * @param name The human-readable name of the database driver
  * @param mavenGroupId The Maven group ID for the driver artifact
@@ -47,7 +28,6 @@ import lombok.Builder;
  * @param requiresSchema Whether this driver requires a schema parameter
  * @param dialect The name of the dialect properties file (without extension) for SQL generation
  */
-@Builder
 public record DriverInfo(
     String name,
     String mavenGroupId,
@@ -59,4 +39,15 @@ public record DriverInfo(
     boolean requiresUser,
     boolean requiresPassword,
     boolean requiresSchema,
-    String dialect) {}
+    String dialect) {
+
+  public static DriverInfo forDialect(final String dialect) {
+    return new DriverInfo(null, null, null, null, null, null, false, false, false, false, dialect);
+  }
+
+  public static DriverInfo withDriverMeta(
+      final String driverClass, final String urlTemplate) {
+    return new DriverInfo(
+        null, null, null, null, driverClass, urlTemplate, false, false, false, false, null);
+  }
+}

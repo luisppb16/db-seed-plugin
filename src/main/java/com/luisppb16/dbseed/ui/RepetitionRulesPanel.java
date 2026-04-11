@@ -26,12 +26,10 @@ import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Window;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -192,24 +190,7 @@ public class RepetitionRulesPanel extends JPanel {
     if (Objects.isNull(column)) {
       return false;
     }
-
-    final int jdbcType = column.jdbcType();
-    final boolean stringJdbcType =
-        jdbcType == Types.CHAR
-            || jdbcType == Types.VARCHAR
-            || jdbcType == Types.NCHAR
-            || jdbcType == Types.NVARCHAR
-            || jdbcType == Types.LONGVARCHAR
-            || jdbcType == Types.LONGNVARCHAR
-            || jdbcType == Types.CLOB
-            || jdbcType == Types.NCLOB
-            || jdbcType == Types.ARRAY;
-
-    final boolean arrayByName =
-        Objects.nonNull(column.typeName())
-            && column.typeName().toLowerCase(Locale.ROOT).endsWith("[]");
-
-    return stringJdbcType || arrayByName;
+    return column.isStringType();
   }
 
   private Table findParentTable(final List<Table> tables, final Column column) {
@@ -515,14 +496,16 @@ public class RepetitionRulesPanel extends JPanel {
     final Map<String, String> regexPatterns = new HashMap<>();
 
     for (final ColumnOverrideModel override : uiModel.overrides) {
-      if (STRATEGY_CONSTANT_VALUE.equals(override.strategy)) {
-        if (Objects.nonNull(override.regexPattern) && !override.regexPattern.isBlank()) {
-          regexPatterns.put(override.columnName, override.regexPattern);
-          continue;
+      switch (override.strategy) {
+        case STRATEGY_CONSTANT_VALUE -> {
+          if (Objects.nonNull(override.regexPattern) && !override.regexPattern.isBlank()) {
+            regexPatterns.put(override.columnName, override.regexPattern);
+            continue;
+          }
+          fixedValues.put(override.columnName, override.value);
         }
-        fixedValues.put(override.columnName, override.value);
-      } else if (STRATEGY_CONSTANT_RANDOM.equals(override.strategy)) {
-        randomConstant.add(override.columnName);
+        case STRATEGY_CONSTANT_RANDOM -> randomConstant.add(override.columnName);
+        default -> {}
       }
     }
 

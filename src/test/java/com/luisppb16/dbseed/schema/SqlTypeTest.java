@@ -28,13 +28,13 @@ class SqlTypeTest {
 
   @ParameterizedTest
   @MethodSource("toSqlCases")
-  void toSql_returnsExpected(SqlType type, String expected) {
+  void toSql_returnsExpected(final SqlType type, final String expected) {
     assertThat(type.toSql()).isEqualTo(expected);
   }
 
   @ParameterizedTest
   @MethodSource("toSqlCases")
-  void toString_sameAsToSql(SqlType type, String expected) {
+  void toString_sameAsToSql(final SqlType type, final String expected) {
     assertThat(type.toString()).isEqualTo(expected);
   }
 }

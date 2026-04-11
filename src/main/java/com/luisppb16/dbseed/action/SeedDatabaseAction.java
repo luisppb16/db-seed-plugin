@@ -135,7 +135,7 @@ public final class SeedDatabaseAction extends AnAction {
 
     while (continueLoop) {
       final DriverInfo chosenDriver = chosenDriverOpt.get();
-      final SeedDialog seedDialog = new SeedDialog(chosenDriver);
+      final SeedDialog seedDialog = new SeedDialog(project, chosenDriver);
       seedDialog.show();
 
       final int exitCode = seedDialog.getExitCode();
@@ -287,12 +287,11 @@ public final class SeedDatabaseAction extends AnAction {
         }
 
         final GenerationConfig finalConfig =
-            config.toBuilder()
-                .softDeleteColumns(pkDialog.getSoftDeleteColumns())
-                .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
-                .softDeleteValue(pkDialog.getSoftDeleteValue())
-                .numericScale(pkDialog.getNumericScale())
-                .build();
+            config.withSoftDeleteSettings(
+                pkDialog.getSoftDeleteColumns(),
+                pkDialog.getSoftDeleteUseSchemaDefault(),
+                pkDialog.getSoftDeleteValue(),
+                pkDialog.getNumericScale());
 
         ProgressManager.getInstance()
             .run(

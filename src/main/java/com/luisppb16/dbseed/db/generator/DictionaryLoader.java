@@ -55,7 +55,8 @@ public final class DictionaryLoader {
       new AtomicReference<>();
   private static final AtomicReference<List<String>> spanishDictionaryCache =
       new AtomicReference<>();
-  private static final Object DICTIONARY_LOCK = new Object();
+  private static final Object ENGLISH_LOCK = new Object();
+  private static final Object SPANISH_LOCK = new Object();
 
   private DictionaryLoader() {}
 
@@ -76,7 +77,7 @@ public final class DictionaryLoader {
 
   private static List<String> getEnglishWords() {
     if (Objects.isNull(englishDictionaryCache.get())) {
-      synchronized (DICTIONARY_LOCK) {
+      synchronized (ENGLISH_LOCK) {
         if (Objects.isNull(englishDictionaryCache.get())) {
           englishDictionaryCache.set(readWordsFromFile(ENGLISH_DICTIONARY_PATH));
         }
@@ -87,7 +88,7 @@ public final class DictionaryLoader {
 
   private static List<String> getSpanishWords() {
     if (Objects.isNull(spanishDictionaryCache.get())) {
-      synchronized (DICTIONARY_LOCK) {
+      synchronized (SPANISH_LOCK) {
         if (Objects.isNull(spanishDictionaryCache.get())) {
           spanishDictionaryCache.set(readWordsFromFile(SPANISH_DICTIONARY_PATH));
         }

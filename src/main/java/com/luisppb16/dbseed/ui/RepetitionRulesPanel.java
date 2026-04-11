@@ -25,6 +25,7 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Window;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -54,6 +55,7 @@ import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -92,6 +94,7 @@ public class RepetitionRulesPanel extends JPanel {
   private static final String STRATEGY_CONSTANT_VALUE = "Constant (Value)";
   private static final String REGEX_VALID_TITLE = "Regex Validation";
   private static final String REGEX_INVALID_TITLE = "Regex Validation Error";
+  private static final int MIN_DIALOG_WIDTH_WITH_OVERRIDE = 980;
 
   private final Map<String, List<RuleUiModel>> rulesByTable = new HashMap<>();
   private final JPanel rightPanelContainer;
@@ -311,6 +314,7 @@ public class RepetitionRulesPanel extends JPanel {
     final JButton addOverrideButton = new JButton("Add Column Override");
     addOverrideButton.addActionListener(
         e -> {
+          ensureDialogWidthForOverride();
           addOverrideRow(overridesListPanel, table, ruleModel);
           overridesListPanel.revalidate();
           overridesListPanel.repaint();
@@ -476,6 +480,19 @@ public class RepetitionRulesPanel extends JPanel {
     row.add(removeBtn);
 
     container.add(row);
+  }
+
+  private void ensureDialogWidthForOverride() {
+    final Window window = SwingUtilities.getWindowAncestor(this);
+    if (Objects.isNull(window)) {
+      return;
+    }
+
+    final Dimension currentSize = window.getSize();
+    if (currentSize.width < MIN_DIALOG_WIDTH_WITH_OVERRIDE) {
+      window.setSize(MIN_DIALOG_WIDTH_WITH_OVERRIDE, currentSize.height);
+      window.validate();
+    }
   }
 
   public Map<String, List<RepetitionRule>> getRules() {

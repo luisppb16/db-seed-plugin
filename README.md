@@ -2,46 +2,46 @@
 
 **db-seed-plugin** is a plugin for **IntelliJ IDEA** that generates synthetic data to populate database schemas.
 It automatically introspects a schema, analyzes dependencies between tables, and produces a consistent SQL script, respecting primary keys,
-foreign keys, and complex cycles. It is ideal for developers who need realistic and repeatable seeds for testing, demos, or development
-environments.
+foreign keys, uniqueness constraints, and complex cycles. It is ideal for developers who need realistic and repeatable seeds for testing,
+demos, QA, or development environments.
 
-This project is developed in **Java 21** with **Gradle 9.4.0**, applying a modern programming style: `record`, `switch` with `yield`,
-pattern
-matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (`@Builder`, `@Slf4j`,
+This project is developed in **Java 21** with **Gradle 9.4.1**, applying a modern programming style: `record`, `switch` with `yield`,
+pattern matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (`@Builder`, `@Slf4j`,
 `@UtilityClass`), and Javadoc documentation in Spanish. The architecture is organized into clear layers:
 
 - **action**: IntelliJ actions (`SeedDatabaseAction`, `GenerateSeedAction`).
-- **config**: configuration persistence (`GenerationConfig`, `ConnectionConfigPersistence`).
-- **db**: main engine with introspection (`SchemaIntrospector`), topological sorting (`TopologicalSorter`), data generation (
-  `DataGenerator`), and SQL construction (`SqlGenerator`).
-- **model**: immutable models (`Table`, `Column`, `ForeignKey`).
+- **config**: configuration persistence and settings UI (`GenerationConfig`, `DbSeedSettingsState`, `ConnectionConfigPersistence`).
+- **db**: main engine with introspection (`SchemaIntrospector`), topological sorting (`TopologicalSorter`), data generation (`DataGenerator`),
+  and SQL construction (`SqlGenerator`).
+- **model**: immutable models (`Table`, `Column`, `ForeignKey`, `RepetitionRule`).
+- **registry**: driver and runtime registries used by the plugin.
 - **schema**: DSL for manually defining schemas (`SchemaDsl`, `SqlType`).
 - **ui**: Swing/IntelliJ dialogs and screens (`SeedDialog`, `PkUuidSelectionDialog`, `SchemaDesigner`).
-
+- **util**: shared infrastructure and helper utilities.
 ---
 
 ### ✅ Marketplace Compliance Notes
 
 To align with current JetBrains Marketplace approval criteria:
 
-- Plugin metadata now declares explicit compatibility (`since-build=242`, `until-build=242.*`) and Java module dependency.
+- Plugin metadata declares explicit compatibility (`since-build=251`, `until-build=261.*`) and the required Java module dependency.
 - JDBC driver download is **explicitly confirmed by the user** before any external artifact is fetched.
 - The plugin works locally by default; external network use is opt-in and user-triggered.
 - AI generation calls only a user-configured Ollama endpoint and uses user-provided context plus schema metadata (table/column names).
-- Generated SQL and settings remain local to the IDE/project unless the user exports or shares them manually.
+- Generated SQL, dictionaries, and settings remain local to the IDE/project unless the user exports or shares them manually.
 
 ---
 
-### 🚀 New Feature: Dynamic Drivers
+### 🚀 Dynamic Drivers
 
-In previous versions, the plugin only included fixed support for PostgreSQL or loaded many drivers into memory.
-Now, when running the **Seed Database** action, the user can select the database engine from a configurable list in `drivers.json`.
+Instead of bundling every JDBC driver up front, DBSeed4SQL lets the user choose the database engine from a configurable list in
+`src/main/resources/drivers.json`.
 
-- If the driver is not installed, the plugin automatically downloads it from **Maven Central** to `~/.dbseed-drivers/`.
-- It is dynamically registered in the `DriverManager`, avoiding memory saturation with dozens of unnecessary JARs.
-- Each driver comes with sample values for the JDBC URL, which speeds up the initial configuration.
+- If the selected driver is not installed, the plugin downloads it from **Maven Central** into `~/.dbseed-drivers/` after confirmation.
+- The driver is registered dynamically in `DriverManager`, so the plugin stays lightweight.
+- Each driver definition contains URL templates, credential requirements, and a preferred SQL dialect.
 
-Example of `drivers.json`:
+Example of the current `drivers.json` structure:
 
 ```json
 [
@@ -49,74 +49,129 @@ Example of `drivers.json`:
     "name": "PostgreSQL",
     "mavenGroupId": "org.postgresql",
     "mavenArtifactId": "postgresql",
-    "version": "42.7.3",
+    "version": "42.7.7",
     "driverClass": "org.postgresql.Driver",
-    "sampleUrl": "jdbc:postgresql://localhost:5432/dbname"
+    "urlTemplate": "jdbc:postgresql://localhost:5432/test",
+    "requiresDatabaseName": true,
+    "requiresUser": true,
+    "requiresPassword": true,
+    "requiresSchema": true,
+    "dialect": "postgresql"
   },
   {
     "name": "MySQL",
     "mavenGroupId": "com.mysql",
     "mavenArtifactId": "mysql-connector-j",
-    "version": "8.3.0",
+    "version": "9.3.0",
     "driverClass": "com.mysql.cj.jdbc.Driver",
-    "sampleUrl": "jdbc:mysql://localhost:3306/dbname"
-  },
-  {
-    "name": "SQL Server",
-    "mavenGroupId": "com.microsoft.sqlserver",
-    "mavenArtifactId": "mssql-jdbc",
-    "version": "12.6.0.jre11",
-    "driverClass": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
-    "sampleUrl": "jdbc:sqlserver://localhost:1433;databaseName=dbname"
+    "urlTemplate": "jdbc:mysql://localhost:3306/test",
+    "requiresDatabaseName": true,
+    "requiresUser": true,
+    "requiresPassword": true,
+    "requiresSchema": false,
+    "dialect": "mysql"
   }
 ]
 ```
 
-This way, the plugin is **lighter, more extensible, and always uses the correct driver**.
+This makes the plugin **lighter, more extensible, and easier to maintain**.
 
 ---
 
-### 📚 New Feature: Configurable Dictionaries for Data Generation
+### 🧩 Supported Databases
 
-The plugin now offers enhanced control over string data generation by allowing users to select which dictionaries to use. Previously, data
-generation relied solely on Faker's default (Latin) lorem ipsum. With this update, you can combine Faker's default with custom English and
-Spanish word lists.
+The bundled driver catalog currently includes support definitions for:
 
-In the plugin settings, you will find three new checkboxes:
+- Amazon Aurora MySQL
+- Amazon Redshift
+- Apache Derby
+- Apache Hive
+- Azure SQL Database
+- CockroachDB
+- Google BigQuery
+- H2
+- HSQLDB
+- IBM Db2
+- MariaDB
+- MySQL
+- Oracle
+- PostgreSQL
+- SQL Server
+- SQLite
 
-- **Use Latin Dictionary (Faker default)**: When checked, Faker's default lorem ipsum generation (often Latin-based) will be included.
-- **Use English Dictionary**: When checked, words from an internal English dictionary will be used for string generation.
-- **Use Spanish Dictionary**: When checked, words from an internal Spanish dictionary will be used for string generation.
-
-This allows for more realistic and contextually relevant data generation, especially for text-based fields. You can select any combination
-of these options to tailor the generated string data to your specific needs.
+Dialect auto-detection is also available when no explicit dialect is configured.
 
 ---
 
-### 🤖 New Feature: AI-Powered Data Generation (Ollama)
+### 🔐 Connection Profiles and Project Settings
 
-The plugin now integrates with [Ollama](https://ollama.com/) to generate context-aware, realistic seed data using local LLMs. Instead of
-relying solely on random/faker values, you can leverage AI to produce meaningful content for string columns.
+DBSeed4SQL supports reusable **connection profiles** so you do not need to type JDBC connection data every time.
 
-- **AI Columns Selection**: A new "AI Columns" tab in the generation dialog lets you choose which string columns get AI-generated content.
+- Save a profile directly from the seed dialog.
+- Switch between profiles from the same form.
+- Manage and sanitize saved profiles from the settings UI.
+- Keep the active profile per project through `DbSeedProjectState`.
+
+This is especially useful when you work with several local databases, test environments, or tenant-specific schemas.
+
+---
+
+### 📚 Configurable Dictionaries for Data Generation
+
+The plugin offers enhanced control over string data generation by allowing users to select which dictionaries to use. Previously, data
+generation relied solely on Faker's default lorem ipsum. With this feature, you can combine Faker's default output with internal English and
+Spanish dictionaries.
+
+In the plugin settings, you will find three checkboxes:
+
+- **Use Latin Dictionary (Faker default)**: Includes Faker's default lorem-style word generation.
+- **Use English Dictionary**: Uses words from an internal English dictionary.
+- **Use Spanish Dictionary**: Uses words from an internal Spanish dictionary.
+
+This allows for more realistic and contextually relevant text generation, especially for demo or QA environments.
+
+---
+
+### 🤖 AI-Powered Data Generation (Ollama)
+
+The plugin integrates with [Ollama](https://ollama.com/) to generate context-aware, realistic seed data using local LLMs. Instead of relying
+solely on random/faker values, you can leverage AI to produce meaningful content for string columns.
+
+- **AI Columns Selection**: A dedicated tab in the generation dialog lets you choose which string columns receive AI-generated content.
 - **Smart Defaults**: Columns named `description`, `title`, `bio`, `email`, etc. are pre-selected automatically.
-- **Batch Generation**: AI values are generated in batches of 20 for maximum throughput, with automatic retries and deduplication.
+- **Batch Generation**: AI values are generated in batches with retries and deduplication.
 - **Configurable Word Count**: Control output length from a single word up to full paragraphs.
-- **Cancellable Processing**: The generation task is now cancellable — you can stop it at any time via the IDE progress bar.
-- **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide application context to guide the AI, and test
-  connectivity — all from **Settings → DBSeed4SQL**.
+- **Request Timeout Control**: Configure the Ollama request timeout from settings.
+- **Cancellable Processing**: The generation task can be canceled from the IDE progress UI.
+- **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide domain context, and test connectivity from
+  **Settings → DBSeed4SQL**.
+
+---
+
+### 🎯 Advanced Column Rules and Exclusion Safety
+
+Recent iterations of the plugin introduced more precise controls for generation behavior:
+
+- **Repetition Rules Panel**: Configure how column values repeat across generated rows.
+- **Regex-Based Values**: Generate values from a Java regex pattern for individual columns.
+- **Excluded Tables / Columns**: Omit risky or irrelevant entities from generation.
+- **FK Exclusion Warnings**: The dialog warns when exclusions could create invalid foreign-key scenarios.
+- **Selected Count Feedback**: Selection dialogs show clearer counts and improve bulk actions.
+
+These controls help tune generated data without manually editing SQL afterwards.
 
 ---
 
 ### 🔁 Circular Reference Improvements
 
-Circular dependencies between tables are now handled more predictably across supported dialects.
+Circular dependencies between tables are handled predictably across supported dialects.
 
 - The planner first identifies strongly connected components (Tarjan) to isolate cyclic groups.
 - For engines that support it, inserts run with deferred constraints inside a transaction.
-- For engines without deferred constraints, DBSeed4SQL performs a two-step strategy (`INSERT` + targeted `UPDATE`) to resolve FK cycles
-  safely.
-- Generated scripts keep referential integrity while reducing manual post-processing for cyclic schemas.
+- For engines without deferred constraints, DBSeed4SQL performs a two-step strategy (`INSERT` + targeted `UPDATE`) to resolve FK cycles.
+- Circular-reference handling can be configured per table with explicit termination modes.
+
+Generated scripts preserve referential integrity while reducing manual post-processing for cyclic schemas.
 
 ---
 
@@ -125,67 +180,126 @@ Circular dependencies between tables are now handled more predictably across sup
 - Schema introspection via `DatabaseMetaData`.
 - Table sorting with Tarjan's algorithm to detect cycles.
 - Synthetic data generation with [DataFaker](https://www.datafaker.net/) respecting PKs, FKs, uniqueness, and nullability.
-- Heuristics to recognize column names like `email`, `name`, or `uuid`.
-- Robust circular reference handling with deferred constraints (`SET CONSTRAINTS ALL DEFERRED`) or targeted post-insert updates (
-  `PendingUpdate`).
-- Interactive selection of UUIDs in PKs through a UI dialog.
+- Heuristics to recognize semantic column names like `email`, `name`, `uuid`, `title`, or `description`.
+- Robust circular reference handling with deferred constraints (`SET CONSTRAINTS ALL DEFERRED`) or targeted post-insert updates.
+- Interactive selection of UUID primary keys through a dedicated UI dialog.
 - Automatic opening of the generated SQL in the IntelliJ editor.
-- Standalone visual schema designer to prototype tables and generate creation SQL.
-- **AI-Powered Data Generation**: Generate realistic, context-aware seed data using a local Ollama LLM server.
-- **Auto-Detect SQL Dialect**: The `DialectFactory` now auto-detects the dialect from the driver class or JDBC URL when no explicit dialect
-  is configured.
-- **Improved Password Input**: The database configuration dialog now features a "show password" toggle (eye icon) directly within the
-  password field, allowing users to easily reveal or hide the entered password. This provides a more intuitive and secure user experience.
-- **Batch Query Execution**: Optimized SQL script generation to execute queries in batches, significantly improving performance for large
-  datasets.
-- **Configuration Window**: Introduced a dedicated configuration window within the IDE, allowing users to easily customize default settings
-  and generation parameters.
+- Visual schema designer to prototype tables and export creation SQL.
+- Batch query generation for better performance with larger datasets.
+- Configurable soft-delete columns and numeric precision defaults.
+- Improved password input with a show/hide toggle directly in the connection dialog.
 
 ---
 
-### ⚙️ Build and Distribution
+### ✅ Compatibility and Requirements
 
-The build is done with Gradle:
+- **IntelliJ Platform**: builds `251` through `261.*`.
+- **Java**: Java 21.
+- **Build Tool**: Gradle wrapper `9.4.1`.
+- **Optional AI Runtime**: a reachable Ollama server if you enable AI generation.
+- **Optional Docker**: useful for local database smoke testing and integration scenarios.
+
+---
+
+### 🛠️ Installation and First Run
+
+You can use the plugin in two common ways:
+
+1. Install it from the **JetBrains Marketplace** once the release is published.
+2. Build the plugin locally and install the generated `.zip` from disk in IntelliJ via:
+   **Settings → Plugins → Install Plugin from Disk...**
+
+Typical first-run flow:
+
+1. Open **Tools → DBSeed4SQL**.
+2. Select the database driver.
+3. Confirm driver download if it is not available locally.
+4. Enter connection details in `SeedDialog`.
+5. Optionally save the connection as a reusable profile.
+6. Configure UUID handling, exclusions, repetition rules, AI columns, and circular-reference behavior.
+7. Generate and review the SQL script opened automatically in the editor.
+
+---
+
+### ⚙️ Build, Run and Test Locally
+
+The project uses the Gradle IntelliJ Platform plugin.
+
+Build the plugin:
 
 ```bash
 ./gradlew clean buildPlugin
 ```
 
-The plugin is packaged as a `.zip` in `build/distributions/`, which is the installable artifact in IntelliJ via **Settings → Plugins →
-Install plugin from disk...**.
+Run the plugin in a sandbox IDE:
 
-The **GitHub Actions** pipeline (`.github/workflows/`) has two workflows:
+```bash
+./gradlew runIde
+```
 
-- **`ci.yml`** — runs on every push and pull request: compiles, runs tests, generates a JaCoCo coverage report, and verifies the plugin
-  against the recommended IDE versions.
-- **`release.yml`** — triggered when a GitHub Release is published: runs tests, builds, verifies, signs the plugin with the JetBrains
-  signing certificate, uploads the signed `.zip` to the release, and publishes to the **JetBrains Marketplace** automatically.
+Run the automated tests:
+
+```bash
+./gradlew test
+```
+
+When `buildPlugin` completes, Gradle produces the installable plugin distribution under `build/distributions/`.
+
+---
+
+### 🐳 Local Database Playground
+
+The repository includes a `docker/` folder with a ready-to-use local stack for experimentation:
+
+- PostgreSQL
+- MySQL
+- SQLite
+
+The schemas are stored in `docker/initdb/`, and SQLite writes to `docker/sqlite_data/test.db`.
+
+Start the local databases with:
+
+```bash
+cd docker
+docker compose up -d
+```
+
+This is useful when manually testing introspection, FK handling, and dialect-specific generation output.
 
 ---
 
 ### 📋 Quick Example
 
-1. Select the database driver from the list (PostgreSQL, MySQL, SQL Server, etc.).
-    - If it is not installed, the plugin will download it automatically.
+1. Select the database driver from the list (PostgreSQL, MySQL, SQL Server, SQLite, etc.).
+   - If it is not installed, the plugin will offer to download it automatically.
 2. Configure the connection in the **SeedDialog** (JDBC URL, user, password, schema).
-3. Mark the PKs you want to treat as UUIDs in the **PkUuidSelectionDialog**.
-4. The plugin introspects the schema, generates data, and builds an SQL script like:
+3. Optionally save the connection as a profile for future runs.
+4. Mark the PKs you want to treat as UUIDs in the **PkUuidSelectionDialog**.
+5. Optionally exclude tables/columns, configure repetition rules, or enable AI generation.
+6. The plugin introspects the schema, generates data, and builds an SQL script like:
 
-```sql
+```text
 BEGIN;
 SET CONSTRAINTS ALL DEFERRED;
 
-INSERT INTO "users" ("id", "name", "email")
-VALUES ('9f1c...uuid...', 'Alice Doe', 'alice@example.com');
-INSERT INTO "orders" ("id", "user_id", "amount")
-VALUES ('c7a3...uuid...', '9f1c...uuid...', 42.50);
+INSERT INTO "<users_table>" ("id", "name", "email")
+VALUES ('<uuid>', '<generated_name>', '<generated_email>');
+
+INSERT INTO "<orders_table>" ("id", "user_id", "amount")
+VALUES ('<uuid>', '<users_table.id>', <generated_amount>);
 
 COMMIT;
 ```
 
-The file is automatically opened in an editor within IntelliJ, ready to be executed or exported.
+The file is automatically opened in an editor within IntelliJ, ready to be executed, reviewed, or exported.
 
 ---
 
-👨‍💻 Project created by **Luis Pepe** ([@LuisPPB16](https://github.com/luisppb16)), a Java developer specializing in backend, microservices,
-and development tooling.
+### 📝 Changelog
+
+The release history is tracked in `CHANGELOG.md`. The latest documented version is **`1.3.6`**.
+
+---
+
+👨‍💻 Project created by **Luis Pepe** ([@LuisPPB16](https://github.com/luisppb16)), a Java developer specializing in backend,
+microservices, and development tooling.

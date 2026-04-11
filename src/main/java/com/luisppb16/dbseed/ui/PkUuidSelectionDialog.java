@@ -393,7 +393,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JPanel content = new JPanel(new BorderLayout());
     content.add(tabbedPane, BorderLayout.CENTER);
-    content.setPreferredSize(JBUI.size(750, 600));
+    content.setPreferredSize(JBUI.size(800, 600));
     content.setMinimumSize(JBUI.size(600, 450));
     return content;
   }

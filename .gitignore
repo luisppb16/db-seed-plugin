@@ -45,3 +45,4 @@ gradle/wrapper/gradle-wrapper.jar
 .factorypath
 .classpath
 /src/main/resources/db
+/bin

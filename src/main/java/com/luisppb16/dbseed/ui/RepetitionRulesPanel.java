@@ -337,7 +337,7 @@ public class RepetitionRulesPanel extends JPanel {
         table.columns().stream().map(Column::name).sorted().toArray(String[]::new);
     final ComboBox<String> colCombo = new ComboBox<>(colNames);
 
-    final String[] strategies = {STRATEGY_CONSTANT_RANDOM, STRATEGY_CONSTANT_VALUE};
+    final String[] strategies = {STRATEGY_CONSTANT_VALUE, STRATEGY_CONSTANT_RANDOM};
     final ComboBox<String> strategyCombo = new ComboBox<>(strategies);
 
     final JTextField valueField = new JTextField(15);

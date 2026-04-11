@@ -70,9 +70,6 @@ import lombok.experimental.UtilityClass;
  * reproducible results across multiple executions. The algorithm is resilient to schema changes and
  * adapts to varying dependency structures dynamically.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see Tarjan
  * @see SortResult
  * @see java.util.Map

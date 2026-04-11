@@ -96,9 +96,6 @@ import org.jetbrains.annotations.NotNull;
  * appropriate. The class follows the builder pattern for configuration objects and leverages
  * functional programming concepts for data processing.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see AnAction
  * @see SeedDialog
  * @see PkUuidSelectionDialog

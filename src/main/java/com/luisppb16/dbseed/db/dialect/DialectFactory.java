@@ -62,9 +62,6 @@ import lombok.experimental.UtilityClass;
  * embedded databases, and unusual connection configurations while maintaining reliable dialect
  * resolution.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see DatabaseDialect
  * @see StandardDialect
  * @see DriverInfo

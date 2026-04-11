@@ -79,9 +79,6 @@ import lombok.extern.slf4j.Slf4j;
  * metadata representation. It also includes robust null-safety and handles various database
  * collation settings appropriately.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see java.sql.DatabaseMetaData
  * @see java.sql.Connection
  * @see com.luisppb16.dbseed.model.Table

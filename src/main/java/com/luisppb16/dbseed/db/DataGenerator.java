@@ -85,9 +85,6 @@ import net.datafaker.Faker;
  * processing for circular dependencies. The class also implements retry mechanisms for
  * constraint-bound numeric values, ensuring generated data meets all specified criteria.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see RowGenerator
  * @see ValueGenerator
  * @see ForeignKeyResolver

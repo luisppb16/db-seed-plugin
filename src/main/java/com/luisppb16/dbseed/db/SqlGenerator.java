@@ -68,9 +68,6 @@ import lombok.experimental.UtilityClass;
  * null values, empty datasets, and malformed identifiers. The implementation is resilient to schema
  * changes and adapts to varying table structures dynamically.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see DatabaseDialect
  * @see DialectFactory
  * @see PendingUpdate

@@ -77,9 +77,6 @@ import org.jetbrains.annotations.Nullable;
  * adaptive request sizing based on word count requirements and handles server-side rate limiting
  * gracefully through appropriate error handling.
  *
- * @author Luis Paolo Pepe Barra (@LuisPPB16)
- * @version 1.3.5
- * @since 2025.1
  * @see java.net.http.HttpClient
  * @see java.net.http.HttpRequest
  * @see java.util.concurrent.CompletableFuture

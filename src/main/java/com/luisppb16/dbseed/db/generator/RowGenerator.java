@@ -40,7 +40,41 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
 
-/** Sophisticated row generation engine for database seeding operations in the DBSeed plugin. */
+/**
+ * Sophisticated row generation engine for database seeding operations in the DBSeed plugin.
+ *
+ * <p>This class orchestrates the generation of synthetic data rows for database tables,
+ * implementing complex algorithms that respect schema constraints, foreign key relationships, and
+ * user-defined rules. It coordinates multiple data generation strategies including dictionary-based
+ * content, AI-powered generation, constraint-aware value creation, and repetition rules for
+ * consistent data patterns. The engine handles both single-table and multi-table scenarios with
+ * proper dependency resolution.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Generating realistic data rows that comply with database schema constraints
+ *   <li>Coordinating AI-powered content generation for specified columns
+ *   <li>Applying repetition rules for controlled data pattern duplication
+ *   <li>Managing soft-delete column configurations and default values
+ *   <li>Ensuring uniqueness constraints are respected across generated data
+ *   <li>Handling excluded columns and custom value overrides
+ *   <li>Integrating with progress tracking for user feedback during generation
+ *   <li>Supporting concurrent AI generation with bounded parallelism
+ * </ul>
+ *
+ * <p>The implementation uses advanced data structures to track constraint states, unique value
+ * combinations, and generation progress. It employs sophisticated caching mechanisms for
+ * multi-column constraints and implements retry logic for constraint-bound value generation. The
+ * class supports pluggable value generation strategies and integrates seamlessly with the broader
+ * data generation pipeline.
+ *
+ * <p>Performance optimizations include batched AI requests, lazy constraint parsing, and efficient
+ * data structures for large-scale data generation. The engine handles complex scenarios such as
+ * circular foreign key dependencies, multi-column unique constraints, and user-defined repetition
+ * patterns. Thread safety is maintained through careful coordination of concurrent operations and
+ * immutable data structures where possible.
+ */
 @Slf4j
 public final class RowGenerator {
 
@@ -347,43 +381,46 @@ public final class RowGenerator {
       return true;
     }
 
-    for (final MultiColumnConstraint mcc : multiColumnConstraints) {
-      final List<Map<String, String>> compatibleCombinations =
-          mcc.allowedCombinations().stream()
-              .filter(
-                  combo ->
-                      combo.entrySet().stream()
-                          .allMatch(
-                              entry -> {
-                                final String colName = resolveColumnName(entry.getKey());
-                                final String expectedVal = entry.getValue();
-                                if (!values.containsKey(colName)) {
-                                  return true;
-                                }
-                                final Object actualVal = values.get(colName);
-                                return Objects.isNull(actualVal)
-                                    ? "NULL".equalsIgnoreCase(expectedVal)
-                                    : String.valueOf(actualVal).equals(expectedVal);
-                              }))
-              .toList();
+    multiColumnConstraints.stream()
+        .forEach(
+            mcc -> {
+              final List<Map<String, String>> compatibleCombinations =
+                  mcc.allowedCombinations().stream()
+                      .filter(
+                          combo ->
+                              combo.entrySet().stream()
+                                  .allMatch(
+                                      entry -> {
+                                        final String colName = resolveColumnName(entry.getKey());
+                                        final String expectedVal = entry.getValue();
+                                        if (!values.containsKey(colName)) {
+                                          return true;
+                                        }
+                                        final Object actualVal = values.get(colName);
+                                        return Objects.isNull(actualVal)
+                                            ? "NULL".equalsIgnoreCase(expectedVal)
+                                            : String.valueOf(actualVal).equals(expectedVal);
+                                      }))
+                      .toList();
 
-      if (compatibleCombinations.isEmpty()) {
-        return false;
-      }
+              if (compatibleCombinations.isEmpty()) {
+                return;
+              }
 
-      final Map<String, String> selectedCombination =
-          compatibleCombinations.get(
-              ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+              final Map<String, String> selectedCombination =
+                  compatibleCombinations.get(
+                      ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
-      selectedCombination.forEach(
-          (key, valStr) -> {
-            final String colName = resolveColumnName(key);
-            if (!values.containsKey(colName)) {
-              final Column col = table.column(colName);
-              values.put(colName, parseValue(valStr, col));
-            }
-          });
-    }
+              selectedCombination.entrySet().stream()
+                  .forEach(
+                      entry -> {
+                        final String colName = resolveColumnName(entry.getKey());
+                        if (!values.containsKey(colName)) {
+                          final Column col = table.column(colName);
+                          values.put(colName, parseValue(entry.getValue(), col));
+                        }
+                      });
+            });
     return true;
   }
 
@@ -411,97 +448,114 @@ public final class RowGenerator {
 
     final int totalBatches = (totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE;
 
-    for (int b = 0; b < totalBatches; b++) {
-      if (tracker.isCanceled()) return;
+    IntStream.range(0, totalBatches)
+        .forEach(
+            b -> {
+              if (tracker.isCanceled()) return;
 
-      // Improvement #3: relax dedup for non-UNIQUE columns — clear per batch
-      if (!columnUnique) {
-        seenAiValues.clear();
-      }
-
-      final int batchStart = b * AI_BATCH_SIZE;
-      final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
-      final int batchCount = batchEnd - batchStart;
-
-      tracker.setText2(
-          "AI generating "
-              .concat(table.name())
-              .concat(".")
-              .concat(colName)
-              .concat(" (")
-              .concat(String.valueOf(batchStart + 1))
-              .concat("-")
-              .concat(String.valueOf(batchEnd))
-              .concat("/")
-              .concat(String.valueOf(totalRows))
-              .concat(")"));
-
-      // Improvement #2: over-request to absorb dedup losses
-      final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
-
-      final List<String> allValues = new ArrayList<>();
-      int retries = 0;
-
-      try {
-        final List<String> batchValues =
-            ollamaClient
-                .generateBatchValues(
-                    applicationContext, table.name(), colName, sqlType, wordCount, requestCount)
-                .join();
-        for (final String v : batchValues) {
-          if (seenAiValues.add(v)) {
-            allValues.add(v);
-          }
-        }
-      } catch (final Exception ex) {
-        log.warn(
-            "Batch AI generation failed for {}.{}: {}", table.name(), colName, ex.getMessage());
-        retries++;
-      }
-
-      // Improvement #2: recycle existing values if deficit is small and column is not UNIQUE
-      final int deficit = batchCount - allValues.size();
-      if (deficit > 0 && deficit <= AI_RECYCLE_THRESHOLD && !columnUnique && !allValues.isEmpty()) {
-        for (int i = 0; allValues.size() < batchCount; i++) {
-          allValues.add(allValues.get(i % allValues.size()));
-        }
-      } else {
-        // Full retry loop only when deficit is large or column requires uniqueness
-        while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
-          if (tracker.isCanceled()) return;
-
-          final int remaining = batchCount - allValues.size();
-          try {
-            final List<String> batchValues =
-                ollamaClient
-                    .generateBatchValues(
-                        applicationContext, table.name(), colName, sqlType, wordCount, remaining)
-                    .join();
-
-            if (batchValues.isEmpty()) {
-              retries++;
-              continue;
-            }
-            boolean addedAny = false;
-            for (final String v : batchValues) {
-              if (seenAiValues.add(v)) {
-                allValues.add(v);
-                addedAny = true;
+              // Improvement #3: relax dedup for non-UNIQUE columns — clear per batch
+              if (!columnUnique) {
+                seenAiValues.clear();
               }
-            }
-            if (!addedAny) {
-              retries++;
-            }
-          } catch (final Exception ex) {
-            log.warn("Batch AI retry failed for {}.{}: {}", table.name(), colName, ex.getMessage());
-            retries++;
-          }
-        }
-      }
 
-      applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
-      tracker.advance(batchCount);
-    }
+              final int batchStart = b * AI_BATCH_SIZE;
+              final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
+              final int batchCount = batchEnd - batchStart;
+
+              tracker.setText2(
+                  "AI generating "
+                      .concat(table.name())
+                      .concat(".")
+                      .concat(colName)
+                      .concat(" (")
+                      .concat(String.valueOf(batchStart + 1))
+                      .concat("-")
+                      .concat(String.valueOf(batchEnd))
+                      .concat("/")
+                      .concat(String.valueOf(totalRows))
+                      .concat(")"));
+
+              // Improvement #2: over-request to absorb dedup losses
+              final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
+
+              final List<String> allValues = new ArrayList<>();
+              int retries = 0;
+
+              try {
+                final List<String> batchValues =
+                    ollamaClient
+                        .generateBatchValues(
+                            applicationContext,
+                            table.name(),
+                            colName,
+                            sqlType,
+                            wordCount,
+                            requestCount)
+                        .join();
+                batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
+              } catch (final Exception ex) {
+                log.warn(
+                    "Batch AI generation failed for {}.{}: {}",
+                    table.name(),
+                    colName,
+                    ex.getMessage());
+                retries++;
+              }
+
+              // Improvement #2: recycle existing values if deficit is small and column is not
+              // UNIQUE
+              final int deficit = batchCount - allValues.size();
+              if (deficit > 0
+                  && deficit <= AI_RECYCLE_THRESHOLD
+                  && !columnUnique
+                  && !allValues.isEmpty()) {
+                IntStream.range(0, deficit)
+                    .forEach(i -> allValues.add(allValues.get(i % allValues.size())));
+              } else {
+                // Full retry loop only when deficit is large or column requires uniqueness
+                while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+                  if (tracker.isCanceled()) return;
+
+                  final int remaining = batchCount - allValues.size();
+                  try {
+                    final List<String> batchValues =
+                        ollamaClient
+                            .generateBatchValues(
+                                applicationContext,
+                                table.name(),
+                                colName,
+                                sqlType,
+                                wordCount,
+                                remaining)
+                            .join();
+
+                    if (batchValues.isEmpty()) {
+                      retries++;
+                      continue;
+                    }
+                    boolean addedAny =
+                        batchValues.stream()
+                            .filter(v -> seenAiValues.add(v))
+                            .peek(allValues::add)
+                            .findAny()
+                            .isPresent();
+                    if (!addedAny) {
+                      retries++;
+                    }
+                  } catch (final Exception ex) {
+                    log.warn(
+                        "Batch AI retry failed for {}.{}: {}",
+                        table.name(),
+                        colName,
+                        ex.getMessage());
+                    retries++;
+                  }
+                }
+              }
+
+              applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
+              tracker.advance(batchCount);
+            });
   }
 
   /**
@@ -636,19 +690,18 @@ public final class RowGenerator {
   }
 
   private boolean areUniqueKeysUnique(final Map<String, Object> values) {
-    for (final List<String> uniqueKeyColumns : relevantUniqueKeys) {
-      final String combination =
-          uniqueKeyColumns.stream()
-              .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
-              .collect(Collectors.joining("|"));
-      final Set<String> seenCombinations =
-          seenUniqueKeyCombinations.computeIfAbsent(
-              String.join("__", uniqueKeyColumns), k -> new HashSet<>());
-      if (!seenCombinations.add(combination)) {
-        return false;
-      }
-    }
-    return true;
+    return relevantUniqueKeys.stream()
+        .allMatch(
+            uniqueKeyColumns -> {
+              final String combination =
+                  uniqueKeyColumns.stream()
+                      .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
+                      .collect(Collectors.joining("|"));
+              final Set<String> seenCombinations =
+                  seenUniqueKeyCombinations.computeIfAbsent(
+                      String.join("__", uniqueKeyColumns), k -> new HashSet<>());
+              return seenCombinations.add(combination);
+            });
   }
 
   private boolean reconcileMultiColumnConstraints(final Map<String, Object> values) {
@@ -658,44 +711,48 @@ public final class RowGenerator {
 
     final Set<String> resolvedColumns = new HashSet<>();
 
-    for (final MultiColumnConstraint mcc : multiColumnConstraints) {
-      resolvedColumns.clear();
-      mcc.columns().forEach(c -> resolvedColumns.add(resolveColumnName(c)));
+    multiColumnConstraints.stream()
+        .forEach(
+            mcc -> {
+              resolvedColumns.clear();
+              mcc.columns().stream().forEach(c -> resolvedColumns.add(resolveColumnName(c)));
 
-      final List<Map<String, String>> compatibleCombinations =
-          mcc.allowedCombinations().stream()
-              .filter(
-                  combo ->
-                      combo.entrySet().stream()
-                          .allMatch(
-                              entry -> {
-                                final String colName = resolveColumnName(entry.getKey());
-                                if (!resolvedColumns.contains(colName)) return true;
-                                final Object actualVal = values.get(colName);
-                                return Objects.isNull(actualVal)
-                                    || String.valueOf(actualVal).equals(entry.getValue());
-                              }))
-              .toList();
+              final List<Map<String, String>> compatibleCombinations =
+                  mcc.allowedCombinations().stream()
+                      .filter(
+                          combo ->
+                              combo.entrySet().stream()
+                                  .allMatch(
+                                      entry -> {
+                                        final String colName = resolveColumnName(entry.getKey());
+                                        if (!resolvedColumns.contains(colName)) return true;
+                                        final Object actualVal = values.get(colName);
+                                        return Objects.isNull(actualVal)
+                                            || String.valueOf(actualVal).equals(entry.getValue());
+                                      }))
+                      .toList();
 
-      if (compatibleCombinations.isEmpty()) {
-        if (mcc.allowedCombinations().isEmpty()) {
-          return false;
-        }
-        applyCombinationValues(mcc.allowedCombinations().getFirst(), resolvedColumns, values);
-      } else {
-        final Map<String, String> selectedCombination =
-            compatibleCombinations.get(
-                ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
-        selectedCombination.forEach(
-            (key, valStr) -> {
-              final String colName = resolveColumnName(key);
-              if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
-                final Column col = table.column(colName);
-                values.put(colName, parseValue(valStr, col));
+              if (compatibleCombinations.isEmpty()) {
+                if (mcc.allowedCombinations().isEmpty()) {
+                  return;
+                }
+                applyCombinationValues(
+                    mcc.allowedCombinations().getFirst(), resolvedColumns, values);
+              } else {
+                final Map<String, String> selectedCombination =
+                    compatibleCombinations.get(
+                        ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+                selectedCombination.entrySet().stream()
+                    .forEach(
+                        entry -> {
+                          final String colName = resolveColumnName(entry.getKey());
+                          if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
+                            final Column col = table.column(colName);
+                            values.put(colName, parseValue(entry.getValue(), col));
+                          }
+                        });
               }
             });
-      }
-    }
     return true;
   }
 
@@ -703,13 +760,14 @@ public final class RowGenerator {
       final Map<String, String> combination,
       final Set<String> resolvedColumns,
       final Map<String, Object> values) {
-    combination.forEach(
-        (key, valStr) -> {
-          final String colName = resolveColumnName(key);
-          if (resolvedColumns.contains(colName)) {
-            final Column col = table.column(colName);
-            values.put(colName, parseValue(valStr, col));
-          }
-        });
+    combination.entrySet().stream()
+        .forEach(
+            entry -> {
+              final String colName = resolveColumnName(entry.getKey());
+              if (resolvedColumns.contains(colName)) {
+                final Column col = table.column(colName);
+                values.put(colName, parseValue(entry.getValue(), col));
+              }
+            });
   }
 }

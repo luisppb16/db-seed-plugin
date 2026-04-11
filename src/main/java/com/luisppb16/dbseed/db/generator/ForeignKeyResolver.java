@@ -31,6 +31,35 @@ import java.util.stream.Collectors;
 
 /**
  * Sophisticated foreign key resolution engine for database seeding operations in the DBSeed plugin.
+ *
+ * <p>This class implements advanced algorithms for resolving foreign key relationships during data
+ * generation, ensuring referential integrity while handling complex scenarios such as circular
+ * dependencies, unique foreign key constraints, and deferred constraint processing. It coordinates
+ * the assignment of foreign key values across multiple tables, managing the dependencies between
+ * parent and child records to maintain database consistency.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Resolving foreign key values for child tables based on parent table data
+ *   <li>Handling circular reference scenarios with configurable termination modes
+ *   <li>Managing unique foreign key constraints to prevent duplicate relationships
+ *   <li>Supporting deferred constraint processing for non-nullable foreign keys
+ *   <li>Implementing efficient algorithms for large-scale data generation
+ *   <li>Tracking insertion order and managing pending updates for deferred constraints
+ *   <li>Providing thread-safe operations for concurrent data generation
+ * </ul>
+ *
+ * <p>The implementation uses sophisticated data structures to track table relationships and
+ * constraint states, enabling efficient resolution of complex foreign key scenarios. It supports
+ * both immediate and deferred foreign key resolution, allowing for flexible handling of constraint
+ * ordering issues. The class integrates with the broader data generation pipeline to ensure that
+ * all foreign key relationships are properly established before SQL generation.
+ *
+ * <p>Advanced features include support for self-referencing foreign keys, multi-column foreign key
+ * relationships, and configurable circular reference handling. The engine optimizes performance
+ * through intelligent caching and batch processing, making it suitable for generating large
+ * datasets with complex relationship structures.
  */
 public final class ForeignKeyResolver {
 

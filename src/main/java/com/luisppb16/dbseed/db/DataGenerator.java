@@ -265,14 +265,12 @@ public class DataGenerator {
   }
 
   private static Set<String> parseSoftDeleteColumns(final String softDeleteColumns) {
-    final Set<String> softDeleteCols = new HashSet<>();
-    if (Objects.nonNull(softDeleteColumns)) {
-      Arrays.stream(softDeleteColumns.split(SOFT_DELETE_DELIMITER))
-          .map(String::trim)
-          .filter(s -> !s.isEmpty())
-          .forEach(softDeleteCols::add);
-    }
-    return softDeleteCols;
+    return Objects.nonNull(softDeleteColumns)
+        ? Arrays.stream(softDeleteColumns.split(SOFT_DELETE_DELIMITER))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toCollection(HashSet::new))
+        : new HashSet<>();
   }
 
   private static List<RowGenerator> generateTableRows(
@@ -375,29 +373,33 @@ public class DataGenerator {
     tracker.setText("AI column 0/" + totalAiColumns);
     tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
 
-    for (final RowGenerator gen : aiGenerators) {
-      for (final Column col : gen.getValidAiColumns()) {
-        futures.add(
-            CompletableFuture.runAsync(
-                () -> {
-                  if (tracker.isCanceled()) return;
+    futures.addAll(
+        aiGenerators.stream()
+            .flatMap(gen -> gen.getValidAiColumns().stream().map(col -> Map.entry(gen, col)))
+            .map(
+                entry ->
+                    CompletableFuture.runAsync(
+                        () -> {
+                          if (tracker.isCanceled()) return;
 
-                  try {
-                    gen.generateAiValuesForColumn(col);
-                  } catch (final Exception ex) {
-                    log.warn("AI generation failed for column {}: {}", col.name(), ex.getMessage());
-                  } finally {
-                    final int completed = completedColumns.incrementAndGet();
-                    tracker.setText(
-                        "AI column "
-                            .concat(String.valueOf(completed))
-                            .concat("/")
-                            .concat(String.valueOf(totalAiColumns)));
-                  }
-                },
-                AI_COLUMN_EXECUTOR));
-      }
-    }
+                          try {
+                            entry.getKey().generateAiValuesForColumn(entry.getValue());
+                          } catch (final Exception ex) {
+                            log.warn(
+                                "AI generation failed for column {}: {}",
+                                entry.getValue().name(),
+                                ex.getMessage());
+                          } finally {
+                            final int completed = completedColumns.incrementAndGet();
+                            tracker.setText(
+                                "AI column "
+                                    .concat(String.valueOf(completed))
+                                    .concat("/")
+                                    .concat(String.valueOf(totalAiColumns)));
+                          }
+                        },
+                        AI_COLUMN_EXECUTOR))
+            .toList());
 
     try {
       CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();

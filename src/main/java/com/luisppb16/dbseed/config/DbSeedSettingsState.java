@@ -22,7 +22,36 @@ import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/** Persistent state component for managing global configuration settings of the DBSeed plugin. */
+/**
+ * Persistent state component for managing global configuration settings of the DBSeed plugin.
+ *
+ * <p>This class serves as the central configuration repository for the DBSeed plugin, implementing
+ * IntelliJ's PersistentStateComponent interface to automatically save and restore user preferences
+ * across IDE sessions. It manages a comprehensive set of configuration options including dictionary
+ * preferences, AI generation settings, soft-delete configurations, and various behavioral flags
+ * that control the plugin's data generation capabilities.
+ *
+ * <p>Key responsibilities include:
+ *
+ * <ul>
+ *   <li>Managing persistent storage of user configuration settings
+ *   <li>Providing default values for all configuration options
+ *   <li>Handling migration and validation of configuration data
+ *   <li>Supporting dynamic reconfiguration during runtime
+ *   <li>Integrating with IntelliJ's settings infrastructure
+ *   <li>Maintaining backward compatibility with older configuration formats
+ * </ul>
+ *
+ * <p>The implementation uses IntelliJ's XmlSerializerUtil for automatic serialization and
+ * deserialization of configuration data. It includes comprehensive validation and fallback
+ * mechanisms to ensure robust operation even with corrupted or missing configuration files. The
+ * class follows the singleton pattern through ApplicationManager service registration.
+ *
+ * <p>Configuration options include dictionary language preferences, AI model settings, output
+ * directory specifications, soft-delete column handling, and various behavioral flags. All settings
+ * are designed to be user-configurable through the plugin's settings UI and are automatically
+ * persisted to maintain user preferences across IDE restarts.
+ */
 @Getter
 @Setter
 @State(

@@ -57,8 +57,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-
-import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -516,6 +514,29 @@ public class RepetitionRulesPanel extends JPanel {
         : null;
   }
 
+  private enum RegexPrefix {
+    NONE("NONE", ""),
+    HASH("#", "#"),
+    HEX("0x", "0x");
+
+    private final String displayName;
+    private final String value;
+
+    RegexPrefix(final String displayName, final String value) {
+      this.displayName = displayName;
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+
+    @Override
+    public String toString() {
+      return displayName;
+    }
+  }
+
   private record ColumnItem(Column column) {
     @Override
     public @NotNull String toString() {
@@ -533,26 +554,6 @@ public class RepetitionRulesPanel extends JPanel {
     String strategy;
     String value;
     String regexPattern = "";
-  }
-
-  private enum RegexPrefix {
-    NONE("NONE", ""),
-    HASH("#", "#"),
-    HEX("0x", "0x");
-
-    private final String displayName;
-    @Getter
-    private final String value;
-
-    RegexPrefix(final String displayName, final String value) {
-      this.displayName = displayName;
-      this.value = value;
-    }
-
-    @Override
-    public String toString() {
-      return displayName;
-    }
   }
 
   private static class RegexPatternDialog extends DialogWrapper {

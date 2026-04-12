@@ -151,16 +151,17 @@ public record ValueGenerator(
       Object val = pickRandom(new ArrayList<>(column.allowedValues()), column.jdbcType());
       if (val != null) return val;
       // fallback: primer valor no nulo
-      Object first = column.allowedValues().stream().filter(Objects::nonNull).findFirst().orElse(null);
+      Object first =
+          column.allowedValues().stream().filter(Objects::nonNull).findFirst().orElse(null);
       if (first != null) return first;
       // fallback: para VARCHAR, devolver "a"
-      if (column.jdbcType() == java.sql.Types.VARCHAR || column.jdbcType() == java.sql.Types.CHAR) return "a";
+      if (column.jdbcType() == Types.VARCHAR || column.jdbcType() == Types.CHAR) return "a";
       // fallback: para tipos numéricos, devolver 1
       if (isNumericJdbc(column.jdbcType())) return 1;
       // fallback: para boolean, devolver true
-      if (column.jdbcType() == java.sql.Types.BOOLEAN || column.jdbcType() == java.sql.Types.BIT) return true;
+      if (column.jdbcType() == Types.BOOLEAN || column.jdbcType() == Types.BIT) return true;
       // fallback: para array, devolver array con "a"
-      if (column.jdbcType() == java.sql.Types.ARRAY) return new String[]{"a"};
+      if (column.jdbcType() == Types.ARRAY) return new String[] {"a"};
       // fallback genérico
       return rowIndex;
     }
@@ -171,12 +172,13 @@ public record ValueGenerator(
         && !constraint.allowedValues().isEmpty()) {
       Object val = pickRandom(new ArrayList<>(constraint.allowedValues()), column.jdbcType());
       if (val != null) return val;
-      Object first = constraint.allowedValues().stream().filter(Objects::nonNull).findFirst().orElse(null);
+      Object first =
+          constraint.allowedValues().stream().filter(Objects::nonNull).findFirst().orElse(null);
       if (first != null) return first;
-      if (column.jdbcType() == java.sql.Types.VARCHAR || column.jdbcType() == java.sql.Types.CHAR) return "x";
+      if (column.jdbcType() == Types.VARCHAR || column.jdbcType() == Types.CHAR) return "x";
       if (isNumericJdbc(column.jdbcType())) return 1;
-      if (column.jdbcType() == java.sql.Types.BOOLEAN || column.jdbcType() == java.sql.Types.BIT) return true;
-      if (column.jdbcType() == java.sql.Types.ARRAY) return new String[]{"x"};
+      if (column.jdbcType() == Types.BOOLEAN || column.jdbcType() == Types.BIT) return true;
+      if (column.jdbcType() == Types.ARRAY) return new String[] {"x"};
       return rowIndex;
     }
 
@@ -198,14 +200,35 @@ public record ValueGenerator(
     if (def == null && !column.nullable()) {
       // fallback por tipo
       switch (column.jdbcType()) {
-        case java.sql.Types.INTEGER, java.sql.Types.SMALLINT, java.sql.Types.TINYINT -> { return 1; }
-        case java.sql.Types.BIGINT -> { return 1L; }
-        case java.sql.Types.DECIMAL, java.sql.Types.NUMERIC -> { return BigDecimal.ONE; }
-        case java.sql.Types.FLOAT, java.sql.Types.DOUBLE, java.sql.Types.REAL -> { return 1.0; }
-        case java.sql.Types.BOOLEAN, java.sql.Types.BIT -> { return true; }
-        case java.sql.Types.VARCHAR, java.sql.Types.CHAR, java.sql.Types.LONGVARCHAR, java.sql.Types.NVARCHAR, java.sql.Types.NCHAR, java.sql.Types.LONGNVARCHAR -> { return "default"; }
-        case java.sql.Types.ARRAY -> { return new String[]{"default"}; }
-        default -> { return rowIndex; }
+        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> {
+          return 1;
+        }
+        case Types.BIGINT -> {
+          return 1L;
+        }
+        case Types.DECIMAL, Types.NUMERIC -> {
+          return BigDecimal.ONE;
+        }
+        case Types.FLOAT, Types.DOUBLE, Types.REAL -> {
+          return 1.0;
+        }
+        case Types.BOOLEAN, Types.BIT -> {
+          return true;
+        }
+        case Types.VARCHAR,
+            Types.CHAR,
+            Types.LONGVARCHAR,
+            Types.NVARCHAR,
+            Types.NCHAR,
+            Types.LONGNVARCHAR -> {
+          return "default";
+        }
+        case Types.ARRAY -> {
+          return new String[] {"default"};
+        }
+        default -> {
+          return rowIndex;
+        }
       }
     }
     return def;
@@ -286,7 +309,7 @@ public record ValueGenerator(
           Types.NVARCHAR,
           Types.LONGVARCHAR,
           Types.LONGNVARCHAR ->
-          generateString(maxLen, column.jdbcType());
+          generateString(column, maxLen, column.jdbcType());
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);
       case Types.BIGINT -> boundedLong(column);
       case Types.BOOLEAN, Types.BIT -> faker.bool().bool();
@@ -306,12 +329,21 @@ public record ValueGenerator(
     final int size = ThreadLocalRandom.current().nextInt(1, 4);
     final int colLength = column.length() > 0 ? column.length() : 20;
     return IntStream.range(0, size)
-        .mapToObj(i -> generateString(colLength, Types.VARCHAR))
+        .mapToObj(i -> generateString(column, colLength, Types.VARCHAR))
         .toArray(String[]::new);
   }
 
   @SuppressWarnings("java:S2245")
-  private String generateString(final Integer maxLen, final int jdbcType) {
+  private String generateString(final Column column, final Integer maxLen, final int jdbcType) {
+    final String colName = column.name().toLowerCase(java.util.Locale.ROOT);
+    if (colName.contains("foto")
+        || colName.contains("avatar")
+        || colName.contains("image")
+        || colName.contains("picture")
+        || colName.contains("profile")) {
+      return faker.internet().image();
+    }
+
     final int len = Objects.nonNull(maxLen) && maxLen > 0 ? maxLen : DEFAULT_STRING_LENGTH;
     if (len == ISO_COUNTRY_CODE_2_LEN) return faker.country().countryCode2();
     if (len == ISO_COUNTRY_CODE_3_LEN) return faker.country().countryCode3();

@@ -10,6 +10,7 @@ package com.luisppb16.dbseed.db;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Representation of a database row in the DBSeed plugin ecosystem.
@@ -35,7 +36,11 @@ import java.util.Map;
  *
  * @param values A mapping of column names to their corresponding values in the row
  */
-public record Row(Map<String, Object> values) {
+public record Row(Map<String, Object> values, Set<String> explicitColumns) {
+  public Row(Map<String, Object> values) {
+    this(values, Set.of());
+  }
+
   public Row {
     values = Collections.synchronizedMap(new LinkedHashMap<>(values));
   }

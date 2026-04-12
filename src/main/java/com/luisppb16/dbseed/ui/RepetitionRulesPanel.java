@@ -57,6 +57,8 @@ import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+
+import lombok.Getter;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -533,14 +535,50 @@ public class RepetitionRulesPanel extends JPanel {
     String regexPattern = "";
   }
 
+  private enum RegexPrefix {
+    NONE("NONE", ""),
+    HASH("#", "#"),
+    HEX("0x", "0x");
+
+    private final String displayName;
+    @Getter
+    private final String value;
+
+    RegexPrefix(final String displayName, final String value) {
+      this.displayName = displayName;
+      this.value = value;
+    }
+
+    @Override
+    public String toString() {
+      return displayName;
+    }
+  }
+
   private static class RegexPatternDialog extends DialogWrapper {
 
     private final JTextField patternField = new JTextField(28);
+    private final ComboBox<RegexPrefix> prefixCombo;
 
     RegexPatternDialog(final String initialPattern) {
       super(true);
       setTitle("Confirm Regex Pattern");
-      patternField.setText(Objects.nonNull(initialPattern) ? initialPattern : "");
+
+      String pattern = Objects.nonNull(initialPattern) ? initialPattern : "";
+      RegexPrefix selectedPrefix = RegexPrefix.NONE;
+
+      if (pattern.startsWith("#")) {
+        selectedPrefix = RegexPrefix.HASH;
+        pattern = pattern.substring(1);
+      } else if (pattern.startsWith("0x")) {
+        selectedPrefix = RegexPrefix.HEX;
+        pattern = pattern.substring(2);
+      }
+
+      prefixCombo = new ComboBox<>(RegexPrefix.values());
+      prefixCombo.setSelectedItem(selectedPrefix);
+      patternField.setText(pattern);
+
       init();
     }
 
@@ -553,14 +591,27 @@ public class RepetitionRulesPanel extends JPanel {
 
       gbc.gridx = 0;
       gbc.gridy = 0;
-      gbc.gridwidth = 2;
+      gbc.gridwidth = 5;
       panel.add(
           new JLabel(
-              "Enter a Java regex pattern used to generate values for this column (e.g. #[0-9A-F]{6})."),
+              "Enter a Java regex pattern used to generate values for this column (e.g. [0-9A-F]{6})."),
           gbc);
 
       gbc.gridy = 1;
       gbc.gridwidth = 1;
+      gbc.weightx = 0;
+      gbc.fill = GridBagConstraints.NONE;
+
+      gbc.gridx = 0;
+      panel.add(new JLabel("Prefix:"), gbc);
+
+      gbc.gridx = 1;
+      panel.add(prefixCombo, gbc);
+
+      gbc.gridx = 2;
+      panel.add(new JLabel("  Regex:"), gbc);
+
+      gbc.gridx = 3;
       gbc.weightx = 1;
       gbc.fill = GridBagConstraints.HORIZONTAL;
       panel.add(patternField, gbc);
@@ -568,7 +619,7 @@ public class RepetitionRulesPanel extends JPanel {
       final JButton validateButton = new JButton("Validate Regex");
       validateButton.addActionListener(e -> validatePattern());
 
-      gbc.gridx = 1;
+      gbc.gridx = 4;
       gbc.weightx = 0;
       gbc.fill = GridBagConstraints.NONE;
       panel.add(validateButton, gbc);
@@ -594,7 +645,12 @@ public class RepetitionRulesPanel extends JPanel {
     }
 
     String getPattern() {
-      return patternField.getText();
+      final RegexPrefix prefix = (RegexPrefix) prefixCombo.getSelectedItem();
+      final String pt = patternField.getText().trim();
+      if (pt.isEmpty()) {
+        return "";
+      }
+      return (prefix != null ? prefix.getValue() : "") + pt;
     }
 
     private void validatePattern() {

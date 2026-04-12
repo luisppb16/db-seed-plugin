@@ -13,6 +13,7 @@ import com.luisppb16.dbseed.db.TopologicalSorter.SortResult;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -199,5 +200,24 @@ class TopologicalSorterTest {
     final Map<String, Table> tableMap = Map.of("A", a, "B", b);
     final SortResult sort = TopologicalSorter.sort(List.of(a, b));
     assertThat(TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableMap)).isTrue();
+  }
+
+  @Test
+  void sort_deepChain_noStackOverflow() {
+    final int depth = 5000;
+    final List<Table> tables = new ArrayList<>();
+    for (int i = 0; i < depth; i++) {
+      final String name = "t" + i;
+      final List<ForeignKey> fks = i > 0
+          ? List.of(new ForeignKey(null, "t" + (i - 1), Map.of("fk_id", "id"), false))
+          : List.of();
+      tables.add(new Table(name,
+          List.of(new Column("id", 4, null, false, true, false, 0, 0, null, null, Set.of()),
+              new Column("fk_id", 4, null, true, false, false, 0, 0, null, null, Set.of())),
+          List.of("id"), fks, List.of(), List.of()));
+    }
+    final SortResult sort = TopologicalSorter.sort(tables);
+    assertThat(sort.ordered()).hasSize(depth);
+    assertThat(sort.cycles()).isEmpty();
   }
 }

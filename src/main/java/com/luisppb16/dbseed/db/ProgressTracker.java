@@ -48,7 +48,7 @@ public final class ProgressTracker {
 
   /** Advance the completed counter by {@code units} and update the indicator fraction. */
   public void advance(final long units) {
-    if (Objects.isNull(indicator)) return;
+    if (Objects.isNull(indicator) || units <= 0) return;
     final long now = completed.addAndGet(units);
     indicator.setFraction(Math.min((double) now / totalWork, 1.0));
   }

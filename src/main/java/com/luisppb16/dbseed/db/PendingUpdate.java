@@ -42,4 +42,9 @@ import java.util.Map;
  *     referenced
  */
 public record PendingUpdate(
-    String table, Map<String, Object> fkValues, Map<String, Object> pkValues) {}
+    String table, Map<String, Object> fkValues, Map<String, Object> pkValues) {
+  public PendingUpdate {
+    fkValues = Map.copyOf(fkValues);
+    pkValues = Map.copyOf(pkValues);
+  }
+}

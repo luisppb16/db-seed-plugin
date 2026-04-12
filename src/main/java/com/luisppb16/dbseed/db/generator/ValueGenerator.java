@@ -290,8 +290,8 @@ public record ValueGenerator(
       final Column column, final ParsedConstraint pc) {
     final Double pcMin = Objects.nonNull(pc) ? pc.min() : null;
     final Double pcMax = Objects.nonNull(pc) ? pc.max() : null;
-    final Double cmin = Objects.nonNull(column.minValue()) ? column.minValue().doubleValue() : null;
-    final Double cmax = Objects.nonNull(column.maxValue()) ? column.maxValue().doubleValue() : null;
+    final Double cmin = column.minValue();
+    final Double cmax = column.maxValue();
     final Double effectiveMin = Objects.nonNull(pcMin) ? pcMin : cmin;
     final Double effectiveMax = Objects.nonNull(pcMax) ? pcMax : cmax;
     return new ParsedConstraint(
@@ -547,11 +547,11 @@ public record ValueGenerator(
   }
 
   private int getIntMin(final Column column) {
-    return Objects.nonNull(column.minValue()) ? column.minValue() : 1;
+    return Objects.nonNull(column.minValue()) ? column.minValue().intValue() : 1;
   }
 
   private int getIntMax(final Column column) {
-    return Objects.nonNull(column.maxValue()) ? column.maxValue() : DEFAULT_INT_MAX;
+    return Objects.nonNull(column.maxValue()) ? column.maxValue().intValue() : DEFAULT_INT_MAX;
   }
 
   private int getIntMinWithConstraint(final Column column, final ParsedConstraint pc) {

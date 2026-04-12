@@ -51,6 +51,9 @@ public record RepetitionRule(
     Map<String, String> regexPatterns) {
 
   public RepetitionRule {
+    if (count < 1) {
+      throw new IllegalArgumentException("RepetitionRule count must be >= 1, was: " + count);
+    }
     fixedValues = Objects.nonNull(fixedValues) ? Map.copyOf(fixedValues) : Map.of();
     randomConstantColumns =
         Objects.nonNull(randomConstantColumns) ? Set.copyOf(randomConstantColumns) : Set.of();

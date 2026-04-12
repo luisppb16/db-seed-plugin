@@ -59,8 +59,8 @@ public record Column(
     boolean uuid,
     int length,
     int scale,
-    Integer minValue,
-    Integer maxValue,
+    Double minValue,
+    Double maxValue,
     Set<String> allowedValues) {
 
   public Column {

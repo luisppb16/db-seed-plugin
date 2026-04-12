@@ -9,7 +9,9 @@ package com.luisppb16.dbseed.db.dialect;
 
 import com.luisppb16.dbseed.config.DriverInfo;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.experimental.UtilityClass;
 
 /**
@@ -70,19 +72,22 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class DialectFactory {
 
+  private static final Map<String, StandardDialect> DIALECT_CACHE = new ConcurrentHashMap<>();
+
   public static DatabaseDialect resolve(DriverInfo driver) {
     if (Objects.isNull(driver)) {
-      return new StandardDialect();
+      return DIALECT_CACHE.computeIfAbsent("standard", k -> new StandardDialect());
     }
 
     if (Objects.nonNull(driver.dialect()) && !driver.dialect().isBlank()) {
-      return new StandardDialect(driver.dialect() + ".properties");
+      return DIALECT_CACHE.computeIfAbsent(
+          driver.dialect(), k -> new StandardDialect(k + ".properties"));
     }
 
     String detected = detectDialect(driver);
-    return Objects.nonNull(detected)
-        ? new StandardDialect(detected + ".properties")
-        : new StandardDialect();
+    String key = Objects.nonNull(detected) ? detected : "standard";
+    return DIALECT_CACHE.computeIfAbsent(
+        key, k -> "standard".equals(k) ? new StandardDialect() : new StandardDialect(k + ".properties"));
   }
 
   private static String detectDialect(DriverInfo driver) {

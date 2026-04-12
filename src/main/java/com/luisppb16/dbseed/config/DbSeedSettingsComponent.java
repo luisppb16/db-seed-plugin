@@ -421,7 +421,7 @@ public class DbSeedSettingsComponent {
 
     final ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
 
-    final OllamaClient client = new OllamaClient(url, "", 10);
+    final OllamaClient client = new OllamaClient(url, "", getAiRequestTimeout());
     client
         .ping()
         .whenComplete(

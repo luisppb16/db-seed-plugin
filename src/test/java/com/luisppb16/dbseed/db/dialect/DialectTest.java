@@ -363,4 +363,48 @@ class DialectTest {
       assertThat(sql).contains(",\n");
     }
   }
+
+  @Nested
+  class SqlEscapingTests {
+
+    @Test
+    void nullBytes_removed() {
+      StandardDialect d = new StandardDialect();
+      StringBuilder sb = new StringBuilder();
+      d.formatValue("hello\0world", sb);
+      assertThat(sb.toString()).isEqualTo("'helloworld'");
+    }
+
+    @Test
+    void newlines_replacedWithSpace() {
+      StandardDialect d = new StandardDialect();
+      StringBuilder sb = new StringBuilder();
+      d.formatValue("hello\nworld", sb);
+      assertThat(sb.toString()).isEqualTo("'hello world'");
+    }
+
+    @Test
+    void carriageReturn_removed() {
+      StandardDialect d = new StandardDialect();
+      StringBuilder sb = new StringBuilder();
+      d.formatValue("hello\rworld", sb);
+      assertThat(sb.toString()).isEqualTo("'hello world'");
+    }
+
+    @Test
+    void crlf_replacedWithSpace() {
+      StandardDialect d = new StandardDialect();
+      StringBuilder sb = new StringBuilder();
+      d.formatValue("hello\r\nworld", sb);
+      assertThat(sb.toString()).isEqualTo("'hello world'");
+    }
+
+    @Test
+    void mixedControlChars_cleaned() {
+      StandardDialect d = new StandardDialect();
+      StringBuilder sb = new StringBuilder();
+      d.formatValue("a\0b\nc\rd", sb);
+      assertThat(sb.toString()).isEqualTo("'ab c d'");
+    }
+  }
 }

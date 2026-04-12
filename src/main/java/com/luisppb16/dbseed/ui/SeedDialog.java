@@ -29,7 +29,6 @@ import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -286,7 +285,8 @@ public final class SeedDialog extends DialogWrapper {
           if (selected != null) {
             final Project project = this.project;
             if (project != null) {
-              final GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
+              final GenerationConfig config =
+                  ConnectionConfigPersistence.loadProfile(project, selected);
               populateFields(config, true);
               prefillUrlFields(config.url(), true);
               DbSeedProjectState.getInstance(project).setActiveProfileName(selected);

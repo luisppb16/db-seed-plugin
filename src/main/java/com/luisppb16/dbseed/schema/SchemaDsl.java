@@ -69,7 +69,8 @@ public class SchemaDsl {
   @SuppressWarnings("unused")
   public static Column fk(
       final String name, final SqlType type, final String refTable, final String refColumn) {
-    return new Column(name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
+    return new Column(
+        name, type, false, false, null, false, new ForeignKeyReference(refTable, refColumn));
   }
 
   public static String toSql(final Schema schema) {

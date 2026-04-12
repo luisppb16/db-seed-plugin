@@ -123,7 +123,8 @@ public class CircularReferencesPanel extends JPanel {
     return table.foreignKeys().stream().filter(fk -> fk.pkTable().equals(table.name())).toList();
   }
 
-  private void addFkRow(final Table table, final ForeignKey fk, final JPanel fksPanel, final GridBagConstraints cc) {
+  private void addFkRow(
+      final Table table, final ForeignKey fk, final JPanel fksPanel, final GridBagConstraints cc) {
     final Map<String, Integer> savedTableConfig =
         savedConfig.getOrDefault(table.name(), new HashMap<>());
     final Map<String, String> savedTableModes =
@@ -231,7 +232,8 @@ public class CircularReferencesPanel extends JPanel {
       final boolean isSelected,
       final int depth,
       final CircularReferenceTerminationMode terminationMode) {
-    final Map<String, Integer> tableConfig = config.computeIfAbsent(tableName, k -> new HashMap<>());
+    final Map<String, Integer> tableConfig =
+        config.computeIfAbsent(tableName, k -> new HashMap<>());
     final Map<String, String> tableModes =
         terminationModes.computeIfAbsent(tableName, k -> new HashMap<>());
     if (isSelected) {

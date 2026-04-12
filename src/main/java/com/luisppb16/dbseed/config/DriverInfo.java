@@ -45,8 +45,7 @@ public record DriverInfo(
     return new DriverInfo(null, null, null, null, null, null, false, false, false, false, dialect);
   }
 
-  public static DriverInfo withDriverMeta(
-      final String driverClass, final String urlTemplate) {
+  public static DriverInfo withDriverMeta(final String driverClass, final String urlTemplate) {
     return new DriverInfo(
         null, null, null, null, driverClass, urlTemplate, false, false, false, false, null);
   }

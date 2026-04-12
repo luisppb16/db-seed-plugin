@@ -250,7 +250,10 @@ public class DataGenerator {
                         return forceUuid && !c.uuid() ? c.withUuid(true) : c;
                       })
                   .toList();
-          overridden.put(t.name(), new Table(t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
+          overridden.put(
+              t.name(),
+              new Table(
+                  t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
         });
     return List.copyOf(overridden.values());
   }
@@ -584,7 +587,8 @@ public class DataGenerator {
         return this;
       }
 
-      public Builder circularReferences(final Map<String, Map<String, Integer>> circularReferences) {
+      public Builder circularReferences(
+          final Map<String, Map<String, Integer>> circularReferences) {
         this.circularReferences = circularReferences;
         return this;
       }

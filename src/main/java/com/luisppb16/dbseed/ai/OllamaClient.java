@@ -437,7 +437,8 @@ public class OllamaClient {
     }
   }
 
-  private String buildGenerateRequestBody(final String prompt, final double temperature, final int numPredict) {
+  private String buildGenerateRequestBody(
+      final String prompt, final double temperature, final int numPredict) {
     final JsonObject options = new JsonObject();
     options.addProperty("temperature", temperature);
     options.addProperty("num_predict", numPredict);

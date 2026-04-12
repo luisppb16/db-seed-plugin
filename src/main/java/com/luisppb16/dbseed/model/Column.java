@@ -68,13 +68,10 @@ public record Column(
     allowedValues = Objects.nonNull(allowedValues) ? Set.copyOf(allowedValues) : Set.of();
   }
 
-  /** Creates a copy of this column with the uuid flag set to the given value. */
-  public Column withUuid(final boolean uuid) {
-    return new Column(name, jdbcType, typeName, nullable, primaryKey, uuid, length, scale,
-        minValue, maxValue, allowedValues);
-  }
-
-  /** Checks if the column's JDBC type represents a string-like or array type suitable for text generation. */
+  /**
+   * Checks if the column's JDBC type represents a string-like or array type suitable for text
+   * generation.
+   */
   public static boolean isStringJdbcType(final int jdbcType) {
     return jdbcType == Types.VARCHAR
         || jdbcType == Types.CHAR
@@ -85,6 +82,22 @@ public record Column(
         || jdbcType == Types.CLOB
         || jdbcType == Types.NCLOB
         || jdbcType == Types.ARRAY;
+  }
+
+  /** Creates a copy of this column with the uuid flag set to the given value. */
+  public Column withUuid(final boolean uuid) {
+    return new Column(
+        name,
+        jdbcType,
+        typeName,
+        nullable,
+        primaryKey,
+        uuid,
+        length,
+        scale,
+        minValue,
+        maxValue,
+        allowedValues);
   }
 
   /** Checks if this column is a string-like type (JDBC string type or array type by name). */

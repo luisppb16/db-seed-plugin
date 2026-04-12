@@ -169,10 +169,11 @@ public class DbSeedSettingsComponent {
                 .filter(ConnectionProfile::hasValidName)
                 .peek(p -> p.setName(p.getName().trim()))
                 .toList();
-        validProfiles.forEach(p -> {
-          originalProfiles.add(p.getName());
-          myProfilesModel.add(p.getName());
-        });
+        validProfiles.forEach(
+            p -> {
+              originalProfiles.add(p.getName());
+              myProfilesModel.add(p.getName());
+            });
         if (validProfiles.size() != projectState.getProfiles().size()) {
           projectState.setProfiles(validProfiles);
         }

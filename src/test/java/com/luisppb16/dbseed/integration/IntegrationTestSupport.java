@@ -35,36 +35,19 @@ import java.util.stream.Collectors;
 final class IntegrationTestSupport {
 
   static final DriverInfo POSTGRES_DRIVER =
-      DriverInfo.builder()
-          .name("PostgreSQL")
-          .driverClass("org.postgresql.Driver")
-          .urlTemplate("jdbc:postgresql://localhost/test")
-          .dialect("postgresql")
-          .requiresUser(true)
-          .requiresPassword(true)
-          .requiresSchema(true)
-          .build();
+      new DriverInfo(
+          "PostgreSQL", null, null, null, "org.postgresql.Driver",
+          "jdbc:postgresql://localhost/test", false, true, true, true, "postgresql");
 
   static final DriverInfo MYSQL_DRIVER =
-      DriverInfo.builder()
-          .name("MySQL")
-          .driverClass("com.mysql.cj.jdbc.Driver")
-          .urlTemplate("jdbc:mysql://localhost/test")
-          .dialect("mysql")
-          .requiresUser(true)
-          .requiresPassword(true)
-          .build();
+      new DriverInfo(
+          "MySQL", null, null, null, "com.mysql.cj.jdbc.Driver",
+          "jdbc:mysql://localhost/test", false, true, true, false, "mysql");
 
   static final DriverInfo SQLITE_DRIVER =
-      DriverInfo.builder()
-          .name("SQLite")
-          .mavenGroupId("org.xerial")
-          .mavenArtifactId("sqlite-jdbc")
-          .version("3.46.1.3")
-          .driverClass("org.sqlite.JDBC")
-          .urlTemplate("jdbc:sqlite:test.db")
-          .dialect("sqlite")
-          .build();
+      new DriverInfo(
+          "SQLite", "org.xerial", "sqlite-jdbc", "3.46.1.3", "org.sqlite.JDBC",
+          "jdbc:sqlite:test.db", false, false, false, false, "sqlite");
 
   private IntegrationTestSupport() {}
 

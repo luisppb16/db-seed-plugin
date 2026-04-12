@@ -145,7 +145,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     return repetitionRules;
   }
 
-  public void setRepetitionRules(Map<String, List<RepetitionRule>> repetitionRules) {
+  public void setRepetitionRules(final Map<String, List<RepetitionRule>> repetitionRules) {
     this.repetitionRules = repetitionRules;
   }
 
@@ -153,7 +153,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     return circularReferences;
   }
 
-  public void setCircularReferences(Map<String, Map<String, Integer>> circularReferences) {
+  public void setCircularReferences(final Map<String, Map<String, Integer>> circularReferences) {
     this.circularReferences = circularReferences;
   }
 
@@ -162,7 +162,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public void setCircularReferenceTerminationModes(
-      Map<String, Map<String, String>> circularReferenceTerminationModes) {
+      final Map<String, Map<String, String>> circularReferenceTerminationModes) {
     this.circularReferenceTerminationModes = circularReferenceTerminationModes;
   }
 }

@@ -35,8 +35,8 @@ class DbSeedProjectStateTest {
 
   @Test
   void loadState_copiesProfilesAndActiveName() {
-    DbSeedProjectState other = new DbSeedProjectState();
-    ConnectionProfile profile = new ConnectionProfile();
+    final DbSeedProjectState other = new DbSeedProjectState();
+    final ConnectionProfile profile = new ConnectionProfile();
     profile.setName("SavedProfile");
     other.getProfiles().add(profile);
     other.setActiveProfileName("SavedProfile");
@@ -50,12 +50,12 @@ class DbSeedProjectStateTest {
 
   @Test
   void loadState_removesBlankProfilesAndInvalidActiveName() {
-    DbSeedProjectState other = new DbSeedProjectState();
+    final DbSeedProjectState other = new DbSeedProjectState();
 
-    ConnectionProfile blankProfile = new ConnectionProfile();
+    final ConnectionProfile blankProfile = new ConnectionProfile();
     blankProfile.setName("   ");
 
-    ConnectionProfile validProfile = new ConnectionProfile();
+    final ConnectionProfile validProfile = new ConnectionProfile();
     validProfile.setName("  SavedProfile  ");
 
     other.setProfiles(new ArrayList<>(List.of(blankProfile, validProfile)));
@@ -70,11 +70,11 @@ class DbSeedProjectStateTest {
 
   @Test
   void getInstance_returnsProjectService() {
-    Project mockProject = mock(Project.class);
-    DbSeedProjectState mockState = new DbSeedProjectState();
+    final Project mockProject = mock(Project.class);
+    final DbSeedProjectState mockState = new DbSeedProjectState();
     when(mockProject.getService(DbSeedProjectState.class)).thenReturn(mockState);
 
-    DbSeedProjectState result = DbSeedProjectState.getInstance(mockProject);
+    final DbSeedProjectState result = DbSeedProjectState.getInstance(mockProject);
     assertThat(result).isSameAs(mockState);
   }
 }

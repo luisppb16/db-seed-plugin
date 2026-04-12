@@ -62,36 +62,37 @@ class ModelRecordsTest {
 
   @Test
   void table_defensiveCopy_columnsImmutable() {
-    List<Column> mutable = new ArrayList<>();
-    mutable.add(Column.builder().name("a").jdbcType(4).build());
-    Table t = new Table("t", mutable, List.of(), List.of(), List.of(), List.of());
-    assertThatThrownBy(() -> t.columns().add(Column.builder().name("b").jdbcType(4).build()))
+    final List<Column> mutable = new ArrayList<>();
+    mutable.add(new Column("a", 4, null, true, false, false, 0, 0, null, null, Set.of()));
+    final Table t = new Table("t", mutable, List.of(), List.of(), List.of(), List.of());
+    // El IDE recomienda que la lambda tenga solo una invocación que pueda lanzar excepción
+    assertThatThrownBy(() -> { t.columns().add(new Column("b", 4, null, true, false, false, 0, 0, null, null, Set.of())); })
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
   @Test
   void table_columnLookupByName() {
-    Column c = Column.builder().name("age").jdbcType(4).build();
-    Table t = new Table("t", List.of(c), List.of(), List.of(), List.of(), List.of());
+    final Column c = new Column("age", 4, null, true, false, false, 0, 0, null, null, Set.of());
+    final Table t = new Table("t", List.of(c), List.of(), List.of(), List.of(), List.of());
     assertThat(t.column("AGE")).isSameAs(c);
   }
 
   @Test
   void table_columnLookup_nonExistentReturnsNull() {
-    Table t = new Table("t", List.of(), List.of(), List.of(), List.of(), List.of());
+    final Table t = new Table("t", List.of(), List.of(), List.of(), List.of(), List.of());
     assertThat(t.column("missing")).isNull();
   }
 
   @Test
   void table_fkColumnNames() {
-    ForeignKey fk = new ForeignKey(null, "parent", Map.of("parent_id", "id"), false);
-    Table t = new Table("t", List.of(), List.of(), List.of(fk), List.of(), List.of());
+    final ForeignKey fk = new ForeignKey(null, "parent", Map.of("parent_id", "id"), false);
+    final Table t = new Table("t", List.of(), List.of(), List.of(fk), List.of(), List.of());
     assertThat(t.fkColumnNames()).containsExactly("parent_id");
   }
 
   @Test
   void table_fkColumnNames_empty() {
-    Table t = new Table("t", List.of(), List.of(), List.of(), List.of(), List.of());
+    final Table t = new Table("t", List.of(), List.of(), List.of(), List.of(), List.of());
     assertThat(t.fkColumnNames()).isEmpty();
   }
 
@@ -100,18 +101,18 @@ class ModelRecordsTest {
   @Test
   void column_nullName_throwsNPE() {
     assertThatNullPointerException()
-        .isThrownBy(() -> Column.builder().name(null).jdbcType(4).build());
+        .isThrownBy(() -> new Column(null, 4, null, true, false, false, 0, 0, null, null, Set.of()));
   }
 
   @Test
   void column_hasAllowedValues_true() {
-    Column c = Column.builder().name("x").jdbcType(4).allowedValues(Set.of("a")).build();
+    final Column c = new Column("x", 4, null, true, false, false, 0, 0, null, null, Set.of("a"));
     assertThat(c.hasAllowedValues()).isTrue();
   }
 
   @Test
   void column_hasAllowedValues_false() {
-    Column c = Column.builder().name("x").jdbcType(4).build();
+    final Column c = new Column("x", 4, null, true, false, false, 0, 0, null, null, Set.of());
     assertThat(c.hasAllowedValues()).isFalse();
   }
 
@@ -130,21 +131,22 @@ class ModelRecordsTest {
 
   @Test
   void fk_blankName_generatesName() {
-    ForeignKey fk = new ForeignKey("", "parent", Map.of("col1", "id"), false);
+    final ForeignKey fk = new ForeignKey("", "parent", Map.of("col1", "id"), false);
     assertThat(fk.name()).startsWith("fk_parent");
   }
 
   @Test
   void fk_providedName_kept() {
-    ForeignKey fk = new ForeignKey("my_fk", "parent", Map.of("col1", "id"), false);
+    final ForeignKey fk = new ForeignKey("my_fk", "parent", Map.of("col1", "id"), false);
     assertThat(fk.name()).isEqualTo("my_fk");
   }
 
   @Test
   void fk_immutableMapping() {
-    Map<String, String> mutable = new HashMap<>(Map.of("a", "b"));
-    ForeignKey fk = new ForeignKey("fk", "p", mutable, false);
-    assertThatThrownBy(() -> fk.columnMapping().put("c", "d"))
+    final Map<String, String> mutable = new HashMap<>(Map.of("a", "b"));
+    final ForeignKey fk = new ForeignKey("fk", "p", mutable, false);
+    // El IDE recomienda que la lambda tenga solo una invocación que pueda lanzar excepción
+    assertThatThrownBy(() -> { fk.columnMapping().put("c", "d"); })
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
@@ -152,13 +154,13 @@ class ModelRecordsTest {
 
   @Test
   void row_valuesAccessible() {
-    Row row = new Row(Map.of("id", 1));
+    final Row row = new Row(Map.of("id", 1));
     assertThat(row.values()).containsEntry("id", 1);
   }
 
   @Test
   void pendingUpdate_fieldsAccessible() {
-    PendingUpdate pu = new PendingUpdate("t", Map.of("fk", 1), Map.of("pk", 2));
+    final PendingUpdate pu = new PendingUpdate("t", Map.of("fk", 1), Map.of("pk", 2));
     assertThat(pu.table()).isEqualTo("t");
     assertThat(pu.fkValues()).containsEntry("fk", 1);
     assertThat(pu.pkValues()).containsEntry("pk", 2);

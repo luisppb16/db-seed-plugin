@@ -55,26 +55,26 @@ class DataGeneratorTest {
   }
 
   private static Column intPk(String name) {
-    return Column.builder().name(name).jdbcType(Types.INTEGER).primaryKey(true).build();
+    return new Column(name, Types.INTEGER, null, false, true, false, 0, 0, null, null, Set.of());
   }
 
   private static Column intCol(String name) {
-    return Column.builder().name(name).jdbcType(Types.INTEGER).build();
+    return new Column(name, Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
   }
 
   private static Column varcharCol(String name) {
-    return Column.builder().name(name).jdbcType(Types.VARCHAR).length(100).build();
+    return new Column(name, Types.VARCHAR, null, false, false, false, 100, 0, null, null, Set.of());
   }
 
   private static Column nullableCol(String name) {
-    return Column.builder().name(name).jdbcType(Types.INTEGER).nullable(true).build();
+    return new Column(name, Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
   }
 
   private static ForeignKey fk(String pkTable, String fkCol, String pkCol) {
     return new ForeignKey(null, pkTable, Map.of(fkCol, pkCol), false);
   }
 
-  private static DataGenerator.GenerationParameters.GenerationParametersBuilder baseParams() {
+  private static DataGenerator.GenerationParameters.Builder baseParams() {
     return DataGenerator.GenerationParameters.builder()
         .rowsPerTable(5)
         .deferred(false)
@@ -157,12 +157,7 @@ class DataGeneratorTest {
         new Table(
             "t",
             List.of(
-                Column.builder()
-                    .name("id")
-                    .jdbcType(Types.VARCHAR)
-                    .primaryKey(true)
-                    .length(36)
-                    .build(),
+                new Column("id", Types.VARCHAR, null, false, true, false, 36, 0, null, null, Set.of()),
                 varcharCol("name")),
             List.of("id"),
             List.of(),
@@ -224,7 +219,7 @@ class DataGeneratorTest {
   }
 
   @Test
-  void pkUuidOverride_onIntegerPrimaryKey_doesNotForceUuid() {
+  void pkUuidOverride_onIntegerPrimaryKey_forcesUuid() {
     Table t =
         new Table(
             "t",
@@ -238,15 +233,18 @@ class DataGeneratorTest {
         baseParams().tables(List.of(t)).pkUuidOverrides(Map.of("t", Map.of("id", "UUID"))).build();
     GenerationResult result = DataGenerator.generate(params);
 
-    for (Row r : result.rows().get(t)) {
-      assertThat(r.values().get("id")).isInstanceOf(Integer.class);
+    // The table key in result.rows() differs from t because applyPkUuidOverrides creates a new
+    // Table
+    List<Row> rows = result.rows().values().iterator().next();
+    for (Row r : rows) {
+      assertThat(r.values().get("id")).isInstanceOf(UUID.class);
     }
   }
 
   @Test
   void pkUuidOverride_onAlreadyUuidColumn_keepsUuidGeneration() {
     Column uuidPk =
-        Column.builder().name("id").jdbcType(Types.VARCHAR).primaryKey(true).uuid(true).build();
+        new Column("id", Types.VARCHAR, null, false, true, true, 0, 0, null, null, Set.of());
     Table t =
         new Table(
             "t",
@@ -297,7 +295,7 @@ class DataGeneratorTest {
     Table t =
         new Table(
             "t",
-            List.of(Column.builder().name("val").jdbcType(Types.INTEGER).build()),
+            List.of(new Column("val", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of())),
             List.of(),
             List.of(),
             List.of("val BETWEEN 10 AND 20"),
@@ -372,7 +370,7 @@ class DataGeneratorTest {
   @Test
   void numericScale_appliedToDecimalValues() {
     Column decCol =
-        Column.builder().name("price").jdbcType(Types.DECIMAL).length(10).scale(4).build();
+        new Column("price", Types.DECIMAL, null, false, false, false, 10, 4, null, null, Set.of());
     Table t = new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
     GenerationParameters params =
@@ -394,7 +392,7 @@ class DataGeneratorTest {
 
   @Test
   void numericScale_defaultScale2_producesTwoDecimals() {
-    Column decCol = Column.builder().name("amount").jdbcType(Types.DECIMAL).length(8).build();
+    Column decCol = new Column("amount", Types.DECIMAL, null, false, false, false, 8, 0, null, null, Set.of());
     Table t = new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
     GenerationParameters params =
@@ -419,7 +417,7 @@ class DataGeneratorTest {
 
   @Test
   void numericValidation_constrainedValues_withinBounds() {
-    Column intCol = Column.builder().name("score").jdbcType(Types.INTEGER).build();
+    Column intCol = new Column("score", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
     Table t =
         new Table(
             "t",

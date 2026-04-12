@@ -200,10 +200,20 @@ public final class RowGenerator {
     if (Objects.isNull(ollamaClient) || aiColumns.isEmpty() || rows.isEmpty()) {
       return List.of();
     }
+
+    final Set<String> behaviorColumns = new HashSet<>();
+    for (final RepetitionRule rule : repetitionRules) {
+      if (rule.fixedValues() != null) behaviorColumns.addAll(rule.fixedValues().keySet());
+      if (rule.randomConstantColumns() != null)
+        behaviorColumns.addAll(rule.randomConstantColumns());
+      if (rule.regexPatterns() != null) behaviorColumns.addAll(rule.regexPatterns().keySet());
+    }
+
     return aiColumns.stream()
         .map(table::column)
         .filter(Objects::nonNull)
         .filter(col -> !excludedColumns.contains(col.name()))
+        .filter(col -> !behaviorColumns.contains(col.name()))
         .toList();
   }
 
@@ -329,9 +339,11 @@ public final class RowGenerator {
 
   private Optional<Row> generateAndValidateRowWithBase(final Map<String, Object> baseValues) {
     final Map<String, Object> values = new LinkedHashMap<>();
+    final Set<String> explicitColumns = new HashSet<>();
 
     if (Objects.nonNull(baseValues)) {
       values.putAll(baseValues);
+      explicitColumns.addAll(baseValues.keySet());
     }
 
     if (!applyMultiColumnConstraints(values)) {
@@ -348,7 +360,7 @@ public final class RowGenerator {
       return Optional.empty();
     }
 
-    return Optional.of(new Row(values));
+    return Optional.of(new Row(values, explicitColumns));
   }
 
   private boolean validateMultiColumnConstraintValues(final Map<String, Object> values) {
@@ -578,6 +590,11 @@ public final class RowGenerator {
     IntStream.range(0, Math.min(allValues.size(), batchCount))
         .forEach(
             i -> {
+              final Row row = rows.get(batchStart + i);
+              if (row.explicitColumns().contains(colName)) {
+                return;
+              }
+
               final String val = allValues.get(i);
               if (Objects.nonNull(val) && !val.isBlank()) {
                 String finalTrimmed = val.trim();
@@ -591,9 +608,8 @@ public final class RowGenerator {
                   }
                   finalValue = finalTrimmed;
                 }
-                final Map<String, Object> rowValues = rows.get(batchStart + i).values();
-                synchronized (this) {
-                  rowValues.put(colName, finalValue);
+                synchronized (row) {
+                  row.values().put(colName, finalValue);
                 }
               }
             });
@@ -710,50 +726,49 @@ public final class RowGenerator {
     }
 
     final Set<String> resolvedColumns = new HashSet<>();
+    boolean allResolved = true;
 
-    multiColumnConstraints.stream()
-        .forEach(
-            mcc -> {
-              resolvedColumns.clear();
-              mcc.columns().stream().forEach(c -> resolvedColumns.add(resolveColumnName(c)));
+    for (MultiColumnConstraint mcc : multiColumnConstraints) {
+      resolvedColumns.clear();
+      mcc.columns().stream().forEach(c -> resolvedColumns.add(resolveColumnName(c)));
 
-              final List<Map<String, String>> compatibleCombinations =
-                  mcc.allowedCombinations().stream()
-                      .filter(
-                          combo ->
-                              combo.entrySet().stream()
-                                  .allMatch(
-                                      entry -> {
-                                        final String colName = resolveColumnName(entry.getKey());
-                                        if (!resolvedColumns.contains(colName)) return true;
-                                        final Object actualVal = values.get(colName);
-                                        return Objects.isNull(actualVal)
-                                            || String.valueOf(actualVal).equals(entry.getValue());
-                                      }))
-                      .toList();
+      final List<Map<String, String>> compatibleCombinations =
+          mcc.allowedCombinations().stream()
+              .filter(
+                  combo ->
+                      combo.entrySet().stream()
+                          .allMatch(
+                              entry -> {
+                                final String colName = resolveColumnName(entry.getKey());
+                                if (!resolvedColumns.contains(colName)) return true;
+                                final Object actualVal = values.get(colName);
+                                return Objects.isNull(actualVal)
+                                    || String.valueOf(actualVal).equals(entry.getValue());
+                              }))
+              .toList();
 
-              if (compatibleCombinations.isEmpty()) {
-                if (mcc.allowedCombinations().isEmpty()) {
-                  return;
-                }
-                applyCombinationValues(
-                    mcc.allowedCombinations().getFirst(), resolvedColumns, values);
-              } else {
-                final Map<String, String> selectedCombination =
-                    compatibleCombinations.get(
-                        ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
-                selectedCombination.entrySet().stream()
-                    .forEach(
-                        entry -> {
-                          final String colName = resolveColumnName(entry.getKey());
-                          if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
-                            final Column col = table.column(colName);
-                            values.put(colName, parseValue(entry.getValue(), col));
-                          }
-                        });
-              }
-            });
-    return true;
+      if (compatibleCombinations.isEmpty()) {
+        if (mcc.allowedCombinations().isEmpty()) {
+          allResolved = false;
+          continue;
+        }
+        applyCombinationValues(mcc.allowedCombinations().getFirst(), resolvedColumns, values);
+      } else {
+        final Map<String, String> selectedCombination =
+            compatibleCombinations.get(
+                ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+        selectedCombination.entrySet().stream()
+            .forEach(
+                entry -> {
+                  final String colName = resolveColumnName(entry.getKey());
+                  if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
+                    final Column col = table.column(colName);
+                    values.put(colName, parseValue(entry.getValue(), col));
+                  }
+                });
+      }
+    }
+    return allResolved;
   }
 
   private void applyCombinationValues(

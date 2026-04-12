@@ -15,7 +15,7 @@ class ConnectionProfileTest {
 
   @Test
   void testDefaultValues() {
-    ConnectionProfile profile = new ConnectionProfile();
+    final ConnectionProfile profile = new ConnectionProfile();
 
     assertThat(profile.getName()).isEqualTo("");
     assertThat(profile.getUrl()).isEmpty();
@@ -31,7 +31,7 @@ class ConnectionProfileTest {
 
   @Test
   void testSettersAndGetters() {
-    ConnectionProfile profile = new ConnectionProfile();
+    final ConnectionProfile profile = new ConnectionProfile();
 
     profile.setName("TestProfile");
     profile.setUrl("jdbc:sqlite:test.db");

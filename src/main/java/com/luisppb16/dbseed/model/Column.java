@@ -7,9 +7,10 @@
 
 package com.luisppb16.dbseed.model;
 
+import java.sql.Types;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import lombok.Builder;
 
 /**
  * Immutable representation of a database column definition in the DBSeed plugin ecosystem.
@@ -45,11 +46,10 @@ import lombok.Builder;
  * @param uuid Whether the column should be treated as a UUID
  * @param length The maximum length of the column (for character/decimal types)
  * @param scale The decimal scale of the column (for numeric types)
- * @param minValue The minimum allowed integer value for the column
- * @param maxValue The maximum allowed integer value for the column
+ * @param minValue The minimum allowed value for the column, or null if not constrained
+ * @param maxValue The maximum allowed value for the column, or null if not constrained
  * @param allowedValues A set of specific allowed values for the column
  */
-@Builder(toBuilder = true)
 public record Column(
     String name,
     int jdbcType,
@@ -59,13 +59,38 @@ public record Column(
     boolean uuid,
     int length,
     int scale,
-    int minValue,
-    int maxValue,
+    Integer minValue,
+    Integer maxValue,
     Set<String> allowedValues) {
 
   public Column {
     Objects.requireNonNull(name, "Column name cannot be null.");
     allowedValues = Objects.nonNull(allowedValues) ? Set.copyOf(allowedValues) : Set.of();
+  }
+
+  /** Creates a copy of this column with the uuid flag set to the given value. */
+  public Column withUuid(final boolean uuid) {
+    return new Column(name, jdbcType, typeName, nullable, primaryKey, uuid, length, scale,
+        minValue, maxValue, allowedValues);
+  }
+
+  /** Checks if the column's JDBC type represents a string-like or array type suitable for text generation. */
+  public static boolean isStringJdbcType(final int jdbcType) {
+    return jdbcType == Types.VARCHAR
+        || jdbcType == Types.CHAR
+        || jdbcType == Types.NCHAR
+        || jdbcType == Types.NVARCHAR
+        || jdbcType == Types.LONGVARCHAR
+        || jdbcType == Types.LONGNVARCHAR
+        || jdbcType == Types.CLOB
+        || jdbcType == Types.NCLOB
+        || jdbcType == Types.ARRAY;
+  }
+
+  /** Checks if this column is a string-like type (JDBC string type or array type by name). */
+  public boolean isStringType() {
+    return isStringJdbcType(jdbcType)
+        || (Objects.nonNull(typeName) && typeName.toLowerCase(Locale.ROOT).endsWith("[]"));
   }
 
   public boolean hasAllowedValues() {

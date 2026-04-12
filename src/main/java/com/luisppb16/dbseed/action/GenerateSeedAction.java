@@ -71,7 +71,7 @@ public final class GenerateSeedAction extends AnAction {
       }
       final DriverInfo chosenDriver = chosenDriverOpt.get();
 
-      final SeedDialog seedDialog = new SeedDialog(chosenDriver);
+      final SeedDialog seedDialog = new SeedDialog(project, chosenDriver);
       if (!seedDialog.showAndGet()) {
         log.info("User canceled the seed generation operation.");
         return;
@@ -93,7 +93,7 @@ public final class GenerateSeedAction extends AnAction {
                           config.url(),
                           Objects.requireNonNullElse(config.user(), ""),
                           Objects.requireNonNullElse(config.password(), ""))) {
-                    List<Table> tables =
+                    final List<Table> tables =
                         SchemaIntrospector.introspect(
                             conn, config.schema(), DialectFactory.resolve(chosenDriver));
                     tablesRef.set(tables);
@@ -131,12 +131,11 @@ public final class GenerateSeedAction extends AnAction {
               pkDialog.getCircularReferenceTerminationModes());
 
       final GenerationConfig finalConfig =
-          config.toBuilder()
-              .softDeleteColumns(pkDialog.getSoftDeleteColumns())
-              .softDeleteUseSchemaDefault(pkDialog.getSoftDeleteUseSchemaDefault())
-              .softDeleteValue(pkDialog.getSoftDeleteValue())
-              .numericScale(pkDialog.getNumericScale())
-              .build();
+          config.withSoftDeleteSettings(
+              pkDialog.getSoftDeleteColumns(),
+              pkDialog.getSoftDeleteUseSchemaDefault(),
+              pkDialog.getSoftDeleteValue(),
+              pkDialog.getNumericScale());
 
       ProgressManager.getInstance()
           .run(
@@ -172,17 +171,17 @@ public final class GenerateSeedAction extends AnAction {
       @NotNull final List<Table> tables,
       @NotNull final DialogSelections selections,
       @NotNull final ProgressIndicator indicator,
-      DbSeedSettingsState settings,
-      DriverInfo driverInfo) {
+      final DbSeedSettingsState settings,
+      final DriverInfo driverInfo) {
 
-    Map<String, Map<String, String>> pkUuidOverridesAdapted =
+    final Map<String, Map<String, String>> pkUuidOverridesAdapted =
         selections.pkUuidOverrides().entrySet().stream()
             .collect(
                 Collectors.toMap(
                     Map.Entry::getKey,
                     e -> e.getValue().stream().collect(Collectors.toMap(c -> c, c -> ""))));
 
-    Map<String, List<String>> excludedColumnsList =
+    final Map<String, List<String>> excludedColumnsList =
         selections.excludedColumns().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> List.copyOf(e.getValue())));
 
@@ -251,12 +250,11 @@ public final class GenerateSeedAction extends AnAction {
   }
 
   private void handleException(final Project project, final Exception ex) {
-    final String message;
-    if (ex instanceof SQLException) {
-      message = "Database Error: " + ex.getMessage();
-    } else {
-      message = "An unexpected error occurred: " + ex.getMessage();
-    }
+    final String message =
+        switch (ex) {
+          case SQLException sqlEx -> "Database Error: " + sqlEx.getMessage();
+          default -> "An unexpected error occurred: " + ex.getMessage();
+        };
     log.error("Error during seed SQL generation.", ex);
 
     ApplicationManager.getApplication()

@@ -18,12 +18,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 class DialectFactoryTest {
 
-  private static DriverInfo driver(String dialect) {
-    return DriverInfo.builder().dialect(dialect).build();
+  private static DriverInfo driver(final String dialect) {
+    return DriverInfo.forDialect(dialect);
   }
 
-  private static DriverInfo driverWithMeta(String driverClass, String urlTemplate) {
-    return DriverInfo.builder().driverClass(driverClass).urlTemplate(urlTemplate).build();
+  private static DriverInfo driverWithMeta(final String driverClass, final String urlTemplate) {
+    return DriverInfo.withDriverMeta(driverClass, urlTemplate);
   }
 
   // ── Auto-detection from driverClass / urlTemplate ──
@@ -42,7 +42,7 @@ class DialectFactoryTest {
   @ParameterizedTest
   @MethodSource("dialectCases")
   void resolve_loadsCorrectProperties(
-      String dialect, String expectedQuoteStart, String expectedTrue, String expectedFalse) {
+      final String dialect, final String expectedQuoteStart, final String expectedTrue, final String expectedFalse) {
     DatabaseDialect d = DialectFactory.resolve(driver(dialect));
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("col")).startsWith(expectedQuoteStart);
@@ -54,9 +54,10 @@ class DialectFactoryTest {
 
   @Test
   void resolve_explicitDialect_overridesAutoDetection() {
-    DriverInfo info =
-        DriverInfo.builder().driverClass("com.mysql.cj.jdbc.Driver").dialect("oracle").build();
-    DatabaseDialect d = DialectFactory.resolve(info);
+    final DriverInfo info =
+        new DriverInfo(
+            null, null, null, null, "com.mysql.cj.jdbc.Driver", null, false, false, false, false, "oracle");
+    final DatabaseDialect d = DialectFactory.resolve(info);
     assertThat(d.quote("col")).isEqualTo("\"COL\"");
   }
 
@@ -64,7 +65,7 @@ class DialectFactoryTest {
 
   @Test
   void resolve_nullDriverInfo_returnsStandard() {
-    DatabaseDialect d = DialectFactory.resolve(null);
+    final DatabaseDialect d = DialectFactory.resolve(null);
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("t")).isEqualTo("\"t\"");
   }
@@ -81,9 +82,9 @@ class DialectFactoryTest {
 
   @Test
   void resolve_detectsDialectFromDriverClassWhenDialectMissing() {
-    DriverInfo info = driverWithMeta("org.postgresql.Driver", null);
+    final DriverInfo info = driverWithMeta("org.postgresql.Driver", null);
 
-    DatabaseDialect d = DialectFactory.resolve(info);
+    final DatabaseDialect d = DialectFactory.resolve(info);
 
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.formatBoolean(true)).isEqualTo("TRUE");
@@ -91,9 +92,9 @@ class DialectFactoryTest {
 
   @Test
   void resolve_detectsDialectFromUrlWhenDriverClassIsNull() {
-    DriverInfo info = driverWithMeta(null, "jdbc:sqlserver://localhost:1433");
+    final DriverInfo info = driverWithMeta(null, "jdbc:sqlserver://localhost:1433");
 
-    DatabaseDialect d = DialectFactory.resolve(info);
+    final DatabaseDialect d = DialectFactory.resolve(info);
 
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("col")).startsWith("[");
@@ -101,9 +102,9 @@ class DialectFactoryTest {
 
   @Test
   void resolve_unknownDriverAndUrl_fallsBackToStandard() {
-    DriverInfo info = driverWithMeta("com.acme.CustomDriver", "jdbc:custom://host/db");
+    final DriverInfo info = driverWithMeta("com.acme.CustomDriver", "jdbc:custom://host/db");
 
-    DatabaseDialect d = DialectFactory.resolve(info);
+    final DatabaseDialect d = DialectFactory.resolve(info);
 
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("t")).isEqualTo("\"t\"");

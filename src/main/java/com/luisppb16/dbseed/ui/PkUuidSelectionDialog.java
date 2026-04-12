@@ -31,7 +31,6 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
-import java.sql.Types;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -141,22 +140,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     init();
   }
 
-  private static boolean isStringType(Column column) {
-    final int jdbcType = column.jdbcType();
-    final boolean isBasicStringType =
-        jdbcType == Types.VARCHAR
-            || jdbcType == Types.CHAR
-            || jdbcType == Types.LONGVARCHAR
-            || jdbcType == Types.CLOB
-            || jdbcType == Types.ARRAY;
-
-    final boolean isArrayType =
-        Objects.nonNull(column.typeName())
-            && column.typeName().toLowerCase(Locale.ROOT).endsWith("[]");
-
-    return isBasicStringType || isArrayType;
-  }
-
   private static boolean isDefaultAiCandidate(String columnName) {
     String name = columnName.toLowerCase(Locale.ROOT);
     return name.contains("description")
@@ -235,6 +218,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     } catch (final ParseException ignored) {
       // Invalid number typed, spinner will retain last valid value.
     }
+
+    circularReferencesPanel.apply();
 
     final List<String> warnings = validateExclusions();
     if (!warnings.isEmpty()) {
@@ -661,6 +646,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                             ? column.name() + " (FK)"
                             : column.name();
                     final JCheckBox box = new JCheckBox(boxText);
+                    box.putClientProperty("columnName", column.name());
                     box.setSelected(
                         excludedColumnsByTable
                             .getOrDefault(table.name(), Set.of())
@@ -748,7 +734,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     for (final JCheckBox colBox : columnBoxes) {
       colBox.setSelected(isSelected);
-      onExcludeBoxChanged(tableName, colBox.getText(), isSelected);
+      final String colName = (String) colBox.getClientProperty("columnName");
+      onExcludeBoxChanged(tableName, colName != null ? colName : colBox.getText(), isSelected);
     }
 
     updateWarningLabels();
@@ -980,7 +967,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         table -> {
           final Set<String> fkCols = table.fkColumnNames();
           final List<Column> stringColumns =
-              table.columns().stream().filter(PkUuidSelectionDialog::isStringType).toList();
+              table.columns().stream().filter(Column::isStringType).toList();
 
           if (stringColumns.isEmpty()) {
             return;
@@ -1003,6 +990,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                         ? column.name() + " (FK)"
                         : column.name();
                 final JCheckBox box = new JCheckBox(boxText);
+                box.putClientProperty("columnName", column.name());
 
                 if (hasConstraint) {
                   box.setSelected(false);

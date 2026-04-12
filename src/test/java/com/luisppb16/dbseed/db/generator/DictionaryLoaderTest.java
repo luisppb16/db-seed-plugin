@@ -16,34 +16,34 @@ class DictionaryLoaderTest {
 
   @Test
   void englishOnly() {
-    List<String> words = DictionaryLoader.loadWords(true, false);
+    final List<String> words = DictionaryLoader.loadWords(true, false);
     assertThat(words).isNotEmpty();
   }
 
   @Test
   void spanishOnly() {
-    List<String> words = DictionaryLoader.loadWords(false, true);
+    final List<String> words = DictionaryLoader.loadWords(false, true);
     assertThat(words).isNotEmpty();
   }
 
   @Test
   void both() {
-    List<String> english = DictionaryLoader.loadWords(true, false);
-    List<String> spanish = DictionaryLoader.loadWords(false, true);
-    List<String> both = DictionaryLoader.loadWords(true, true);
+    final List<String> english = DictionaryLoader.loadWords(true, false);
+    final List<String> spanish = DictionaryLoader.loadWords(false, true);
+    final List<String> both = DictionaryLoader.loadWords(true, true);
     assertThat(both.size()).isEqualTo(english.size() + spanish.size());
   }
 
   @Test
   void neither_empty() {
-    List<String> words = DictionaryLoader.loadWords(false, false);
+    final List<String> words = DictionaryLoader.loadWords(false, false);
     assertThat(words).isEmpty();
   }
 
   @Test
   void caching_sameReference() {
-    List<String> first = DictionaryLoader.loadWords(true, false);
-    List<String> second = DictionaryLoader.loadWords(true, false);
+    final List<String> first = DictionaryLoader.loadWords(true, false);
+    final List<String> second = DictionaryLoader.loadWords(true, false);
     // Both should contain the same cached English words
     assertThat(first).hasSameHashCodeAs(first);
     assertThat(first.size()).isEqualTo(second.size());
@@ -51,13 +51,13 @@ class DictionaryLoaderTest {
 
   @Test
   void noBlankEntries_english() {
-    List<String> words = DictionaryLoader.loadWords(true, false);
+    final List<String> words = DictionaryLoader.loadWords(true, false);
     assertThat(words).allSatisfy(w -> assertThat(w).isNotBlank());
   }
 
   @Test
   void noBlankEntries_spanish() {
-    List<String> words = DictionaryLoader.loadWords(false, true);
+    final List<String> words = DictionaryLoader.loadWords(false, true);
     assertThat(words).allSatisfy(w -> assertThat(w).isNotBlank());
   }
 }

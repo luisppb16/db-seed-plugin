@@ -85,9 +85,9 @@ public class DbSeedSettingsComponent {
   private final List<String> originalProfiles = new ArrayList<>();
   private volatile boolean disposed = false;
 
-  public DbSeedSettingsComponent(Project project) {
+  public DbSeedSettingsComponent(final Project project) {
     this.myProject = project;
-    DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     myColumnSpinnerStep.setValue(settings.getColumnSpinnerStep());
     myDefaultOutputDirectory.setText(settings.getDefaultOutputDirectory());
     myUseLatinDictionary.setSelected(settings.isUseLatinDictionary());
@@ -161,29 +161,30 @@ public class DbSeedSettingsComponent {
     myProfilesModel.removeAll();
 
     if (myProject != null) {
-      DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
+      final DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
       if (projectState != null) {
-        List<ConnectionProfile> validProfiles = new ArrayList<>();
-        for (ConnectionProfile profile : projectState.getProfiles()) {
-          if (profile != null && profile.hasValidName()) {
-            profile.setName(profile.getName().trim());
-            validProfiles.add(profile);
-            originalProfiles.add(profile.getName());
-            myProfilesModel.add(profile.getName());
-          }
-        }
+        final List<ConnectionProfile> validProfiles =
+            projectState.getProfiles().stream()
+                .filter(Objects::nonNull)
+                .filter(ConnectionProfile::hasValidName)
+                .peek(p -> p.setName(p.getName().trim()))
+                .toList();
+        validProfiles.forEach(p -> {
+          originalProfiles.add(p.getName());
+          myProfilesModel.add(p.getName());
+        });
         if (validProfiles.size() != projectState.getProfiles().size()) {
           projectState.setProfiles(validProfiles);
         }
       }
     }
 
-    JPanel listPanel =
+    final JPanel listPanel =
         ToolbarDecorator.createDecorator(myProfilesList)
             .disableAddAction()
             .setRemoveAction(
                 button -> {
-                  int selectedIndex = myProfilesList.getSelectedIndex();
+                  final int selectedIndex = myProfilesList.getSelectedIndex();
                   if (selectedIndex >= 0) {
                     myProfilesModel.remove(selectedIndex);
                   }
@@ -211,7 +212,7 @@ public class DbSeedSettingsComponent {
 
   public boolean isProfileModified() {
     if (myProject == null) return false;
-    List<String> currentList = myProfilesModel.getItems();
+    final List<String> currentList = myProfilesModel.getItems();
     if (currentList.size() != originalProfiles.size()) return true;
     for (int i = 0; i < currentList.size(); i++) {
       if (!currentList.get(i).equals(originalProfiles.get(i))) return true;
@@ -221,23 +222,21 @@ public class DbSeedSettingsComponent {
 
   public void applyProfileSettings() {
     if (myProject == null) return;
-    DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
+    final DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
     if (projectState == null) return;
 
-    List<String> currentList =
+    final List<String> currentList =
         myProfilesModel.getItems().stream()
             .filter(ConnectionProfile::isValidName)
             .map(String::trim)
             .toList();
-    List<ConnectionProfile> toKeep = new ArrayList<>();
-    for (ConnectionProfile p : projectState.getProfiles()) {
-      if (p != null && p.hasValidName()) {
-        p.setName(p.getName().trim());
-        if (currentList.contains(p.getName())) {
-          toKeep.add(p);
-        }
-      }
-    }
+    final List<ConnectionProfile> toKeep =
+        projectState.getProfiles().stream()
+            .filter(Objects::nonNull)
+            .filter(ConnectionProfile::hasValidName)
+            .filter(p -> currentList.contains(p.getName().trim()))
+            .peek(p -> p.setName(p.getName().trim()))
+            .toList();
     projectState.setProfiles(toKeep);
     if (toKeep.isEmpty()) {
       projectState.setActiveProfileName("");
@@ -253,9 +252,9 @@ public class DbSeedSettingsComponent {
   public void resetProfileSettings() {
     if (myProject == null) return;
     myProfilesModel.removeAll();
-    DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
+    final DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
     if (projectState != null) {
-      for (ConnectionProfile profile : projectState.getProfiles()) {
+      for (final ConnectionProfile profile : projectState.getProfiles()) {
         if (profile != null && profile.hasValidName()) {
           profile.setName(profile.getName().trim());
           myProfilesModel.add(profile.getName());
@@ -408,7 +407,7 @@ public class DbSeedSettingsComponent {
   }
 
   private void refreshModels() {
-    String url = myOllamaUrl.getText().trim();
+    final String url = myOllamaUrl.getText().trim();
     if (url.isEmpty()) {
       Messages.showErrorDialog(myMainPanel, "Please enter a valid Ollama URL.", "Invalid URL");
       return;
@@ -419,9 +418,9 @@ public class DbSeedSettingsComponent {
     myLoadingIcon.resume();
     myOllamaModelDropdown.setEnabled(false);
 
-    ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
+    final ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
 
-    OllamaClient client = new OllamaClient(url, "", 10);
+    final OllamaClient client = new OllamaClient(url, "", 10);
     client
         .ping()
         .whenComplete(
@@ -432,7 +431,7 @@ public class DbSeedSettingsComponent {
                     .invokeLater(
                         () -> {
                           if (disposed) return;
-                          Throwable cause =
+                          final Throwable cause =
                               Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
                           Messages.showErrorDialog(
                               myMainPanel,
@@ -458,7 +457,7 @@ public class DbSeedSettingsComponent {
                                 () -> {
                                   if (disposed) return;
                                   if (Objects.nonNull(ex)) {
-                                    Throwable cause =
+                                    final Throwable cause =
                                         Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
                                     Messages.showErrorDialog(
                                         myMainPanel,
@@ -469,7 +468,7 @@ public class DbSeedSettingsComponent {
                                             + cause.getMessage(),
                                         "Connection Error");
                                   } else {
-                                    String currentSelection =
+                                    final String currentSelection =
                                         (String) myOllamaModelDropdown.getSelectedItem();
                                     myOllamaModelDropdown.removeAllItems();
                                     if (models.isEmpty()) {
@@ -478,9 +477,7 @@ public class DbSeedSettingsComponent {
                                           "No models found in Ollama. Ensure you have pulled at least one model.",
                                           "No Models Found");
                                     } else {
-                                      for (String model : models) {
-                                        myOllamaModelDropdown.addItem(model);
-                                      }
+                                      models.forEach(myOllamaModelDropdown::addItem);
                                       if (Objects.nonNull(currentSelection)
                                           && models.contains(currentSelection)) {
                                         myOllamaModelDropdown.setSelectedItem(currentSelection);
@@ -501,7 +498,7 @@ public class DbSeedSettingsComponent {
     myOllamaModelDropdown.setEnabled(true);
   }
 
-  private void configureFolderChooser(TextFieldWithBrowseButton field) {
+  private void configureFolderChooser(final TextFieldWithBrowseButton field) {
     final FileChooserDescriptor folderDescriptor =
         FileChooserDescriptorFactory.createSingleFolderDescriptor()
             .withTitle("Select Default Output Directory");
@@ -537,7 +534,7 @@ public class DbSeedSettingsComponent {
     return (Integer) myColumnSpinnerStep.getValue();
   }
 
-  public void setColumnSpinnerStep(int value) {
+  public void setColumnSpinnerStep(final int value) {
     myColumnSpinnerStep.setValue(value);
   }
 
@@ -545,7 +542,7 @@ public class DbSeedSettingsComponent {
     return myDefaultOutputDirectory.getText();
   }
 
-  public void setDefaultOutputDirectory(String text) {
+  public void setDefaultOutputDirectory(final String text) {
     myDefaultOutputDirectory.setText(text);
   }
 
@@ -553,7 +550,7 @@ public class DbSeedSettingsComponent {
     return myUseLatinDictionary.isSelected();
   }
 
-  public void setUseLatinDictionary(boolean use) {
+  public void setUseLatinDictionary(final boolean use) {
     myUseLatinDictionary.setSelected(use);
   }
 
@@ -561,7 +558,7 @@ public class DbSeedSettingsComponent {
     return myUseEnglishDictionary.isSelected();
   }
 
-  public void setUseEnglishDictionary(boolean use) {
+  public void setUseEnglishDictionary(final boolean use) {
     myUseEnglishDictionary.setSelected(use);
   }
 
@@ -569,7 +566,7 @@ public class DbSeedSettingsComponent {
     return myUseSpanishDictionary.isSelected();
   }
 
-  public void setUseSpanishDictionary(boolean use) {
+  public void setUseSpanishDictionary(final boolean use) {
     myUseSpanishDictionary.setSelected(use);
   }
 
@@ -577,7 +574,7 @@ public class DbSeedSettingsComponent {
     return mySoftDeleteColumns.getText();
   }
 
-  public void setSoftDeleteColumns(String columns) {
+  public void setSoftDeleteColumns(final String columns) {
     mySoftDeleteColumns.setText(columns);
   }
 
@@ -585,7 +582,7 @@ public class DbSeedSettingsComponent {
     return mySoftDeleteUseSchemaDefault.isSelected();
   }
 
-  public void setSoftDeleteUseSchemaDefault(boolean useDefault) {
+  public void setSoftDeleteUseSchemaDefault(final boolean useDefault) {
     mySoftDeleteUseSchemaDefault.setSelected(useDefault);
   }
 
@@ -593,7 +590,7 @@ public class DbSeedSettingsComponent {
     return mySoftDeleteValue.getText();
   }
 
-  public void setSoftDeleteValue(String value) {
+  public void setSoftDeleteValue(final String value) {
     mySoftDeleteValue.setText(value);
   }
 
@@ -601,7 +598,7 @@ public class DbSeedSettingsComponent {
     return myUseAiGeneration.isSelected();
   }
 
-  public void setUseAiGeneration(boolean use) {
+  public void setUseAiGeneration(final boolean use) {
     myUseAiGeneration.setSelected(use);
   }
 
@@ -609,7 +606,7 @@ public class DbSeedSettingsComponent {
     return myAiApplicationContext.getText();
   }
 
-  public void setAiApplicationContext(String context) {
+  public void setAiApplicationContext(final String context) {
     myAiApplicationContext.setText(context);
   }
 
@@ -617,7 +614,7 @@ public class DbSeedSettingsComponent {
     return (Integer) myAiWordCount.getValue();
   }
 
-  public void setAiWordCount(int words) {
+  public void setAiWordCount(final int words) {
     myAiWordCount.setValue(words);
   }
 
@@ -625,7 +622,7 @@ public class DbSeedSettingsComponent {
     return (Integer) myAiRequestTimeout.getValue();
   }
 
-  public void setAiRequestTimeout(int seconds) {
+  public void setAiRequestTimeout(final int seconds) {
     myAiRequestTimeout.setValue(seconds);
   }
 
@@ -633,16 +630,16 @@ public class DbSeedSettingsComponent {
     return myOllamaUrl.getText();
   }
 
-  public void setOllamaUrl(String url) {
+  public void setOllamaUrl(final String url) {
     myOllamaUrl.setText(url);
   }
 
   public String getOllamaModel() {
-    Object selected = myOllamaModelDropdown.getSelectedItem();
+    final Object selected = myOllamaModelDropdown.getSelectedItem();
     return selected instanceof String ? (String) selected : "";
   }
 
-  public void setOllamaModel(String model) {
+  public void setOllamaModel(final String model) {
     myOllamaModelDropdown.removeAllItems();
     myOllamaModelDropdown.addItem(model);
     myOllamaModelDropdown.setSelectedItem(model);

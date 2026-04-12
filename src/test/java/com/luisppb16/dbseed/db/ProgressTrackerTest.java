@@ -19,7 +19,7 @@ class ProgressTrackerTest {
 
   @Test
   void nullIndicator_behavesAsNoOp() {
-    ProgressTracker tracker = new ProgressTracker(null, 10);
+    final ProgressTracker tracker = new ProgressTracker(null, 10);
 
     tracker.advance(3);
     tracker.setText("ignored");
@@ -33,8 +33,8 @@ class ProgressTrackerTest {
 
   @Test
   void advance_updatesFractionAndClampsAtOne() {
-    ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
-    ProgressTracker tracker = new ProgressTracker(indicator, 2);
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 2);
 
     tracker.advance();
     tracker.advance(5);
@@ -47,11 +47,11 @@ class ProgressTrackerTest {
 
   @Test
   void delegatesTextAndCancellationToIndicator() {
-    ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
     when(indicator.isCanceled()).thenReturn(true);
     when(indicator.getFraction()).thenReturn(0.42d);
 
-    ProgressTracker tracker = new ProgressTracker(indicator, 10);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 10);
     tracker.setText("step 1");
     tracker.setText2("detail");
 

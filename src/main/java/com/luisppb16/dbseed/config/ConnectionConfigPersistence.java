@@ -26,7 +26,7 @@ public class ConnectionConfigPersistence {
 
   public static void saveProfile(
       @NotNull final Project project,
-      @NotNull String profileName,
+      @NotNull final String profileName,
       @NotNull final GenerationConfig config) {
     final String normalizedProfileName = profileName.trim();
     if (!ConnectionProfile.isValidName(normalizedProfileName)) {
@@ -35,16 +35,16 @@ public class ConnectionConfigPersistence {
       return;
     }
 
-    DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
 
-    ConnectionProfile profile =
+    final ConnectionProfile profile =
         state.getProfiles().stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
             .findFirst()
             .orElseGet(
                 () -> {
-                  ConnectionProfile newProfile = new ConnectionProfile();
+                  final ConnectionProfile newProfile = new ConnectionProfile();
                   newProfile.setName(normalizedProfileName);
                   state.getProfiles().add(newProfile);
                   return newProfile;
@@ -75,42 +75,24 @@ public class ConnectionConfigPersistence {
 
   @NotNull
   public static GenerationConfig loadProfile(
-      @NotNull final Project project, @Nullable String profileName) {
+      @NotNull final Project project, @Nullable final String profileName) {
     final String normalizedProfileName = profileName == null ? "" : profileName.trim();
     if (!ConnectionProfile.isValidName(normalizedProfileName)) {
-      return GenerationConfig.builder()
-          .url("")
-          .user("")
-          .password("")
-          .schema("")
-          .rowsPerTable(10)
-          .deferred(false)
-          .softDeleteUseSchemaDefault(true)
-          .numericScale(2)
-          .build();
+      return new GenerationConfig("", "", "", "", 10, false, null, true, null, 2);
     }
 
-    DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
-    Optional<ConnectionProfile> profileOpt =
+    final Optional<ConnectionProfile> profileOpt =
         state.getProfiles().stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
             .findFirst();
 
     if (profileOpt.isEmpty()) {
-      return GenerationConfig.builder()
-          .url("")
-          .user("")
-          .password("")
-          .schema("")
-          .rowsPerTable(10)
-          .deferred(false)
-          .softDeleteUseSchemaDefault(true)
-          .numericScale(2)
-          .build();
+      return new GenerationConfig("", "", "", "", 10, false, null, true, null, 2);
     }
 
-    ConnectionProfile profile = profileOpt.get();
+    final ConnectionProfile profile = profileOpt.get();
 
     final CredentialAttributes credAttributes =
         createCredentialAttributes(project, normalizedProfileName);
@@ -120,28 +102,27 @@ public class ConnectionConfigPersistence {
       password = Objects.requireNonNullElse(credentials.getPasswordAsString(), "");
     }
 
-    return GenerationConfig.builder()
-        .url(profile.getUrl())
-        .user(profile.getUser())
-        .password(password)
-        .schema(profile.getSchema())
-        .rowsPerTable(profile.getRowsPerTable())
-        .deferred(profile.isDeferred())
-        .softDeleteColumns(profile.getSoftDeleteColumns())
-        .softDeleteUseSchemaDefault(profile.isSoftDeleteUseSchemaDefault())
-        .softDeleteValue(profile.getSoftDeleteValue())
-        .numericScale(profile.getNumericScale())
-        .build();
+    return new GenerationConfig(
+        profile.getUrl(),
+        profile.getUser(),
+        password,
+        profile.getSchema(),
+        profile.getRowsPerTable(),
+        profile.isDeferred(),
+        profile.getSoftDeleteColumns(),
+        profile.isSoftDeleteUseSchemaDefault(),
+        profile.getSoftDeleteValue(),
+        profile.getNumericScale());
   }
 
   @NotNull
   public static GenerationConfig load(@NotNull final Project project) {
-    DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     return loadProfile(project, state.getActiveProfileName());
   }
 
   private static CredentialAttributes createCredentialAttributes(
-      @NotNull final Project project, @NotNull String profileName) {
+      @NotNull final Project project, @NotNull final String profileName) {
     return new CredentialAttributes(
         CredentialAttributesKt.generateServiceName(
             "DBSeed", project.getName() + "-" + profileName));

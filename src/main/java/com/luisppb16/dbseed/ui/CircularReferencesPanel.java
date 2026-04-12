@@ -42,7 +42,7 @@ public class CircularReferencesPanel extends JPanel {
   private final Map<String, Map<String, Integer>> savedConfig;
   private final Map<String, Map<String, String>> savedTerminationModes;
 
-  public CircularReferencesPanel(List<Table> tables) {
+  public CircularReferencesPanel(final List<Table> tables) {
     this.tables = tables;
     final Map<String, Map<String, Integer>> persistedConfig =
         DbSeedSettingsState.getInstance().getCircularReferences();
@@ -73,8 +73,8 @@ public class CircularReferencesPanel extends JPanel {
     c.insets = JBUI.insets(4);
     c.weightx = 1.0;
 
-    for (Table table : tables) {
-      List<ForeignKey> selfReferencingFks = getSelfReferencingFks(table);
+    for (final Table table : tables) {
+      final List<ForeignKey> selfReferencingFks = getSelfReferencingFks(table);
       if (selfReferencingFks.isEmpty()) continue;
 
       final JBLabel tblLabel = new JBLabel(table.name());
@@ -99,7 +99,7 @@ public class CircularReferencesPanel extends JPanel {
       cc.weightx = 1.0;
       cc.insets = JBUI.insets(2, 0);
 
-      for (ForeignKey fk : selfReferencingFks) {
+      for (final ForeignKey fk : selfReferencingFks) {
         addFkRow(table, fk, fksPanel, cc);
       }
 
@@ -111,7 +111,7 @@ public class CircularReferencesPanel extends JPanel {
     }
 
     if (listPanel.getComponentCount() == 0) {
-      JBLabel emptyLabel = new JBLabel("No self-referencing foreign keys found.");
+      final JBLabel emptyLabel = new JBLabel("No self-referencing foreign keys found.");
       emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
       add(emptyLabel, BorderLayout.CENTER);
     } else {
@@ -119,11 +119,11 @@ public class CircularReferencesPanel extends JPanel {
     }
   }
 
-  private List<ForeignKey> getSelfReferencingFks(Table table) {
+  private List<ForeignKey> getSelfReferencingFks(final Table table) {
     return table.foreignKeys().stream().filter(fk -> fk.pkTable().equals(table.name())).toList();
   }
 
-  private void addFkRow(Table table, ForeignKey fk, JPanel fksPanel, GridBagConstraints cc) {
+  private void addFkRow(final Table table, final ForeignKey fk, final JPanel fksPanel, final GridBagConstraints cc) {
     final Map<String, Integer> savedTableConfig =
         savedConfig.getOrDefault(table.name(), new HashMap<>());
     final Map<String, String> savedTableModes =
@@ -215,24 +215,24 @@ public class CircularReferencesPanel extends JPanel {
     cc.gridy++;
   }
 
-  private boolean supportsNullTermination(Table table, ForeignKey fk) {
+  private boolean supportsNullTermination(final Table table, final ForeignKey fk) {
     return fk.columnMapping().keySet().stream()
         .map(table::column)
         .allMatch(this::columnSupportsNullTermination);
   }
 
-  private boolean columnSupportsNullTermination(Column column) {
+  private boolean columnSupportsNullTermination(final Column column) {
     return column != null && column.nullable() && !column.primaryKey();
   }
 
   private void updateConfig(
-      String tableName,
-      String fkName,
-      boolean isSelected,
-      int depth,
-      CircularReferenceTerminationMode terminationMode) {
-    Map<String, Integer> tableConfig = config.computeIfAbsent(tableName, k -> new HashMap<>());
-    Map<String, String> tableModes =
+      final String tableName,
+      final String fkName,
+      final boolean isSelected,
+      final int depth,
+      final CircularReferenceTerminationMode terminationMode) {
+    final Map<String, Integer> tableConfig = config.computeIfAbsent(tableName, k -> new HashMap<>());
+    final Map<String, String> tableModes =
         terminationModes.computeIfAbsent(tableName, k -> new HashMap<>());
     if (isSelected) {
       tableConfig.put(fkName, depth);
@@ -250,9 +250,33 @@ public class CircularReferencesPanel extends JPanel {
         terminationModes.remove(tableName);
       }
     }
+  }
 
+  /** Persists the current configuration to the application settings. */
+  public void apply() {
     DbSeedSettingsState.getInstance().setCircularReferences(config);
     DbSeedSettingsState.getInstance().setCircularReferenceTerminationModes(terminationModes);
+  }
+
+  /** Resets the panel to the persisted configuration. */
+  public void reset() {
+    config.clear();
+    terminationModes.clear();
+    final Map<String, Map<String, Integer>> persistedConfig =
+        DbSeedSettingsState.getInstance().getCircularReferences();
+    final Map<String, Map<String, String>> persistedTerminationModes =
+        DbSeedSettingsState.getInstance().getCircularReferenceTerminationModes();
+    if (persistedConfig != null) {
+      config.putAll(persistedConfig);
+    }
+    if (persistedTerminationModes != null) {
+      terminationModes.putAll(persistedTerminationModes);
+    }
+    // Rebuild the UI to reflect the reset state
+    removeAll();
+    initPanel();
+    revalidate();
+    repaint();
   }
 
   public Map<String, Map<String, Integer>> getCircularReferences() {

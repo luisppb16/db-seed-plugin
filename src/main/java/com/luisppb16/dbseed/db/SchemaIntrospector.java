@@ -201,13 +201,13 @@ public class SchemaIntrospector {
     final Set<String> pkSet = new LinkedHashSet<>(pkCols);
 
     for (final ColumnRawData raw : rawColumns) {
-      int minValue = 0;
-      int maxValue = 0;
+      Integer minValue = null;
+      Integer maxValue = null;
 
-      final int[] bounds = inferBoundsFromChecks(checkConstraints, raw.name());
+      final double[] bounds = inferBoundsFromChecks(checkConstraints, raw.name());
       if (bounds.length == 2) {
-        minValue = bounds[0];
-        maxValue = bounds[1];
+        minValue = (int) bounds[0];
+        maxValue = (int) bounds[1];
       }
 
       final Set<String> allowedValues = inferAllowedValuesFromChecks(checkConstraints, raw.name());
@@ -601,7 +601,8 @@ public class SchemaIntrospector {
     return Objects.requireNonNullElse(s, "");
   }
 
-  private static int[] inferBoundsFromChecks(final List<String> checks, final String columnName) {
+  private static double[] inferBoundsFromChecks(
+      final List<String> checks, final String columnName) {
     final Pattern betweenPattern =
         BETWEEN_PATTERNS.computeIfAbsent(
             columnName,
@@ -610,7 +611,8 @@ public class SchemaIntrospector {
                   "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
               return Pattern.compile(
                   cp.concat(CAST_PATTERN)
-                      .concat("\\s+BETWEEN\\s+([-+]?[0-9]+)\\s+AND\\s+([-+]?[0-9]+)"));
+                      .concat(
+                          "\\s+BETWEEN\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)\\s+AND\\s+([-+]?[0-9]+(?:\\.[0-9]+)?)"));
             });
 
     final Pattern gteLtePattern =
@@ -621,38 +623,38 @@ public class SchemaIntrospector {
                   "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(k)).concat("\"?\\s*");
               return Pattern.compile(
                   cp.concat(CAST_PATTERN)
-                      .concat("\\s*>=?\\s*([-+]?[0-9]+)\\s*AND\\s*")
+                      .concat("\\s*>=?\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)\\s*AND\\s*")
                       .concat(cp)
                       .concat(CAST_PATTERN)
-                      .concat("\\s*<=?\\s*([-+]?[0-9]+)"));
+                      .concat("\\s*<=?\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"));
             });
 
     for (final String check : checks) {
       if (Objects.isNull(check) || check.isBlank()) continue;
       final String exprNoParens = check.replaceAll("[()]+", " ");
 
-      final int[] betweenBounds = parseBounds(exprNoParens, betweenPattern);
+      final double[] betweenBounds = parseBounds(exprNoParens, betweenPattern);
       if (betweenBounds.length == 2) return betweenBounds;
 
-      final int[] gteLteBounds = parseBounds(exprNoParens, gteLtePattern);
+      final double[] gteLteBounds = parseBounds(exprNoParens, gteLtePattern);
       if (gteLteBounds.length == 2) return gteLteBounds;
     }
-    return new int[0];
+    return new double[0];
   }
 
-  private static int[] parseBounds(final String expr, final Pattern pattern) {
+  private static double[] parseBounds(final String expr, final Pattern pattern) {
     final Matcher matcher = pattern.matcher(expr);
     if (matcher.find()) {
       try {
-        final int min = Integer.parseInt(matcher.group(1));
-        final int max = Integer.parseInt(matcher.group(2));
-        return new int[] {min, max};
+        final double min = Double.parseDouble(matcher.group(1));
+        final double max = Double.parseDouble(matcher.group(2));
+        return new double[] {min, max};
       } catch (final NumberFormatException e) {
-        log.debug("Bound value exceeds int range, skipping constraint: {}", expr);
-        return new int[0];
+        log.debug("Bound value cannot be parsed, skipping constraint: {}", expr);
+        return new double[0];
       }
     }
-    return new int[0];
+    return new double[0];
   }
 
   private record TableRawData(String name, String schema, String remarks) {}

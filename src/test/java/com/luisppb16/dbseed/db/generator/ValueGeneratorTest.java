@@ -35,12 +35,12 @@ class ValueGeneratorTest {
   private ValueGenerator gen;
   private Set<UUID> usedUuids;
 
-  private static Column col(int jdbcType) {
-    return Column.builder().name("c").jdbcType(jdbcType).build();
+  private static Column col(final int jdbcType) {
+    return new Column("c", jdbcType, null, false, false, false, 0, 0, null, null, Set.of());
   }
 
-  private static Column col(int jdbcType, int length) {
-    return Column.builder().name("c").jdbcType(jdbcType).length(length).build();
+  private static Column col(final int jdbcType, final int length) {
+    return new Column("c", jdbcType, null, false, false, false, length, 0, null, null, Set.of());
   }
 
   private static ParsedConstraint noConstraint() {
@@ -104,7 +104,7 @@ class ValueGeneratorTest {
 
   @Test
   void decimal_generatesBigDecimal() {
-    Column c = Column.builder().name("c").jdbcType(Types.DECIMAL).length(10).scale(2).build();
+    final Column c = new Column("c", Types.DECIMAL, null, false, false, false, 10, 2, null, null, Set.of());
     assertThat(gen.generateValue(c, noConstraint(), 0)).isInstanceOf(BigDecimal.class);
   }
 
@@ -127,24 +127,20 @@ class ValueGeneratorTest {
 
   @Test
   void uuid_uniqueUuid() {
-    Column c = Column.builder().name("c").jdbcType(Types.VARCHAR).uuid(true).build();
-    Object v1 = gen.generateValue(c, noConstraint(), 0);
-    Object v2 = gen.generateValue(c, noConstraint(), 1);
+    final Column c = new Column("c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of());
+    final Object v1 = gen.generateValue(c, noConstraint(), 0);
+    final Object v2 = gen.generateValue(c, noConstraint(), 1);
     assertThat(v1).isInstanceOf(UUID.class);
     assertThat(v1).isNotEqualTo(v2);
   }
 
   @Test
   void uuid_allowedValuesUuid() {
-    UUID expected = UUID.randomUUID();
-    Column c =
-        Column.builder()
-            .name("c")
-            .jdbcType(Types.VARCHAR)
-            .uuid(true)
-            .allowedValues(Set.of(expected.toString()))
-            .build();
-    Object val = gen.generateValue(c, noConstraint(), 0);
+    final UUID expected = UUID.randomUUID();
+    final Column c =
+        new Column(
+            "c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of(expected.toString()));
+    final Object val = gen.generateValue(c, noConstraint(), 0);
     assertThat(val).isEqualTo(expected);
   }
 
@@ -152,32 +148,32 @@ class ValueGeneratorTest {
 
   @Test
   void uuid_generatesNew() {
-    Column c = Column.builder().name("c").jdbcType(Types.VARCHAR).uuid(true).build();
+    final Column c = new Column("c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of());
     assertThat(gen.generateValue(c, noConstraint(), 0)).isInstanceOf(UUID.class);
   }
 
   @Test
   void columnAllowedValues() {
-    Column c =
-        Column.builder().name("c").jdbcType(Types.VARCHAR).allowedValues(Set.of("a", "b")).build();
-    Object val = gen.generateValue(c, noConstraint(), 0);
+    final Column c =
+        new Column("c", Types.VARCHAR, null, false, false, false, 0, 0, null, null, Set.of("a", "b"));
+    final Object val = gen.generateValue(c, noConstraint(), 0);
     assertThat(val).isIn("a", "b");
   }
 
   @Test
   void constraintAllowedValues() {
-    Column c = col(Types.VARCHAR, 50);
-    ParsedConstraint pc = new ParsedConstraint(null, null, Set.of("x", "y"), null);
-    Object val = gen.generateValue(c, pc, 0);
+    final Column c = col(Types.VARCHAR, 50);
+    final ParsedConstraint pc = new ParsedConstraint(null, null, Set.of("x", "y"), null);
+    final Object val = gen.generateValue(c, pc, 0);
     assertThat(val).isIn("x", "y");
   }
 
   @Test
   void numericMinMax() {
-    Column c = col(Types.INTEGER);
-    ParsedConstraint pc = new ParsedConstraint(10.0, 20.0, Set.of(), null);
+    final Column c = col(Types.INTEGER);
+    final ParsedConstraint pc = new ParsedConstraint(10.0, 20.0, Set.of(), null);
     for (int i = 0; i < 50; i++) {
-      Object val = gen.generateValue(c, pc, i);
+      final Object val = gen.generateValue(c, pc, i);
       assertThat(val).isInstanceOf(Integer.class);
       assertThat((Integer) val).isBetween(10, 20);
     }
@@ -185,9 +181,9 @@ class ValueGeneratorTest {
 
   @Test
   void stringMaxLength() {
-    Column c = col(Types.VARCHAR, 5);
+    final Column c = col(Types.VARCHAR, 5);
     for (int i = 0; i < 20; i++) {
-      Object val = gen.generateValue(c, noConstraint(), i);
+      final Object val = gen.generateValue(c, noConstraint(), i);
       if (val instanceof String s) {
         assertThat(s.length()).isLessThanOrEqualTo(5);
       }
@@ -198,8 +194,8 @@ class ValueGeneratorTest {
 
   @Test
   void charPadding() {
-    Column c = Column.builder().name("c").jdbcType(Types.CHAR).length(10).build();
-    Object val = gen.generateValue(c, noConstraint(), 0);
+    final Column c = new Column("c", Types.CHAR, null, false, false, false, 10, 0, null, null, Set.of());
+    final Object val = gen.generateValue(c, noConstraint(), 0);
     if (val instanceof String s) {
       assertThat(s.length()).isEqualTo(10);
     }
@@ -207,11 +203,11 @@ class ValueGeneratorTest {
 
   @Test
   void nullable_sometimesNull() {
-    Column c = Column.builder().name("c").jdbcType(Types.VARCHAR).nullable(true).length(50).build();
+    final Column c = new Column("c", Types.VARCHAR, null, true, false, false, 50, 0, null, null, Set.of());
     boolean foundNull = false;
     boolean foundNonNull = false;
     for (int i = 0; i < 100; i++) {
-      Object val = gen.generateValue(c, noConstraint(), i);
+      final Object val = gen.generateValue(c, noConstraint(), i);
       if (val == null) foundNull = true;
       else foundNonNull = true;
     }
@@ -223,7 +219,7 @@ class ValueGeneratorTest {
 
   @Test
   void nonNullable_neverNull() {
-    Column c = Column.builder().name("c").jdbcType(Types.INTEGER).nullable(false).build();
+    final Column c = new Column("c", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
     for (int i = 0; i < 100; i++) {
       assertThat(gen.generateValue(c, noConstraint(), i)).isNotNull();
     }
@@ -231,30 +227,30 @@ class ValueGeneratorTest {
 
   @Test
   void numericBounds_int() {
-    Column c = col(Types.INTEGER);
-    ParsedConstraint pc = new ParsedConstraint(5.0, 15.0, Set.of(), null);
+    final Column c = col(Types.INTEGER);
+    final ParsedConstraint pc = new ParsedConstraint(5.0, 15.0, Set.of(), null);
     for (int i = 0; i < 50; i++) {
-      Object val = gen.generateNumericWithinBounds(c, pc);
+      final Object val = gen.generateNumericWithinBounds(c, pc);
       assertThat((Integer) val).isBetween(5, 15);
     }
   }
 
   @Test
   void numericBounds_bigint() {
-    Column c = col(Types.BIGINT);
-    ParsedConstraint pc = new ParsedConstraint(100.0, 200.0, Set.of(), null);
+    final Column c = col(Types.BIGINT);
+    final ParsedConstraint pc = new ParsedConstraint(100.0, 200.0, Set.of(), null);
     for (int i = 0; i < 50; i++) {
-      Object val = gen.generateNumericWithinBounds(c, pc);
+      final Object val = gen.generateNumericWithinBounds(c, pc);
       assertThat((Long) val).isBetween(100L, 200L);
     }
   }
 
   @Test
   void numericBounds_decimal() {
-    Column c = Column.builder().name("c").jdbcType(Types.DECIMAL).length(10).scale(2).build();
-    ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
+    final Column c = new Column("c", Types.DECIMAL, null, false, false, false, 10, 2, null, null, Set.of());
+    final ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     for (int i = 0; i < 50; i++) {
-      Object val = gen.generateNumericWithinBounds(c, pc);
+      final Object val = gen.generateNumericWithinBounds(c, pc);
       assertThat(val).isInstanceOf(BigDecimal.class);
       assertThat(((BigDecimal) val).doubleValue()).isBetween(1.0, 10.0);
     }
@@ -262,9 +258,9 @@ class ValueGeneratorTest {
 
   @Test
   void numericBounds_invertedSwaps() {
-    Column c = col(Types.INTEGER);
-    ParsedConstraint pc = new ParsedConstraint(50.0, 10.0, Set.of(), null);
-    Object val = gen.generateNumericWithinBounds(c, pc);
+    final Column c = col(Types.INTEGER);
+    final ParsedConstraint pc = new ParsedConstraint(50.0, 10.0, Set.of(), null);
+    final Object val = gen.generateNumericWithinBounds(c, pc);
     assertThat((Integer) val).isBetween(10, 50);
   }
 
@@ -272,32 +268,32 @@ class ValueGeneratorTest {
 
   @Test
   void numericBounds_unsupportedType_null() {
-    Column c = col(Types.VARCHAR);
-    ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
+    final Column c = col(Types.VARCHAR);
+    final ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     assertThat(gen.generateNumericWithinBounds(c, pc)).isNull();
   }
 
   @Test
   void softDelete_defaultKeyword() {
-    Column c = col(Types.INTEGER);
+    final Column c = col(Types.INTEGER);
     assertThat(gen.generateSoftDeleteValue(c, true, "anything")).isEqualTo(SqlKeyword.DEFAULT);
   }
 
   @Test
   void softDelete_integerConversion() {
-    Column c = col(Types.INTEGER);
+    final Column c = col(Types.INTEGER);
     assertThat(gen.generateSoftDeleteValue(c, false, "42")).isEqualTo(42);
   }
 
   @Test
   void softDelete_boolean() {
-    Column c = col(Types.BOOLEAN);
+    final Column c = col(Types.BOOLEAN);
     assertThat(gen.generateSoftDeleteValue(c, false, "true")).isEqualTo(true);
   }
 
   @Test
   void softDelete_null_literal() {
-    Column c = col(Types.VARCHAR);
+    final Column c = col(Types.VARCHAR);
     assertThat(gen.generateSoftDeleteValue(c, false, "NULL")).isNull();
   }
 
@@ -305,19 +301,19 @@ class ValueGeneratorTest {
 
   @Test
   void softDelete_null_value() {
-    Column c = col(Types.VARCHAR);
+    final Column c = col(Types.VARCHAR);
     assertThat(gen.generateSoftDeleteValue(c, false, null)).isNull();
   }
 
   @ParameterizedTest
   @MethodSource("numericTrueTypes")
-  void isNumericJdbc_true(int type) {
+  void isNumericJdbc_true(final int type) {
     assertThat(ValueGenerator.isNumericJdbc(type)).isTrue();
   }
 
   @ParameterizedTest
   @ValueSource(ints = {Types.VARCHAR, Types.BOOLEAN, Types.DATE, Types.TIMESTAMP})
-  void isNumericJdbc_false(int type) {
+  void isNumericJdbc_false(final int type) {
     assertThat(ValueGenerator.isNumericJdbc(type)).isFalse();
   }
 
@@ -325,25 +321,25 @@ class ValueGeneratorTest {
 
   @Test
   void outsideBounds_withinBounds() {
-    ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
+    final ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     assertThat(ValueGenerator.isNumericOutsideBounds(5, pc)).isFalse();
   }
 
   @Test
   void outsideBounds_belowMin() {
-    ParsedConstraint pc = new ParsedConstraint(10.0, null, Set.of(), null);
+    final ParsedConstraint pc = new ParsedConstraint(10.0, null, Set.of(), null);
     assertThat(ValueGenerator.isNumericOutsideBounds(5, pc)).isTrue();
   }
 
   @Test
   void outsideBounds_aboveMax() {
-    ParsedConstraint pc = new ParsedConstraint(null, 10.0, Set.of(), null);
+    final ParsedConstraint pc = new ParsedConstraint(null, 10.0, Set.of(), null);
     assertThat(ValueGenerator.isNumericOutsideBounds(15, pc)).isTrue();
   }
 
   @Test
   void outsideBounds_nullValue() {
-    ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
+    final ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     assertThat(ValueGenerator.isNumericOutsideBounds(null, pc)).isFalse();
   }
 
@@ -354,7 +350,7 @@ class ValueGeneratorTest {
 
   @Test
   void outsideBounds_nonNumericString() {
-    ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
+    final ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     assertThat(ValueGenerator.isNumericOutsideBounds("abc", pc)).isTrue();
   }
 

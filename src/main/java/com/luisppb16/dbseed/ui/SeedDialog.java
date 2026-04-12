@@ -9,7 +9,6 @@ package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
@@ -70,18 +69,19 @@ public final class SeedDialog extends DialogWrapper {
   private final ComboBox<String> profileComboBox = new ComboBox<>();
   private final JButton saveProfileBtn = new JButton("Save");
   private final JButton deleteProfileBtn = new JButton("Delete");
-
+  private final Project project;
   private String loadedSoftDeleteColumns;
   private boolean loadedSoftDeleteUseSchemaDefault;
   private String loadedSoftDeleteValue;
-  private int loadedNumericScale;
+  private int loadedNumericScale = 2;
 
-  public SeedDialog(@NotNull final DriverInfo driverInfo) {
+  public SeedDialog(@NotNull final Project project, @NotNull final DriverInfo driverInfo) {
     super(true);
+    this.project = project;
     this.driverInfo = driverInfo;
     setTitle("Connection Settings - Step 2/3");
 
-    String template =
+    final String template =
         Objects.nonNull(driverInfo.urlTemplate()) ? driverInfo.urlTemplate() : DEFAULT_POSTGRES_URL;
     urlField = new JBTextField(template);
     urlField.getEmptyText().setText(extractBaseUrl(template));
@@ -138,7 +138,7 @@ public final class SeedDialog extends DialogWrapper {
   @Nullable
   @Override
   protected ValidationInfo doValidate() {
-    String url = urlField.getText().trim();
+    final String url = urlField.getText().trim();
     if (url.isEmpty()) {
       return new ValidationInfo("JDBC URL cannot be empty", urlField);
     }
@@ -155,7 +155,7 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private void loadConfiguration(@Nullable final String urlTemplate) {
-    final Project project = getCurrentProject();
+    final Project project = this.project;
     if (Objects.isNull(project)) {
       return;
     }
@@ -259,21 +259,21 @@ public final class SeedDialog extends DialogWrapper {
     return new UrlResolution(urlToUse, usingSavedConfig);
   }
 
-  private String extractBaseUrl(String url) {
+  private String extractBaseUrl(final String url) {
     if (url.startsWith(JDBC_SQLSERVER_PREFIX)) {
-      String stripped = url.replaceAll("databaseName=[^;]+;?", "").replace(";;", ";");
+      final String stripped = url.replaceAll("databaseName=[^;]+;?", "").replace(";;", ";");
       return stripped.endsWith(";") ? stripped.substring(0, stripped.length() - 1) : stripped;
     }
-    int lastSlash = url.lastIndexOf('/');
+    final int lastSlash = url.lastIndexOf('/');
     return lastSlash > 0 && lastSlash < url.length() - 1 ? url.substring(0, lastSlash + 1) : url;
   }
 
-  private boolean isSameDriverType(String template, String savedUrl) {
+  private boolean isSameDriverType(final String template, final String savedUrl) {
     if (Objects.isNull(template) || Objects.isNull(savedUrl)) return false;
-    int firstColon = template.indexOf(':');
-    int secondColon = template.indexOf(':', firstColon + 1);
+    final int firstColon = template.indexOf(':');
+    final int secondColon = template.indexOf(':', firstColon + 1);
     if (secondColon > 0) {
-      String prefix = template.substring(0, secondColon + 1);
+      final String prefix = template.substring(0, secondColon + 1);
       return savedUrl.startsWith(prefix);
     }
     return false;
@@ -282,11 +282,11 @@ public final class SeedDialog extends DialogWrapper {
   private void setupProfileActions() {
     profileComboBox.addActionListener(
         e -> {
-          String selected = (String) profileComboBox.getSelectedItem();
+          final String selected = (String) profileComboBox.getSelectedItem();
           if (selected != null) {
-            Project project = getCurrentProject();
+            final Project project = this.project;
             if (project != null) {
-              GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
+              final GenerationConfig config = ConnectionConfigPersistence.loadProfile(project, selected);
               populateFields(config, true);
               prefillUrlFields(config.url(), true);
               DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
@@ -306,7 +306,7 @@ public final class SeedDialog extends DialogWrapper {
                   null);
           if (name != null && !name.trim().isEmpty()) {
             name = name.trim();
-            Project project = getCurrentProject();
+            final Project project = this.project;
             if (project != null) {
               ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
               loadProfiles();
@@ -317,11 +317,11 @@ public final class SeedDialog extends DialogWrapper {
 
     deleteProfileBtn.addActionListener(
         e -> {
-          String selected = (String) profileComboBox.getSelectedItem();
+          final String selected = (String) profileComboBox.getSelectedItem();
           if (selected != null) {
-            Project project = getCurrentProject();
+            final Project project = this.project;
             if (project != null) {
-              DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+              final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
               state.getProfiles().removeIf(p -> p != null && selected.equals(p.getName()));
               if (selected.equals(state.getActiveProfileName())) {
                 state.setActiveProfileName("");
@@ -333,28 +333,25 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private void loadProfiles() {
-    Project project = getCurrentProject();
+    final Project project = this.project;
     if (project == null) return;
-    DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    List<ConnectionProfile> validProfiles = new ArrayList<>();
-    for (ConnectionProfile profile : state.getProfiles()) {
-      if (profile != null && profile.hasValidName()) {
-        profile.setName(profile.getName().trim());
-        validProfiles.add(profile);
-      }
-    }
+    final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    final List<ConnectionProfile> validProfiles =
+        state.getProfiles().stream()
+            .filter(Objects::nonNull)
+            .filter(ConnectionProfile::hasValidName)
+            .peek(p -> p.setName(p.getName().trim()))
+            .toList();
     if (validProfiles.size() != state.getProfiles().size()) {
       state.setProfiles(validProfiles);
     }
 
     profileComboBox.removeAllItems();
-    for (ConnectionProfile profile : validProfiles) {
-      profileComboBox.addItem(profile.getName());
-    }
-    String active = state.getActiveProfileName();
+    validProfiles.forEach(profile -> profileComboBox.addItem(profile.getName()));
+    final String active = state.getActiveProfileName();
     if (ConnectionProfile.isValidName(active)) {
-      String normalizedActive = active.trim();
-      boolean activeExists =
+      final String normalizedActive = active.trim();
+      final boolean activeExists =
           validProfiles.stream().anyMatch(p -> normalizedActive.equals(p.getName()));
       if (activeExists) {
         state.setActiveProfileName(normalizedActive);
@@ -367,13 +364,6 @@ public final class SeedDialog extends DialogWrapper {
     }
   }
 
-  private Project getCurrentProject() {
-    final Project[] openProjects = ProjectManager.getInstance().getOpenProjects();
-    return openProjects.length > 0
-        ? openProjects[0]
-        : ProjectManager.getInstance().getDefaultProject();
-  }
-
   @Override
   protected @NotNull JComponent createCenterPanel() {
     return createFormPanel();
@@ -383,9 +373,9 @@ public final class SeedDialog extends DialogWrapper {
     final FormBuilder builder = FormBuilder.createFormBuilder();
 
     // Profile Selection
-    JPanel profilePanel = new JPanel(new BorderLayout());
+    final JPanel profilePanel = new JPanel(new BorderLayout());
     profilePanel.add(profileComboBox, BorderLayout.CENTER);
-    JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+    final JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
     btnPanel.add(saveProfileBtn);
     btnPanel.add(deleteProfileBtn);
     profilePanel.add(btnPanel, BorderLayout.EAST);
@@ -476,18 +466,17 @@ public final class SeedDialog extends DialogWrapper {
       }
     }
 
-    return GenerationConfig.builder()
-        .url(url)
-        .user(driverInfo.requiresUser() ? userField.getText().trim() : null)
-        .password(driverInfo.requiresPassword() ? new String(passwordField.getPassword()) : null)
-        .schema(driverInfo.requiresSchema() ? schemaField.getText().trim() : null)
-        .rowsPerTable((Integer) rowsSpinner.getValue())
-        .deferred(deferredBox.isSelected())
-        .softDeleteColumns(loadedSoftDeleteColumns)
-        .softDeleteUseSchemaDefault(loadedSoftDeleteUseSchemaDefault)
-        .softDeleteValue(loadedSoftDeleteValue)
-        .numericScale(loadedNumericScale)
-        .build();
+    return new GenerationConfig(
+        url,
+        driverInfo.requiresUser() ? userField.getText().trim() : null,
+        driverInfo.requiresPassword() ? new String(passwordField.getPassword()) : null,
+        driverInfo.requiresSchema() ? schemaField.getText().trim() : null,
+        (Integer) rowsSpinner.getValue(),
+        deferredBox.isSelected(),
+        loadedSoftDeleteColumns,
+        loadedSoftDeleteUseSchemaDefault,
+        loadedSoftDeleteValue,
+        loadedNumericScale);
   }
 
   private record UrlResolution(String urlToUse, boolean usingSavedConfig) {}

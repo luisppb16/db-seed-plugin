@@ -48,83 +48,82 @@ class OllamaClientTest {
 
     @Test
     void nullInput_returnsNull() {
-      assertThat(OllamaClient.sanitizeAiOutput(null, "col")).isNull();
+      assertThat(AiClient.sanitizeAiOutput(null, "col")).isNull();
     }
 
     @Test
     void emptyInput_returnsEmpty() {
-      assertThat(OllamaClient.sanitizeAiOutput("", "col")).isEmpty();
+      assertThat(AiClient.sanitizeAiOutput("", "col")).isEmpty();
     }
 
     @Test
     void trailingNewlines_firstLineOnly() {
-      assertThat(OllamaClient.sanitizeAiOutput("hello\nworld", "col")).isEqualTo("hello");
+      assertThat(AiClient.sanitizeAiOutput("hello\nworld", "col")).isEqualTo("hello");
     }
 
     @Test
     void quotedValue_stripsQuotes() {
-      assertThat(OllamaClient.sanitizeAiOutput("'hello'", "col")).isEqualTo("hello");
+      assertThat(AiClient.sanitizeAiOutput("'hello'", "col")).isEqualTo("hello");
     }
 
     @Test
     void doubleQuotedValue_stripsQuotes() {
-      assertThat(OllamaClient.sanitizeAiOutput("\"hello\"", "col")).isEqualTo("hello");
+      assertThat(AiClient.sanitizeAiOutput("\"hello\"", "col")).isEqualTo("hello");
     }
 
     @Test
     void numberedPrefix_removed() {
-      assertThat(OllamaClient.sanitizeAiOutput("1. hello", "col")).isEqualTo("hello");
+      assertThat(AiClient.sanitizeAiOutput("1. hello", "col")).isEqualTo("hello");
     }
 
     @Test
     void dashBullet_prefixRemoved() {
-      assertThat(OllamaClient.sanitizeAiOutput("- hello", "col")).isEqualTo("hello");
+      assertThat(AiClient.sanitizeAiOutput("- hello", "col")).isEqualTo("hello");
     }
 
     @Test
     void starBullet_prefixRemoved() {
-      assertThat(OllamaClient.sanitizeAiOutput("* hello", "col")).isEqualTo("hello");
+      assertThat(AiClient.sanitizeAiOutput("* hello", "col")).isEqualTo("hello");
     }
 
     @Test
     void aiPreamble_returnsNull() {
-      assertThat(OllamaClient.sanitizeAiOutput("Here are the values:", "col")).isNull();
+      assertThat(AiClient.sanitizeAiOutput("Here are the values:", "col")).isNull();
     }
 
     @Test
     void aiRefusal_returnsNull() {
-      assertThat(OllamaClient.sanitizeAiOutput("I cannot generate this content.", "col")).isNull();
+      assertThat(AiClient.sanitizeAiOutput("I cannot generate this content.", "col")).isNull();
     }
 
     @Test
     void validValue_notPreamble() {
-      assertThat(OllamaClient.sanitizeAiOutput("John Doe", "name")).isEqualTo("John Doe");
+      assertThat(AiClient.sanitizeAiOutput("John Doe", "name")).isEqualTo("John Doe");
     }
 
     @Test
     void columnPrefix_stripped() {
-      assertThat(OllamaClient.sanitizeAiOutput("name: John", "name")).isEqualTo("John");
+      assertThat(AiClient.sanitizeAiOutput("name: John", "name")).isEqualTo("John");
     }
 
     @Test
     void columnPrefixWithEquals_stripped() {
-      assertThat(OllamaClient.sanitizeAiOutput("name=John", "name")).isEqualTo("John");
+      assertThat(AiClient.sanitizeAiOutput("name=John", "name")).isEqualTo("John");
     }
 
     @Test
     void noPrefix_unmodified() {
-      assertThat(OllamaClient.sanitizeAiOutput("John Doe", "name")).isEqualTo("John Doe");
+      assertThat(AiClient.sanitizeAiOutput("John Doe", "name")).isEqualTo("John Doe");
     }
 
     @Test
     void columnPrefixCaseInsensitive_stripped() {
-      assertThat(OllamaClient.sanitizeAiOutput("Name: John", "name")).isEqualTo("John");
+      assertThat(AiClient.sanitizeAiOutput("Name: John", "name")).isEqualTo("John");
     }
 
     @Test
     void valueEqualsColumnName_afterPrefixStrip_returnsEmpty() {
-      // "name" starts with column prefix "name" → prefix stripped → empty string
-      assertThat(OllamaClient.sanitizeAiOutput("name", "name")).isEmpty();
+      assertThat(AiClient.sanitizeAiOutput("name", "name")).isEmpty();
     }
   }
 
@@ -133,32 +132,32 @@ class OllamaClientTest {
 
     @Test
     void doubleQuotes_stripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"hello\"")).isEqualTo("hello");
+      assertThat(AiClient.stripSurroundingQuotes("\"hello\"")).isEqualTo("hello");
     }
 
     @Test
     void singleQuotes_stripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("'hello'")).isEqualTo("hello");
+      assertThat(AiClient.stripSurroundingQuotes("'hello'")).isEqualTo("hello");
     }
 
     @Test
     void mismatchedQuotes_notStripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"hello'")).isEqualTo("\"hello'");
+      assertThat(AiClient.stripSurroundingQuotes("\"hello'")).isEqualTo("\"hello'");
     }
 
     @Test
     void noQuotes_unmodified() {
-      assertThat(OllamaClient.stripSurroundingQuotes("hello")).isEqualTo("hello");
+      assertThat(AiClient.stripSurroundingQuotes("hello")).isEqualTo("hello");
     }
 
     @Test
     void emptyQuotes_returnsEmpty() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"\"")).isEmpty();
+      assertThat(AiClient.stripSurroundingQuotes("\"\"")).isEmpty();
     }
 
     @Test
     void singleChar_quotesStripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"a\"")).isEqualTo("a");
+      assertThat(AiClient.stripSurroundingQuotes("\"a\"")).isEqualTo("a");
     }
   }
 
@@ -167,32 +166,32 @@ class OllamaClientTest {
 
     @Test
     void hereAre_isPreamble() {
-      assertThat(OllamaClient.isAiPreamble("Here are some values")).isTrue();
+      assertThat(AiClient.isAiPreamble("Here are some values")).isTrue();
     }
 
     @Test
     void hereIs_isPreamble() {
-      assertThat(OllamaClient.isAiPreamble("Here is the data")).isTrue();
+      assertThat(AiClient.isAiPreamble("Here is the data")).isTrue();
     }
 
     @Test
     void sureComma_isPreamble() {
-      assertThat(OllamaClient.isAiPreamble("Sure, here you go")).isTrue();
+      assertThat(AiClient.isAiPreamble("Sure, here you go")).isTrue();
     }
 
     @Test
     void certainly_isPreamble() {
-      assertThat(OllamaClient.isAiPreamble("Certainly! Here are the results")).isTrue();
+      assertThat(AiClient.isAiPreamble("Certainly! Here are the results")).isTrue();
     }
 
     @Test
     void validData_isNotPreamble() {
-      assertThat(OllamaClient.isAiPreamble("John Doe")).isFalse();
+      assertThat(AiClient.isAiPreamble("John Doe")).isFalse();
     }
 
     @Test
     void blank_isNotPreamble() {
-      assertThat(OllamaClient.isAiPreamble("")).isFalse();
+      assertThat(AiClient.isAiPreamble("")).isFalse();
     }
   }
 
@@ -201,22 +200,22 @@ class OllamaClientTest {
 
     @Test
     void iCannot_isRefusal() {
-      assertThat(OllamaClient.isAiRefusal("I cannot do that")).isTrue();
+      assertThat(AiClient.isAiRefusal("I cannot do that")).isTrue();
     }
 
     @Test
     void imSorry_isRefusal() {
-      assertThat(OllamaClient.isAiRefusal("I'm sorry, I can't help with that")).isTrue();
+      assertThat(AiClient.isAiRefusal("I'm sorry, I can't help with that")).isTrue();
     }
 
     @Test
     void asAnAi_isRefusal() {
-      assertThat(OllamaClient.isAiRefusal("As an AI language model")).isTrue();
+      assertThat(AiClient.isAiRefusal("As an AI language model")).isTrue();
     }
 
     @Test
     void validData_isNotRefusal() {
-      assertThat(OllamaClient.isAiRefusal("John Doe")).isFalse();
+      assertThat(AiClient.isAiRefusal("John Doe")).isFalse();
     }
   }
 
@@ -225,29 +224,27 @@ class OllamaClientTest {
 
     @Test
     void colonPrefix_stripped() {
-      assertThat(OllamaClient.stripColumnPrefix("name: John", "name")).isEqualTo("John");
+      assertThat(AiClient.stripColumnPrefix("name: John", "name")).isEqualTo("John");
     }
 
     @Test
     void equalsPrefix_stripped() {
-      assertThat(OllamaClient.stripColumnPrefix("name=John", "name")).isEqualTo("John");
+      assertThat(AiClient.stripColumnPrefix("name=John", "name")).isEqualTo("John");
     }
 
     @Test
     void noPrefix_unmodified() {
-      assertThat(OllamaClient.stripColumnPrefix("John Doe", "name")).isEqualTo("John Doe");
+      assertThat(AiClient.stripColumnPrefix("John Doe", "name")).isEqualTo("John Doe");
     }
 
     @Test
     void caseInsensitivePrefix_stripped() {
-      assertThat(OllamaClient.stripColumnPrefix("Name: John", "name")).isEqualTo("John");
+      assertThat(AiClient.stripColumnPrefix("Name: John", "name")).isEqualTo("John");
     }
 
     @Test
     void partialPrefixMatch_stripsButMayCorrupt() {
-      // Known issue: "named" starts with "name" (case-insensitive) so prefix is stripped
-      // even though it's a different word. This is a documented edge case.
-      assertThat(OllamaClient.stripColumnPrefix("named: John", "name")).isNotEqualTo("named: John");
+      assertThat(AiClient.stripColumnPrefix("named: John", "name")).isNotEqualTo("named: John");
     }
   }
 
@@ -256,37 +253,37 @@ class OllamaClientTest {
 
     @Test
     void textArray_isArrayType() {
-      assertThat(OllamaClient.isArrayType("text[]")).isTrue();
+      assertThat(AiClient.isArrayType("text[]")).isTrue();
     }
 
     @Test
     void integerArray_isArrayType() {
-      assertThat(OllamaClient.isArrayType("integer[]")).isTrue();
+      assertThat(AiClient.isArrayType("integer[]")).isTrue();
     }
 
     @Test
     void underscorePrefix_isArrayType() {
-      assertThat(OllamaClient.isArrayType("_text")).isTrue();
+      assertThat(AiClient.isArrayType("_text")).isTrue();
     }
 
     @Test
     void varchar_isNotArrayType() {
-      assertThat(OllamaClient.isArrayType("varchar")).isFalse();
+      assertThat(AiClient.isArrayType("varchar")).isFalse();
     }
 
     @Test
     void nullType_isNotArrayType() {
-      assertThat(OllamaClient.isArrayType(null)).isFalse();
+      assertThat(AiClient.isArrayType(null)).isFalse();
     }
 
     @Test
     void emptyType_isNotArrayType() {
-      assertThat(OllamaClient.isArrayType("")).isFalse();
+      assertThat(AiClient.isArrayType("")).isFalse();
     }
 
     @Test
     void arrayKeyword_isArrayType() {
-      assertThat(OllamaClient.isArrayType("ARRAY")).isTrue();
+      assertThat(AiClient.isArrayType("ARRAY")).isTrue();
     }
   }
 }

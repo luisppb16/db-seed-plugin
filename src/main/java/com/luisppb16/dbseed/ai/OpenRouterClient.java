@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.ai;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -26,16 +27,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 
 @Slf4j
-public class OllamaClient implements AiClient {
+public class OpenRouterClient implements AiClient {
+
+  private static final String BASE_URL = "https://openrouter.ai/api/v1";
+  private static final String MODELS_ENDPOINT = BASE_URL + "/models";
+  private static final String CHAT_ENDPOINT = BASE_URL + "/chat/completions";
 
   private static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
   private static final int MIN_REQUEST_TIMEOUT_SECONDS = 10;
-  private static final int PING_TIMEOUT_SECONDS = 2;
-  private static final int LIST_MODELS_TIMEOUT_SECONDS = 5;
+  private static final int PING_TIMEOUT_SECONDS = 5;
+  private static final int LIST_MODELS_TIMEOUT_SECONDS = 10;
 
   private static final double DEFAULT_TEMPERATURE = 0.5;
-
-  private static final String DEFAULT_KEEP_ALIVE = "10m";
 
   private static final Gson GSON = new Gson();
 
@@ -43,7 +46,7 @@ public class OllamaClient implements AiClient {
       Executors.newFixedThreadPool(
           Runtime.getRuntime().availableProcessors(),
           r -> {
-            Thread t = new Thread(r, "ollama-http");
+            Thread t = new Thread(r, "openrouter-http");
             t.setDaemon(true);
             return t;
           });
@@ -55,28 +58,17 @@ public class OllamaClient implements AiClient {
           .executor(HTTP_EXECUTOR)
           .build();
 
-  private final String normalizedUrl;
+  private final String apiKey;
   private final String modelName;
   private final int requestTimeoutSeconds;
 
-  public OllamaClient(
-      @NotNull final String ollamaUrl,
+  public OpenRouterClient(
+      @NotNull final String apiKey,
       @NotNull final String modelName,
       final int requestTimeoutSeconds) {
-    this.normalizedUrl = normalizeUrl(ollamaUrl);
+    this.apiKey = apiKey;
     this.modelName = modelName;
     this.requestTimeoutSeconds = Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds);
-  }
-
-  static String normalizeUrl(final String url) {
-    String normalized = url;
-    if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-      normalized = "http://" + normalized;
-    }
-    if (normalized.endsWith("/")) {
-      normalized = normalized.substring(0, normalized.length() - 1);
-    }
-    return normalized;
   }
 
   @Override
@@ -84,8 +76,9 @@ public class OllamaClient implements AiClient {
     try {
       final HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl))
+              .uri(URI.create(MODELS_ENDPOINT))
               .timeout(Duration.ofSeconds(PING_TIMEOUT_SECONDS))
+              .header("Authorization", "Bearer " + apiKey)
               .GET()
               .build();
 
@@ -94,8 +87,8 @@ public class OllamaClient implements AiClient {
           .thenAccept(
               response -> {
                 if (response.statusCode() != 200) {
-                  throw new OllamaException(
-                      "Ollama returned status code: " + response.statusCode());
+                  throw new AiClientException(
+                      "OpenRouter returned status code: " + response.statusCode());
                 }
               });
     } catch (Exception e) {
@@ -108,8 +101,9 @@ public class OllamaClient implements AiClient {
     try {
       final HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/tags"))
+              .uri(URI.create(MODELS_ENDPOINT))
               .timeout(Duration.ofSeconds(LIST_MODELS_TIMEOUT_SECONDS))
+              .header("Authorization", "Bearer " + apiKey)
               .GET()
               .build();
 
@@ -118,8 +112,8 @@ public class OllamaClient implements AiClient {
           .thenApply(
               response -> {
                 if (response.statusCode() != 200) {
-                  throw new OllamaException(
-                      "Ollama returned status code: " + response.statusCode());
+                  throw new AiClientException(
+                      "OpenRouter returned status code: " + response.statusCode());
                 }
                 return response.body();
               })
@@ -133,18 +127,18 @@ public class OllamaClient implements AiClient {
     final List<String> models = new ArrayList<>();
     try {
       final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
-      if (json.has("models") && json.get("models").isJsonArray()) {
+      if (json.has("data") && json.get("data").isJsonArray()) {
         models.addAll(
-            json.getAsJsonArray("models").asList().stream()
+            json.getAsJsonArray("data").asList().stream()
                 .filter(JsonElement::isJsonObject)
                 .map(JsonElement::getAsJsonObject)
-                .filter(obj -> obj.has("name"))
-                .map(obj -> obj.get("name").getAsString())
+                .filter(obj -> obj.has("id"))
+                .map(obj -> obj.get("id").getAsString())
                 .sorted()
                 .toList());
       }
     } catch (final Exception e) {
-      log.warn("Failed to parse Ollama models response", e);
+      log.warn("Failed to parse OpenRouter models response", e);
     }
     return models;
   }
@@ -158,17 +152,19 @@ public class OllamaClient implements AiClient {
       final int wordCount,
       final int count) {
 
-    final String prompt =
-        AiClient.buildPrompt(applicationContext, tableName, columnName, sqlType, wordCount, count);
+    final String prompt = AiClient.buildPrompt(applicationContext, tableName, columnName, sqlType, wordCount, count);
     final int numPredict = AiClient.computeNumPredict(count, wordCount, sqlType);
 
     try {
-      final String requestBody = buildGenerateRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
+      final String requestBody = buildChatRequestBody(prompt, DEFAULT_TEMPERATURE, numPredict);
 
       final HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/generate"))
+              .uri(URI.create(CHAT_ENDPOINT))
               .header("Content-Type", "application/json")
+              .header("Authorization", "Bearer " + apiKey)
+              .header("HTTP-Referer", "https://github.com/luisppb16/db-seed-plugin")
+              .header("X-Title", "DBSeed4SQL")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
               .build();
@@ -178,8 +174,8 @@ public class OllamaClient implements AiClient {
           .thenApply(
               response -> {
                 if (response.statusCode() != 200) {
-                  log.warn("Ollama error {}: {}", response.statusCode(), response.body());
-                  throw new OllamaException("Ollama error: " + response.statusCode());
+                  log.warn("OpenRouter error {}: {}", response.statusCode(), response.body());
+                  throw new AiClientException("OpenRouter error: " + response.statusCode());
                 }
                 return response.body();
               })
@@ -191,7 +187,7 @@ public class OllamaClient implements AiClient {
 
   private List<String> parseBatchResponse(final String responseBody, final String columnName) {
     try {
-      final String raw = extractRawResponse(responseBody);
+      final String raw = extractContentFromChatResponse(responseBody);
       return raw.lines()
           .map(line -> AiClient.sanitizeAiOutput(line, columnName))
           .filter(Objects::nonNull)
@@ -199,40 +195,45 @@ public class OllamaClient implements AiClient {
           .distinct()
           .toList();
     } catch (Exception e) {
-      log.warn("Failed to parse Ollama batch response", e);
+      log.warn("Failed to parse OpenRouter batch response", e);
       return List.of();
     }
   }
 
-  private String extractRawResponse(final String responseBody) {
-    try {
-      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
-      if (json.has("response")) {
-        return json.get("response").getAsString();
+  private String extractContentFromChatResponse(final String responseBody) {
+    final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
+    if (json.has("choices") && json.get("choices").isJsonArray()) {
+      final JsonArray choices = json.getAsJsonArray("choices");
+      if (!choices.isEmpty()) {
+        final JsonObject firstChoice = choices.get(0).getAsJsonObject();
+        if (firstChoice.has("message") && firstChoice.getAsJsonObject("message").has("content")) {
+          return firstChoice.getAsJsonObject("message").get("content").getAsString();
+        }
       }
-      if (json.has("message") && json.getAsJsonObject("message").has("content")) {
-        return json.getAsJsonObject("message").get("content").getAsString();
-      }
-      throw new RuntimeException("Invalid response from Ollama: missing 'response' field");
-    } catch (final Exception e) {
-      if (e instanceof RuntimeException) throw (RuntimeException) e;
-      throw new RuntimeException("Failed to parse Ollama response: " + e.getMessage(), e);
     }
+    throw new RuntimeException("Invalid response from OpenRouter: missing 'choices[0].message.content'");
   }
 
-  private String buildGenerateRequestBody(
-      final String prompt, final double temperature, final int numPredict) {
-    final JsonObject options = new JsonObject();
-    options.addProperty("temperature", temperature);
-    options.addProperty("num_predict", numPredict);
+  private String buildChatRequestBody(
+      final String prompt, final double temperature, final int maxTokens) {
+    final JsonObject systemMessage = new JsonObject();
+    systemMessage.addProperty("role", "system");
+    systemMessage.addProperty("content", SYSTEM_ROLE);
+
+    final JsonObject userMessage = new JsonObject();
+    userMessage.addProperty("role", "user");
+    userMessage.addProperty("content", prompt);
+
+    final JsonArray messages = new JsonArray();
+    messages.add(systemMessage);
+    messages.add(userMessage);
 
     final JsonObject body = new JsonObject();
     body.addProperty("model", modelName);
-    body.addProperty("prompt", prompt);
-    body.addProperty("system", SYSTEM_ROLE);
+    body.add("messages", messages);
+    body.addProperty("temperature", temperature);
+    body.addProperty("max_tokens", maxTokens);
     body.addProperty("stream", false);
-    body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
-    body.add("options", options);
 
     return GSON.toJson(body);
   }
@@ -240,21 +241,31 @@ public class OllamaClient implements AiClient {
   @Override
   public CompletableFuture<Void> warmModel() {
     try {
-      final JsonObject options = new JsonObject();
-      options.addProperty("num_predict", 1);
+      final JsonObject systemMessage = new JsonObject();
+      systemMessage.addProperty("role", "system");
+      systemMessage.addProperty("content", SYSTEM_ROLE);
+
+      final JsonObject userMessage = new JsonObject();
+      userMessage.addProperty("role", "user");
+      userMessage.addProperty("content", "Respond with exactly one word: ready");
+
+      final JsonArray messages = new JsonArray();
+      messages.add(systemMessage);
+      messages.add(userMessage);
 
       final JsonObject body = new JsonObject();
       body.addProperty("model", modelName);
-      body.addProperty("prompt", "");
-      body.addProperty("system", SYSTEM_ROLE);
+      body.add("messages", messages);
+      body.addProperty("max_tokens", 5);
       body.addProperty("stream", false);
-      body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
-      body.add("options", options);
 
       final HttpRequest request =
           HttpRequest.newBuilder()
-              .uri(URI.create(normalizedUrl + "/api/generate"))
+              .uri(URI.create(CHAT_ENDPOINT))
               .header("Content-Type", "application/json")
+              .header("Authorization", "Bearer " + apiKey)
+              .header("HTTP-Referer", "https://github.com/luisppb16/db-seed-plugin")
+              .header("X-Title", "DBSeed4SQL")
               .timeout(Duration.ofSeconds(requestTimeoutSeconds))
               .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(body)))
               .build();
@@ -264,19 +275,19 @@ public class OllamaClient implements AiClient {
           .thenAccept(
               response -> {
                 if (response.statusCode() == 200) {
-                  log.info("Model '{}' warmed up successfully", modelName);
+                  log.info("OpenRouter model '{}' warmed up successfully", modelName);
                 } else {
-                  log.warn("Model warm-up returned status {}", response.statusCode());
+                  log.warn("OpenRouter model warm-up returned status {}", response.statusCode());
                 }
               });
     } catch (Exception e) {
-      log.warn("Failed to warm model: {}", e.getMessage());
+      log.warn("Failed to warm OpenRouter model: {}", e.getMessage());
       return CompletableFuture.completedFuture(null);
     }
   }
 
-  public static class OllamaException extends RuntimeException {
-    public OllamaException(final String message) {
+  public static class AiClientException extends RuntimeException {
+    public AiClientException(final String message) {
       super(message);
     }
   }

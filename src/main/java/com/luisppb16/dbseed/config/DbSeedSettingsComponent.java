@@ -32,8 +32,11 @@ import com.intellij.util.ui.AsyncProcessIcon;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
+import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.OpenRouterClient;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.util.ArrayList;
@@ -42,20 +45,19 @@ import java.util.Objects;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JSpinner;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
 
-/**
- * Redesigned UI component for configuring global settings of the DBSeed plugin.
- *
- * <p>Organized with a tabbed interface grouping related settings: General, Dictionaries, Soft
- * Delete, AI/Ollama, and Advanced. Clean, minimalist design with clear visual hierarchy.
- */
 public class DbSeedSettingsComponent {
 
-  private final JPanel myMainPanel;
+  private static final String CARD_OLLAMA = "OLLAMA";
+  private static final String CARD_OPENROUTER = "OPENROUTER";
+
+  private final JPanel myMainPanel = new JPanel(new BorderLayout());
+  private boolean suppressProviderWarning = false;
   private final JSpinner myColumnSpinnerStep = new JSpinner(new SpinnerNumberModel(1, 1, 10, 1));
   private final TextFieldWithBrowseButton myDefaultOutputDirectory =
       new TextFieldWithBrowseButton();
@@ -71,19 +73,29 @@ public class DbSeedSettingsComponent {
   private final JBTextField mySoftDeleteValue = new JBTextField();
 
   private final JBCheckBox myUseAiGeneration = new JBCheckBox("Enable AI-based data generation");
+  private final ComboBox<AiProvider> myAiProviderDropdown = new ComboBox<>(AiProvider.values());
+  private final JBTextField myOllamaUrl = new JBTextField();
+  private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
+  private final JButton myRefreshOllamaModelsButton = new JButton("Get models");
+  private final AsyncProcessIcon myOllamaLoadingIcon = new AsyncProcessIcon("OllamaLoading");
+  private final JPasswordField myOpenRouterApiKey = new JPasswordField();
+  private final ComboBox<String> myOpenRouterModelDropdown = new ComboBox<>();
+  private final JButton myRefreshOpenRouterModelsButton = new JButton("Get models");
+  private final AsyncProcessIcon myOpenRouterLoadingIcon =
+      new AsyncProcessIcon("OpenRouterLoading");
   private final JBTextArea myAiApplicationContext = new JBTextArea(3, 20);
   private final JSpinner myAiWordCount = new JSpinner(new SpinnerNumberModel(1, 1, 500, 1));
   private final JSpinner myAiRequestTimeout =
       new JSpinner(new SpinnerNumberModel(120, 10, 600, 10));
-  private final JBTextField myOllamaUrl = new JBTextField();
-  private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
-  private final JButton myRefreshModelsButton = new JButton("Get models");
-  private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("OllamaLoading");
   private final Project myProject;
   private final CollectionListModel<String> myProfilesModel = new CollectionListModel<>();
   private final JBList<String> myProfilesList = new JBList<>(myProfilesModel);
   private final List<String> originalProfiles = new ArrayList<>();
   private volatile boolean disposed = false;
+
+  private JPanel ollamaServerPanel;
+  private JPanel openRouterServerPanel;
+  private JPanel serverCardPanel;
 
   public DbSeedSettingsComponent(final Project project) {
     this.myProject = project;
@@ -106,35 +118,67 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
     myOllamaUrl.setText(settings.getOllamaUrl());
+    myAiProviderDropdown.setSelectedItem(settings.getAiProviderEnum());
 
     if (Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isEmpty()) {
       myOllamaModelDropdown.addItem(settings.getOllamaModel());
       myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
     }
+    if (Objects.nonNull(settings.getOpenRouterModel()) && !settings.getOpenRouterModel().isEmpty()) {
+      myOpenRouterModelDropdown.addItem(settings.getOpenRouterModel());
+      myOpenRouterModelDropdown.setSelectedItem(settings.getOpenRouterModel());
+    }
+    myOpenRouterApiKey.setText(settings.getOpenRouterApiKey());
 
     mySoftDeleteUseSchemaDefault.addActionListener(
         e -> mySoftDeleteValue.setEnabled(!mySoftDeleteUseSchemaDefault.isSelected()));
 
-    myRefreshModelsButton.addActionListener(e -> refreshModels());
-    myLoadingIcon.setVisible(false);
+    myRefreshOllamaModelsButton.addActionListener(e -> refreshOllamaModels());
+    myOllamaLoadingIcon.setVisible(false);
+
+    myRefreshOpenRouterModelsButton.addActionListener(e -> refreshOpenRouterModels());
+    myOpenRouterLoadingIcon.setVisible(false);
+
+    myAiProviderDropdown.setMaximumRowCount(AiProvider.values().length);
+    myAiProviderDropdown.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+    myAiProviderDropdown.addActionListener(e -> {
+      switchProviderCard();
+      if (!suppressProviderWarning) {
+        AiProvider selected = (AiProvider) myAiProviderDropdown.getSelectedItem();
+        if (selected == AiProvider.OPENROUTER) {
+          ApplicationManager.getApplication().invokeLater(() ->
+              Messages.showWarningDialog(
+                  DbSeedSettingsComponent.this.myMainPanel,
+                  "OpenRouter free-tier limits are very low and may be insufficient for data generation.\n\n"
+                      + "If you are on the free tier, it is recommended to use Ollama instead.",
+                  "OpenRouter Free-Tier Warning"));
+        }
+      }
+    });
 
     updateAiFieldsEnabled(settings.isUseAiGeneration());
     myUseAiGeneration.addActionListener(e -> updateAiFieldsEnabled(myUseAiGeneration.isSelected()));
 
     configureFolderChooser(myDefaultOutputDirectory);
 
-    // Create tabbed interface
     final JBTabbedPane tabbedPane = new JBTabbedPane();
     tabbedPane.addTab("General", createGeneralTab());
     tabbedPane.addTab("Profiles", createProfilesTab());
     tabbedPane.addTab("Dictionaries", createDictionariesTab());
     tabbedPane.addTab("Soft Delete", createSoftDeleteTab());
-    tabbedPane.addTab("AI/Ollama", createAiTab());
+    tabbedPane.addTab("AI", createAiTab());
     tabbedPane.addTab("Advanced", createAdvancedTab());
 
-    myMainPanel = new JPanel(new BorderLayout());
+    myMainPanel.removeAll();
     myMainPanel.add(tabbedPane, BorderLayout.CENTER);
     myMainPanel.setPreferredSize(new Dimension(600, 600));
+  }
+
+  private void switchProviderCard() {
+    AiProvider selected = (AiProvider) myAiProviderDropdown.getSelectedItem();
+    if (selected == null) selected = AiProvider.OLLAMA;
+    CardLayout cl = (CardLayout) serverCardPanel.getLayout();
+    cl.show(serverCardPanel, selected.name());
   }
 
   private JComponent createGeneralTab() {
@@ -316,19 +360,53 @@ public class DbSeedSettingsComponent {
   private JComponent createAiTab() {
     final JBLabel description =
         new JBLabel(
-            "<html>Use a local or cloud Ollama instance to generate context-aware data."
-                + "<br/>Ensure Ollama is running and accessible at the specified URL.</html>");
+            "<html>Use AI to generate context-aware data."
+                + "<br/>Choose between a local Ollama instance or the OpenRouter cloud service.</html>");
     description.setForeground(UIUtil.getContextHelpForeground());
     description.setFont(JBUI.Fonts.smallFont());
     description.setBorder(JBUI.Borders.emptyBottom(12));
 
-    final JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-    buttonPanel.add(myRefreshModelsButton);
-    buttonPanel.add(myLoadingIcon);
+    // ── Ollama panel ──────────────────────────────────────────────────────
+    final JPanel ollamaUrlPanel = new JPanel(new BorderLayout(5, 0));
+    ollamaUrlPanel.add(myOllamaUrl, BorderLayout.CENTER);
 
-    final JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
-    urlPanel.add(myOllamaUrl, BorderLayout.CENTER);
-    urlPanel.add(buttonPanel, BorderLayout.EAST);
+    final JPanel ollamaModelPanel = new JPanel(new BorderLayout(5, 0));
+    ollamaModelPanel.add(myOllamaModelDropdown, BorderLayout.CENTER);
+    final JPanel ollamaModelActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    ollamaModelActions.add(myRefreshOllamaModelsButton);
+    ollamaModelActions.add(myOllamaLoadingIcon);
+    ollamaModelPanel.add(ollamaModelActions, BorderLayout.EAST);
+
+    ollamaServerPanel =
+        FormBuilder.createFormBuilder()
+            .addLabeledComponent(new JBLabel("URL:"), ollamaUrlPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Model:"), ollamaModelPanel, 1, false)
+            .getPanel();
+
+    // ── OpenRouter panel ──────────────────────────────────────────────────
+    myOpenRouterApiKey.setAlignmentX(JComponent.LEFT_ALIGNMENT);
+
+    final JPanel openRouterModelPanel = new JPanel(new BorderLayout(5, 0));
+    openRouterModelPanel.add(myOpenRouterModelDropdown, BorderLayout.CENTER);
+    final JPanel openRouterModelActions = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+    openRouterModelActions.add(myRefreshOpenRouterModelsButton);
+    openRouterModelActions.add(myOpenRouterLoadingIcon);
+    openRouterModelPanel.add(openRouterModelActions, BorderLayout.EAST);
+
+    openRouterServerPanel =
+        FormBuilder.createFormBuilder()
+            .addLabeledComponent(new JBLabel("API Key:"), myOpenRouterApiKey, 1, false)
+            .addLabeledComponent(new JBLabel("Model:"), openRouterModelPanel, 1, false)
+            .getPanel();
+
+    // ── Provider dropdown (left-aligned, not stretched) ────────────────
+    final JPanel providerPanel = new JPanel(new BorderLayout());
+    providerPanel.add(myAiProviderDropdown, BorderLayout.WEST);
+
+    // ── Card layout for provider switch ──────────────────────────────────
+    serverCardPanel = new JPanel(new CardLayout());
+    serverCardPanel.add(ollamaServerPanel, CARD_OLLAMA);
+    serverCardPanel.add(openRouterServerPanel, CARD_OPENROUTER);
 
     final JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
     contextScrollPane.setPreferredSize(new Dimension(0, 80));
@@ -354,10 +432,13 @@ public class DbSeedSettingsComponent {
             .addComponent(description)
             .addComponent(myUseAiGeneration, 1)
             .addVerticalGap(12)
+            .addComponent(new TitledSeparator("Provider"))
+            .addVerticalGap(4)
+            .addLabeledComponent(new JBLabel("AI provider:"), providerPanel, 1, false)
+            .addVerticalGap(12)
             .addComponent(new TitledSeparator("Server Configuration"))
             .addVerticalGap(4)
-            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
+            .addComponent(serverCardPanel, 1)
             .addVerticalGap(12)
             .addComponent(new TitledSeparator("AI Behavior"))
             .addVerticalGap(4)
@@ -377,6 +458,9 @@ public class DbSeedSettingsComponent {
     final JBScrollPane scrollPane = new JBScrollPane(panel);
     scrollPane.setBorder(JBUI.Borders.empty());
     scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+
+    switchProviderCard();
+
     return scrollPane;
   }
 
@@ -402,21 +486,25 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setEnabled(enabled);
     myAiWordCount.setEnabled(enabled);
     myAiRequestTimeout.setEnabled(enabled);
+    myAiProviderDropdown.setEnabled(enabled);
     myOllamaUrl.setEnabled(enabled);
     myOllamaModelDropdown.setEnabled(enabled);
-    myRefreshModelsButton.setEnabled(enabled);
+    myRefreshOllamaModelsButton.setEnabled(enabled);
+    myOpenRouterApiKey.setEnabled(enabled);
+    myOpenRouterModelDropdown.setEnabled(enabled);
+    myRefreshOpenRouterModelsButton.setEnabled(enabled);
   }
 
-  private void refreshModels() {
+  private void refreshOllamaModels() {
     final String url = myOllamaUrl.getText().trim();
     if (url.isEmpty()) {
       Messages.showErrorDialog(myMainPanel, "Please enter a valid Ollama URL.", "Invalid URL");
       return;
     }
 
-    myRefreshModelsButton.setEnabled(false);
-    myLoadingIcon.setVisible(true);
-    myLoadingIcon.resume();
+    myRefreshOllamaModelsButton.setEnabled(false);
+    myOllamaLoadingIcon.setVisible(true);
+    myOllamaLoadingIcon.resume();
     myOllamaModelDropdown.setEnabled(false);
 
     final ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
@@ -443,7 +531,7 @@ public class DbSeedSettingsComponent {
                                   + "Error: "
                                   + cause.getMessage(),
                               "Server Not Reachable");
-                          resetRefreshButton();
+                          resetOllamaRefreshButton();
                         },
                         currentModality);
                 return;
@@ -485,18 +573,111 @@ public class DbSeedSettingsComponent {
                                       }
                                     }
                                   }
-                                  resetRefreshButton();
+                                  resetOllamaRefreshButton();
                                 },
                                 currentModality);
                       });
             });
   }
 
-  private void resetRefreshButton() {
-    myRefreshModelsButton.setEnabled(true);
-    myLoadingIcon.suspend();
-    myLoadingIcon.setVisible(false);
+  private void refreshOpenRouterModels() {
+    final String apiKey = new String(myOpenRouterApiKey.getPassword()).trim();
+    if (apiKey.isEmpty()) {
+      Messages.showErrorDialog(
+          myMainPanel, "Please enter an OpenRouter API key.", "Missing API Key");
+      return;
+    }
+
+    myRefreshOpenRouterModelsButton.setEnabled(false);
+    myOpenRouterLoadingIcon.setVisible(true);
+    myOpenRouterLoadingIcon.resume();
+    myOpenRouterModelDropdown.setEnabled(false);
+
+    final ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
+
+    final OpenRouterClient client = new OpenRouterClient(apiKey, "", getAiRequestTimeout());
+    client
+        .ping()
+        .whenComplete(
+            (ignored, pingEx) -> {
+              if (disposed) return;
+              if (Objects.nonNull(pingEx)) {
+                ApplicationManager.getApplication()
+                    .invokeLater(
+                        () -> {
+                          if (disposed) return;
+                          final Throwable cause =
+                              Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
+                          Messages.showErrorDialog(
+                              myMainPanel,
+                              "Could not connect to OpenRouter.\n"
+                                  + "Ensure your API key is valid.\n\n"
+                                  + "Error: "
+                                  + cause.getMessage(),
+                              "Connection Error");
+                          resetOpenRouterRefreshButton();
+                        },
+                        currentModality);
+                return;
+              }
+              client
+                  .listModels()
+                  .whenComplete(
+                      (models, ex) -> {
+                        if (disposed) return;
+                        ApplicationManager.getApplication()
+                            .invokeLater(
+                                () -> {
+                                  if (disposed) return;
+                                  if (Objects.nonNull(ex)) {
+                                    final Throwable cause =
+                                        Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
+                                    Messages.showErrorDialog(
+                                        myMainPanel,
+                                        "Could not fetch models from OpenRouter.\n"
+                                            + "Error: "
+                                            + cause.getMessage(),
+                                        "Connection Error");
+                                  } else {
+                                    final String currentSelection =
+                                        (String) myOpenRouterModelDropdown.getSelectedItem();
+                                    myOpenRouterModelDropdown.removeAllItems();
+                                    if (models.isEmpty()) {
+                                      Messages.showWarningDialog(
+                                          myMainPanel,
+                                          "No models found on OpenRouter.",
+                                          "No Models Found");
+                                    } else {
+                                      models.forEach(myOpenRouterModelDropdown::addItem);
+                                      if (Objects.nonNull(currentSelection)
+                                          && models.contains(currentSelection)) {
+                                        myOpenRouterModelDropdown.setSelectedItem(currentSelection);
+                                      }
+                                    }
+                                  }
+                                  resetOpenRouterRefreshButton();
+                                },
+                                currentModality);
+                      });
+            });
+  }
+
+  private void resetOllamaRefreshButton() {
+    myRefreshOllamaModelsButton.setEnabled(true);
+    myOllamaLoadingIcon.suspend();
+    myOllamaLoadingIcon.setVisible(false);
     myOllamaModelDropdown.setEnabled(true);
+  }
+
+  private void resetOpenRouterRefreshButton() {
+    myRefreshOpenRouterModelsButton.setEnabled(true);
+    myOpenRouterLoadingIcon.suspend();
+    myOpenRouterLoadingIcon.setVisible(false);
+    myOpenRouterModelDropdown.setEnabled(true);
+  }
+
+  private String loadOpenRouterApiKey() {
+    return "";
   }
 
   private void configureFolderChooser(final TextFieldWithBrowseButton field) {
@@ -530,7 +711,6 @@ public class DbSeedSettingsComponent {
     return myColumnSpinnerStep;
   }
 
-  // ... Getter and Setter methods remain the same as original ...
   public int getColumnSpinnerStep() {
     return (Integer) myColumnSpinnerStep.getValue();
   }
@@ -603,6 +783,21 @@ public class DbSeedSettingsComponent {
     myUseAiGeneration.setSelected(use);
   }
 
+  public AiProvider getAiProvider() {
+    AiProvider selected = (AiProvider) myAiProviderDropdown.getSelectedItem();
+    return selected != null ? selected : AiProvider.OLLAMA;
+  }
+
+  public void setAiProvider(final AiProvider provider) {
+    suppressProviderWarning = true;
+    try {
+      myAiProviderDropdown.setSelectedItem(provider);
+      switchProviderCard();
+    } finally {
+      suppressProviderWarning = false;
+    }
+  }
+
   public String getAiApplicationContext() {
     return myAiApplicationContext.getText();
   }
@@ -644,6 +839,25 @@ public class DbSeedSettingsComponent {
     myOllamaModelDropdown.removeAllItems();
     myOllamaModelDropdown.addItem(model);
     myOllamaModelDropdown.setSelectedItem(model);
+  }
+
+  public String getOpenRouterApiKey() {
+    return new String(myOpenRouterApiKey.getPassword());
+  }
+
+  public void setOpenRouterApiKey(final String apiKey) {
+    myOpenRouterApiKey.setText(apiKey);
+  }
+
+  public String getOpenRouterModel() {
+    final Object selected = myOpenRouterModelDropdown.getSelectedItem();
+    return selected instanceof String ? (String) selected : "";
+  }
+
+  public void setOpenRouterModel(final String model) {
+    myOpenRouterModelDropdown.removeAllItems();
+    myOpenRouterModelDropdown.addItem(model);
+    myOpenRouterModelDropdown.setSelectedItem(model);
   }
 
   public void dispose() {

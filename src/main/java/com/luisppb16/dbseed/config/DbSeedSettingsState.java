@@ -12,6 +12,7 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
+import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import java.util.Collections;
 import java.util.HashMap;
@@ -80,6 +81,9 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   private String ollamaUrl = DEFAULT_OLLAMA_URL;
   private String ollamaModel = DEFAULT_OLLAMA_MODEL;
+  private String aiProvider = AiProvider.OLLAMA.name();
+  private String openRouterModel = "";
+  private String openRouterApiKey = "";
 
   private boolean useAiGeneration = false;
   private String aiApplicationContext = "";
@@ -122,6 +126,10 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
     this.ollamaUrl = Objects.requireNonNullElse(state.ollamaUrl, DEFAULT_OLLAMA_URL);
     this.ollamaModel = Objects.requireNonNullElse(state.ollamaModel, DEFAULT_OLLAMA_MODEL);
+    this.aiProvider =
+        Objects.requireNonNullElse(state.aiProvider, AiProvider.OLLAMA.name());
+    this.openRouterModel = Objects.requireNonNullElse(state.openRouterModel, "");
+    this.openRouterApiKey = Objects.requireNonNullElse(state.openRouterApiKey, "");
 
     this.useAiGeneration = state.useAiGeneration;
     this.aiApplicationContext = Objects.requireNonNullElse(state.aiApplicationContext, "");
@@ -137,6 +145,14 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         Objects.nonNull(state.circularReferenceTerminationModes)
             ? new HashMap<>(state.circularReferenceTerminationModes)
             : new HashMap<>();
+  }
+
+  public AiProvider getAiProviderEnum() {
+    try {
+      return AiProvider.valueOf(aiProvider);
+    } catch (IllegalArgumentException e) {
+      return AiProvider.OLLAMA;
+    }
   }
 
   public Map<String, List<RepetitionRule>> getRepetitionRules() {

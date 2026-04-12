@@ -7,7 +7,7 @@
 
 package com.luisppb16.dbseed.db.generator;
 
-import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.AiClient;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.CheckExpression;
@@ -94,7 +94,7 @@ public final class RowGenerator {
   private final Set<String> aiColumns;
   private final int aiWordCount;
   private final ValueGenerator valueGenerator;
-  private final OllamaClient ollamaClient;
+  private final AiClient aiClient;
   private final String applicationContext;
   private final ProgressTracker tracker;
   @Getter private final Map<String, ParsedConstraint> constraints;
@@ -121,7 +121,7 @@ public final class RowGenerator {
       final int numericScale,
       final Set<String> aiColumns,
       final int aiWordCount,
-      final OllamaClient ollamaClient,
+      final AiClient aiClient,
       final String applicationContext,
       final ProgressTracker tracker) {
 
@@ -141,7 +141,7 @@ public final class RowGenerator {
     this.valueGenerator =
         new ValueGenerator(
             faker, resolvedDictionaryWords, useLatinDictionary, usedUuids, numericScale);
-    this.ollamaClient = ollamaClient;
+    this.aiClient = aiClient;
     this.applicationContext = applicationContext;
     this.tracker = tracker;
 
@@ -189,7 +189,7 @@ public final class RowGenerator {
 
   /** Returns true if this generator has AI columns that require generation. */
   public boolean hasAiColumns() {
-    return Objects.nonNull(ollamaClient) && !aiColumns.isEmpty() && !rows.isEmpty();
+    return Objects.nonNull(aiClient) && !aiColumns.isEmpty() && !rows.isEmpty();
   }
 
   /**
@@ -197,7 +197,7 @@ public final class RowGenerator {
    * DataGenerator to flatten (table, column) pairs for the single AI executor.
    */
   public List<Column> getValidAiColumns() {
-    if (Objects.isNull(ollamaClient) || aiColumns.isEmpty() || rows.isEmpty()) {
+    if (Objects.isNull(aiClient) || aiColumns.isEmpty() || rows.isEmpty()) {
       return List.of();
     }
 
@@ -222,7 +222,7 @@ public final class RowGenerator {
    * from the flat AI executor pool.
    */
   public void generateAiValuesForColumn(final Column col) {
-    if (Objects.isNull(ollamaClient) || rows.isEmpty()) return;
+    if (Objects.isNull(aiClient) || rows.isEmpty()) return;
     final int totalRows = rows.size();
     generateAiValuesForColumnInternal(col, aiWordCount, totalRows);
   }
@@ -502,7 +502,7 @@ public final class RowGenerator {
 
               try {
                 final List<String> batchValues =
-                    ollamaClient
+                    aiClient
                         .generateBatchValues(
                             applicationContext,
                             table.name(),
@@ -538,7 +538,7 @@ public final class RowGenerator {
                   final int remaining = batchCount - allValues.size();
                   try {
                     final List<String> batchValues =
-                        ollamaClient
+                        aiClient
                             .generateBatchValues(
                                 applicationContext,
                                 table.name(),

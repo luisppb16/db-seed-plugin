@@ -8,7 +8,10 @@
 package com.luisppb16.dbseed.db;
 
 import com.intellij.openapi.progress.ProgressIndicator;
+import com.luisppb16.dbseed.ai.AiClient;
+import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.OpenRouterClient;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.generator.ConstraintParser;
 import com.luisppb16.dbseed.db.generator.DictionaryLoader;
@@ -137,15 +140,24 @@ public class DataGenerator {
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    final OllamaClient ollamaClient =
-        settings.isUseAiGeneration()
-                && Objects.nonNull(settings.getOllamaUrl())
-                && !settings.getOllamaUrl().isBlank()
-            ? new OllamaClient(
-                settings.getOllamaUrl(),
-                settings.getOllamaModel(),
-                settings.getAiRequestTimeoutSeconds())
-            : null;
+    final AiClient aiClient;
+    if (!settings.isUseAiGeneration()) {
+      aiClient = null;
+    } else if (settings.getAiProviderEnum() == AiProvider.OPENROUTER) {
+      final String apiKey = loadOpenRouterApiKey();
+      aiClient =
+          (apiKey != null && !apiKey.isBlank())
+              ? new OpenRouterClient(apiKey, settings.getOpenRouterModel(), settings.getAiRequestTimeoutSeconds())
+              : null;
+    } else {
+      aiClient =
+          (Objects.nonNull(settings.getOllamaUrl()) && !settings.getOllamaUrl().isBlank())
+              ? new OllamaClient(
+                  settings.getOllamaUrl(),
+                  settings.getOllamaModel(),
+                  settings.getAiRequestTimeoutSeconds())
+              : null;
+    }
 
     final Map<String, Set<String>> aiColumns =
         Objects.requireNonNullElse(params.aiColumns(), Map.of());
@@ -156,7 +168,7 @@ public class DataGenerator {
     final long rowWork = orderedTables.size() * (long) params.rowsPerTable();
     // 1 unit per AI-column×row (AI phase) — 0 when no AI
     final long aiWork =
-        Objects.nonNull(ollamaClient)
+        Objects.nonNull(aiClient)
             ? orderedTables.stream()
                 .mapToLong(
                     t ->
@@ -175,11 +187,15 @@ public class DataGenerator {
 
     // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
     // This eliminates cold-start latency on the first real generation call.
-    if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
+    if (Objects.nonNull(aiClient) && !aiColumns.isEmpty()) {
       try {
         tracker.setText("Warming up AI model...");
-        tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
-        ollamaClient.warmModel().join();
+        final String modelName =
+            settings.getAiProviderEnum() == AiProvider.OPENROUTER
+                ? settings.getOpenRouterModel()
+                : settings.getOllamaModel();
+        tracker.setText2("Loading " + modelName + " into memory");
+        aiClient.warmModel().join();
       } catch (final Exception e) {
         log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
       }
@@ -203,7 +219,7 @@ public class DataGenerator {
             params.numericScale(),
             aiColumns,
             aiWordCount,
-            ollamaClient,
+            aiClient,
             Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
             tracker);
 
@@ -284,7 +300,7 @@ public class DataGenerator {
       final int numericScale,
       final Map<String, Set<String>> aiColumns,
       final int aiWordCount,
-      final OllamaClient ollamaClient,
+      final AiClient aiClient,
       final String applicationContext,
       final ProgressTracker tracker) {
 
@@ -331,7 +347,7 @@ public class DataGenerator {
                       numericScale,
                       aiColumns.getOrDefault(table.name(), Set.of()),
                       aiWordCount,
-                      ollamaClient,
+                      aiClient,
                       applicationContext,
                       tracker);
 
@@ -624,4 +640,8 @@ public class DataGenerator {
   }
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
+
+  private static String loadOpenRouterApiKey() {
+    return DbSeedSettingsState.getInstance().getOpenRouterApiKey();
+  }
 }

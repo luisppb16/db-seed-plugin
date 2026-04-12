@@ -11,7 +11,9 @@ import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
+import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.OpenRouterClient;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -19,7 +21,6 @@ import javax.swing.JComponent;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.Nullable;
 
-/** IntelliJ settings configurable implementation for the DBSeed plugin configuration interface. */
 public class DbSeedSettingsConfigurable implements Configurable {
 
   private final Project myProject;
@@ -65,10 +66,15 @@ public class DbSeedSettingsConfigurable implements Configurable {
             != settings.isSoftDeleteUseSchemaDefault()
         || !Objects.equals(mySettingsComponent.getSoftDeleteValue(), settings.getSoftDeleteValue())
         || mySettingsComponent.getUseAiGeneration() != settings.isUseAiGeneration()
+        || mySettingsComponent.getAiProvider() != settings.getAiProviderEnum()
         || !Objects.equals(
             mySettingsComponent.getAiApplicationContext(), settings.getAiApplicationContext())
         || !Objects.equals(mySettingsComponent.getOllamaUrl(), settings.getOllamaUrl())
         || !Objects.equals(mySettingsComponent.getOllamaModel(), settings.getOllamaModel())
+        || !Objects.equals(
+            mySettingsComponent.getOpenRouterModel(), settings.getOpenRouterModel())
+        || !Objects.equals(
+            mySettingsComponent.getOpenRouterApiKey(), settings.getOpenRouterApiKey())
         || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
         || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds();
   }
@@ -76,40 +82,77 @@ public class DbSeedSettingsConfigurable implements Configurable {
   @Override
   public void apply() throws ConfigurationException {
     if (mySettingsComponent.getUseAiGeneration()) {
-      String url = mySettingsComponent.getOllamaUrl();
-      if (Objects.isNull(url) || url.trim().isEmpty()) {
-        throw new ConfigurationException(
-            "Please enter a valid Ollama URL when AI generation is enabled.",
-            "Invalid Ollama Configuration");
-      }
+      AiProvider provider = mySettingsComponent.getAiProvider();
 
-      AtomicReference<Exception> pingError = new AtomicReference<>();
-      ProgressManager.getInstance()
-          .runProcessWithProgressSynchronously(
-              () -> {
-                try {
-                  new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
-                } catch (Exception e) {
-                  pingError.set(e);
-                }
-              },
-              "Checking Ollama Server...",
-              false,
-              null);
+      if (provider == AiProvider.OLLAMA) {
+        String url = mySettingsComponent.getOllamaUrl();
+        if (Objects.isNull(url) || url.trim().isEmpty()) {
+          throw new ConfigurationException(
+              "Please enter a valid Ollama URL when AI generation is enabled.",
+              "Invalid Ollama Configuration");
+        }
 
-      if (Objects.nonNull(pingError.get())) {
-        Throwable cause =
-            Objects.nonNull(pingError.get().getCause())
-                ? pingError.get().getCause()
-                : pingError.get();
-        throw new ConfigurationException(
-            "No Ollama server found at "
-                + url.trim()
-                + ".\n"
-                + "Ensure Ollama is running and the URL is correct.\n\n"
-                + "Error: "
-                + cause.getMessage(),
-            "Server Not Reachable");
+        AtomicReference<Exception> pingError = new AtomicReference<>();
+        ProgressManager.getInstance()
+            .runProcessWithProgressSynchronously(
+                () -> {
+                  try {
+                    new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
+                  } catch (Exception e) {
+                    pingError.set(e);
+                  }
+                },
+                "Checking Ollama Server...",
+                false,
+                null);
+
+        if (Objects.nonNull(pingError.get())) {
+          Throwable cause =
+              Objects.nonNull(pingError.get().getCause())
+                  ? pingError.get().getCause()
+                  : pingError.get();
+          throw new ConfigurationException(
+              "No Ollama server found at "
+                  + url.trim()
+                  + ".\n"
+                  + "Ensure Ollama is running and the URL is correct.\n\n"
+                  + "Error: "
+                  + cause.getMessage(),
+              "Server Not Reachable");
+        }
+      } else if (provider == AiProvider.OPENROUTER) {
+        String apiKey = mySettingsComponent.getOpenRouterApiKey();
+        if (Objects.isNull(apiKey) || apiKey.trim().isEmpty()) {
+          throw new ConfigurationException(
+              "Please enter an OpenRouter API key when AI generation is enabled.",
+              "Invalid OpenRouter Configuration");
+        }
+
+        AtomicReference<Exception> pingError = new AtomicReference<>();
+        ProgressManager.getInstance()
+            .runProcessWithProgressSynchronously(
+                () -> {
+                  try {
+                    new OpenRouterClient(apiKey.trim(), "", 10).ping().get(5, TimeUnit.SECONDS);
+                  } catch (Exception e) {
+                    pingError.set(e);
+                  }
+                },
+                "Validating OpenRouter API Key...",
+                false,
+                null);
+
+        if (Objects.nonNull(pingError.get())) {
+          Throwable cause =
+              Objects.nonNull(pingError.get().getCause())
+                  ? pingError.get().getCause()
+                  : pingError.get();
+          throw new ConfigurationException(
+              "Could not validate OpenRouter API key.\n\n"
+                  + "Error: "
+                  + cause.getMessage(),
+              "OpenRouter Connection Error");
+        }
       }
     }
 
@@ -126,9 +169,12 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setSoftDeleteValue(mySettingsComponent.getSoftDeleteValue());
 
     settings.setUseAiGeneration(mySettingsComponent.getUseAiGeneration());
+    settings.setAiProvider(mySettingsComponent.getAiProvider().name());
     settings.setAiApplicationContext(mySettingsComponent.getAiApplicationContext());
     settings.setOllamaUrl(mySettingsComponent.getOllamaUrl());
     settings.setOllamaModel(mySettingsComponent.getOllamaModel());
+    settings.setOpenRouterModel(mySettingsComponent.getOpenRouterModel());
+    settings.setOpenRouterApiKey(mySettingsComponent.getOpenRouterApiKey());
     settings.setAiWordCount(mySettingsComponent.getAiWordCount());
     settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
 
@@ -149,11 +195,14 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setSoftDeleteValue(settings.getSoftDeleteValue());
 
     mySettingsComponent.setUseAiGeneration(settings.isUseAiGeneration());
+    mySettingsComponent.setAiProvider(settings.getAiProviderEnum());
     mySettingsComponent.setAiApplicationContext(settings.getAiApplicationContext());
     mySettingsComponent.setOllamaUrl(settings.getOllamaUrl());
     mySettingsComponent.setOllamaModel(settings.getOllamaModel());
+    mySettingsComponent.setOpenRouterModel(settings.getOpenRouterModel());
     mySettingsComponent.setAiWordCount(settings.getAiWordCount());
     mySettingsComponent.setAiRequestTimeout(settings.getAiRequestTimeoutSeconds());
+    mySettingsComponent.setOpenRouterApiKey(settings.getOpenRouterApiKey());
 
     mySettingsComponent.resetProfileSettings();
   }

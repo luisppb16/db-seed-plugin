@@ -28,7 +28,7 @@
             <h2>Network and Privacy</h2>
             <ul>
               <li>The plugin works locally by default and stores settings in IDE-local configuration files.</li>
-              <li>Optional network actions are initiated by the user: JDBC driver downloads from Maven Central and AI calls to a user-configured Ollama server.</li>
+               <li>Optional network actions are initiated by the user: JDBC driver downloads from Maven Central and AI calls to a user-configured Ollama or OpenRouter server.</li>
               <li>DBSeed4SQL does not upload database row contents. For AI generation, only metadata/context provided by the user (for example table/column names and app context text) is sent.</li>
             </ul>
         ]]>
@@ -38,8 +38,10 @@
 
     <change-notes>
         <![CDATA[
-            <h3>Version 1.3.6</h3>
+            <h3>Version 1.4.0</h3>
             <ul>
+                <li><b>OpenRouter AI Provider:</b> Added OpenRouter as an alternative AI provider alongside Ollama. Choose between Ollama (local) and OpenRouter (cloud) in the AI settings tab with a provider dropdown. OpenRouter uses your API key and supports hundreds of models via OpenAI-compatible chat completion API.</li>
+                <li><b>Provider Switching:</b> The AI tab now displays provider-specific configuration (Ollama URL+model or OpenRouter API key+model) based on the selected provider dropdown.</li>
                 <li><b>Regex-Based Column Rules:</b> Added regex-powered value generation inside the repetition rules panel for fine-grained control over generated string formats.</li>
                 <li><b>Safer Exclusions:</b> The advanced selection dialog now warns when excluded tables or columns may create foreign-key inconsistencies.</li>
                 <li><b>Connection Profile Workflow:</b> Improved saved connection profile handling, sanitization, and settings integration for multi-database projects.</li>

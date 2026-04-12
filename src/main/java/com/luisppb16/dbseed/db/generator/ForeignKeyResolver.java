@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Sophisticated foreign key resolution engine for database seeding operations in the DBSeed plugin.
@@ -61,6 +62,7 @@ import java.util.stream.Collectors;
  * through intelligent caching and batch processing, making it suitable for generating large
  * datasets with complex relationship structures.
  */
+@Slf4j
 public final class ForeignKeyResolver {
 
   private static final int MAX_UNIQUE_FK_ATTEMPTS_FACTOR = 100;
@@ -179,6 +181,7 @@ public final class ForeignKeyResolver {
 
     for (ForeignKey fk : circularFks) {
       int maxDepth = depths.getOrDefault(fk.name(), 3);
+      if (maxDepth <= 0) maxDepth = 3;
       final CircularReferenceTerminationMode terminationMode =
           CircularReferenceTerminationMode.fromPersistedValue(
               Objects.nonNull(terminationModes) ? terminationModes.get(fk.name()) : null);
@@ -343,8 +346,10 @@ public final class ForeignKeyResolver {
           .forEach((fkCol, pkCol) -> row.values().put(fkCol, parentRow.values().get(pkCol)));
     } else {
       if (!fkNullable) {
-        throw new IllegalStateException(
-            "Cycle with non-nullable FK: " + table.name() + " -> " + parent.name());
+        log.warn(
+            "Non-nullable circular FK cycle: {} -> {}. Deferring resolution via UPDATE.",
+            table.name(),
+            parent.name());
       }
       final Map<String, Object> fkVals = new LinkedHashMap<>();
       fk.columnMapping()
@@ -379,11 +384,10 @@ public final class ForeignKeyResolver {
               });
       if (queue.isEmpty()) {
         if (!fkNullable) {
-          throw new IllegalStateException(
-              "Not enough rows in "
-                  + parentTableName
-                  + " for non-nullable 1:1 FK from "
-                  + tableName);
+          log.warn(
+              "Not enough rows in {} for non-nullable 1:1 FK from {}. Returning null.",
+              parentTableName,
+              tableName);
         }
         return null;
       }

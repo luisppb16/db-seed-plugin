@@ -147,7 +147,7 @@ public class OllamaClient {
     this.requestTimeoutSeconds = Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds);
   }
 
-  private static String normalizeUrl(final String url) {
+  static String normalizeUrl(final String url) {
     String normalized = url;
     if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
       normalized = "http://" + normalized;
@@ -158,7 +158,7 @@ public class OllamaClient {
     return normalized;
   }
 
-  private static String sanitizeAiOutput(final String value, @Nullable final String columnName) {
+  static String sanitizeAiOutput(final String value, @Nullable final String columnName) {
     if (Objects.isNull(value)) return null;
     String cleaned = value.lines().findFirst().orElse("").trim();
 
@@ -183,7 +183,7 @@ public class OllamaClient {
     return cleaned;
   }
 
-  private static String stripSurroundingQuotes(final String text) {
+  static String stripSurroundingQuotes(final String text) {
     if (text.length() >= 2
         && ((text.startsWith("\"") && text.endsWith("\""))
             || (text.startsWith("'") && text.endsWith("'")))) {
@@ -192,7 +192,7 @@ public class OllamaClient {
     return text;
   }
 
-  private static boolean isAiPreamble(final String text) {
+  static boolean isAiPreamble(final String text) {
     final String lower = text.toLowerCase();
     return lower.startsWith("here are")
         || lower.startsWith("here is")
@@ -207,7 +207,7 @@ public class OllamaClient {
         || lower.contains("values for column");
   }
 
-  private static boolean isAiRefusal(final String text) {
+  static boolean isAiRefusal(final String text) {
     final String lower = text.toLowerCase();
     return lower.startsWith("i cannot")
         || lower.startsWith("i can't")
@@ -219,7 +219,7 @@ public class OllamaClient {
         || lower.startsWith("i am not able");
   }
 
-  private static String stripColumnPrefix(final String text, final String columnName) {
+  static String stripColumnPrefix(final String text, final String columnName) {
     final String lower = text.toLowerCase();
     final String colLower = columnName.toLowerCase();
     if (lower.startsWith(colLower)) {
@@ -232,7 +232,7 @@ public class OllamaClient {
     return text;
   }
 
-  private static boolean isArrayType(final String sqlType) {
+  static boolean isArrayType(final String sqlType) {
     if (Objects.isNull(sqlType) || sqlType.isBlank()) {
       return false;
     }

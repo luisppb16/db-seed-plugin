@@ -126,16 +126,17 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
   }
 
   protected void formatArray(Object[] array, StringBuilder sb) {
-    sb.append("ARRAY[");
+    String arrayFormat = props.getProperty("arrayFormat", "ARRAY[{values}]");
+    String valueSeparator = props.getProperty("arrayValueSeparator", ", ");
+
+    StringBuilder valuesSb = new StringBuilder();
     IntStream.range(0, array.length)
         .forEach(
             i -> {
-              formatValue(array[i], sb);
-              if (i < array.length - 1) {
-                sb.append(", ");
-              }
+              formatValue(array[i], valuesSb);
+              if (i < array.length - 1) valuesSb.append(valueSeparator);
             });
-    sb.append("]");
+    sb.append(arrayFormat.replace("{values}", valuesSb.toString()));
   }
 
   protected void formatDate(Date d, StringBuilder sb) {
@@ -164,6 +165,10 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
     if (Boolean.parseBoolean(props.getProperty("escapeBackslash", "false"))) {
       result = result.replace("\\", "\\\\");
     }
+    result = result.replace("\0", "");
+    result = result.replace("\r\n", " ");
+    result = result.replace("\n", " ");
+    result = result.replace("\r", " ");
     return result.replace("'", "''");
   }
 
@@ -176,6 +181,7 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
       List<String> columnOrder) {
 
     int maxBatch = Integer.parseInt(props.getProperty("maxBatchSize", "1000"));
+    if (maxBatch <= 0) maxBatch = 1000;
     boolean multiRow = Boolean.parseBoolean(props.getProperty("supportsMultiRowInsert", "true"));
 
     String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");

@@ -12,6 +12,7 @@ import com.intellij.notification.NotificationGroup;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.project.Project;
+import com.luisppb16.dbseed.model.Constant;
 import lombok.experimental.UtilityClass;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -42,12 +43,11 @@ import org.jetbrains.annotations.Nullable;
 @UtilityClass
 public class NotificationHelper {
 
-  private static final String NOTIFICATION_GROUP_ID = "DBSeed4SQL";
   private static final NotificationGroup NOTIFICATION_GROUP;
 
   static {
     NOTIFICATION_GROUP =
-        NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP_ID);
+        NotificationGroupManager.getInstance().getNotificationGroup(Constant.NOTIFICATION_ID.getValue());
   }
 
   public static void notifyError(@Nullable final Project project, @NotNull final String message) {

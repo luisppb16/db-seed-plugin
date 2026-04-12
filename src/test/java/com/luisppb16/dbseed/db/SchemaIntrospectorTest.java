@@ -332,4 +332,13 @@ class SchemaIntrospectorTest {
     assertThat(filtered).hasSize(1);
     assertThat(filtered.get(0).name()).isEqualToIgnoringCase("T1");
   }
+
+  @Test
+  void decimalBounds_preserved() throws SQLException {
+    exec("CREATE TABLE t (id INT PRIMARY KEY, val DECIMAL(5,2) CHECK (val BETWEEN 1.5 AND 99.5))");
+    final Table t = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "T");
+    final Column val = findColumn(t, "VAL");
+    assertThat(val.minValue()).isEqualTo(1.5);
+    assertThat(val.maxValue()).isEqualTo(99.5);
+  }
 }

@@ -64,8 +64,6 @@ import lombok.extern.slf4j.Slf4j;
 @UtilityClass
 public class DriverLoader {
 
-  private static final Path DRIVER_DIR =
-      Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
   private static final String PREF_TRUST_DRIVER_DOWNLOADS = "dbseed.trust.driver.downloads";
   private static final Set<String> LOADED_DRIVERS = ConcurrentHashMap.newKeySet();
@@ -77,13 +75,14 @@ public class DriverLoader {
    */
   private static final Map<String, URLClassLoader> LOADED_CLASSLOADERS = new ConcurrentHashMap<>();
 
-  static {
+  private static Path driverDir() {
+    final Path dir = Paths.get(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
     try {
-      Files.createDirectories(DRIVER_DIR);
+      Files.createDirectories(dir);
     } catch (final IOException e) {
-      log.error("Could not create driver folder: {}", DRIVER_DIR, e);
-      throw new DriverInitializationException("Could not create driver folder: " + DRIVER_DIR, e);
+      throw new DriverInitializationException("Could not create driver folder: " + dir, e);
     }
+    return dir;
   }
 
   public static Optional<DriverInfo> selectAndLoadDriver(final Project project) {
@@ -123,7 +122,7 @@ public class DriverLoader {
 
   public static void ensureDriverPresent(final Project project, final DriverInfo info)
       throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
-    final Path jarPath = DRIVER_DIR.resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
+    final Path jarPath = driverDir().resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
     if (!Files.exists(jarPath)) {
       downloadDriver(project, info, jarPath);
@@ -218,12 +217,42 @@ public class DriverLoader {
         new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
     final Class<?> clazz = Class.forName(driverClass, true, cl);
     if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
-      DriverManager.registerDriver(new DriverShim(driver));
-      LOADED_CLASSLOADERS.put(driverClass, cl);
-      log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
+      try {
+        DriverManager.registerDriver(new DriverShim(driver));
+        LOADED_CLASSLOADERS.put(driverClass, cl);
+        log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
+      } catch (final SQLException e) {
+        try { cl.close(); } catch (final IOException ignored) {}
+        throw e;
+      }
     } else {
       cl.close();
       throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
     }
+  }
+
+  public static void deregisterAll() {
+    LOADED_DRIVERS.forEach(driverClass -> {
+      try {
+        var drivers = DriverManager.getDrivers();
+        while (drivers.hasMoreElements()) {
+          var d = drivers.nextElement();
+          if (d instanceof DriverShim shim && shim.driver().getClass().getName().equals(driverClass)) {
+            try {
+              DriverManager.deregisterDriver(shim);
+            } catch (final SQLException e) {
+              log.warn("Could not deregister driver {}: {}", driverClass, e.getMessage());
+            }
+          }
+        }
+      } catch (final Exception e) {
+        log.warn("Error iterating drivers for {}: {}", driverClass, e.getMessage());
+      }
+    });
+    LOADED_DRIVERS.clear();
+    LOADED_CLASSLOADERS.values().forEach(cl -> {
+      try { cl.close(); } catch (final IOException e) { log.warn("Could not close classloader", e); }
+    });
+    LOADED_CLASSLOADERS.clear();
   }
 }

@@ -43,5 +43,6 @@ public record Row(Map<String, Object> values, Set<String> explicitColumns) {
 
   public Row {
     values = Collections.synchronizedMap(new LinkedHashMap<>(values));
+    explicitColumns = Set.copyOf(explicitColumns);
   }
 }

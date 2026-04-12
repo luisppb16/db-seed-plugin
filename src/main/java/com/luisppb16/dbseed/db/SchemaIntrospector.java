@@ -201,13 +201,13 @@ public class SchemaIntrospector {
     final Set<String> pkSet = new LinkedHashSet<>(pkCols);
 
     for (final ColumnRawData raw : rawColumns) {
-      Integer minValue = null;
-      Integer maxValue = null;
+      Double minValue = null;
+      Double maxValue = null;
 
       final double[] bounds = inferBoundsFromChecks(checkConstraints, raw.name());
       if (bounds.length == 2) {
-        minValue = (int) bounds[0];
-        maxValue = (int) bounds[1];
+        minValue = bounds[0];
+        maxValue = bounds[1];
       }
 
       final Set<String> allowedValues = inferAllowedValuesFromChecks(checkConstraints, raw.name());

@@ -80,6 +80,7 @@ import lombok.experimental.UtilityClass;
 public class TopologicalSorter {
 
   public static SortResult sort(List<Table> tables) {
+    if (Objects.isNull(tables) || tables.isEmpty()) return new SortResult(List.of(), List.of());
 
     Map<String, Set<String>> graph = new LinkedHashMap<>();
     tables.forEach(t -> graph.put(t.name(), new LinkedHashSet<>()));
@@ -193,40 +194,60 @@ public class TopologicalSorter {
           .keySet()
           .forEach(
               v -> {
-                if (!indexMap.containsKey(v)) strongConnect(v);
+                if (!indexMap.containsKey(v)) strongConnectIterative(v);
               });
       return result;
     }
 
-    private void strongConnect(String v) {
-      indexMap.put(v, index);
-      lowMap.put(v, index);
-      index++;
-      stack.push(v);
-      onStack.add(v);
+    private void strongConnectIterative(String start) {
+      Deque<TarjanFrame> callStack = new ArrayDeque<>();
+      callStack.push(new TarjanFrame(start, false, null));
 
-      graph
-          .getOrDefault(v, Collections.emptySet())
-          .forEach(
-              w -> {
-                if (!indexMap.containsKey(w)) {
-                  strongConnect(w);
-                  lowMap.put(v, Math.min(lowMap.get(v), lowMap.get(w)));
-                } else if (onStack.contains(w)) {
-                  lowMap.put(v, Math.min(lowMap.get(v), indexMap.get(w)));
-                }
-              });
+      while (!callStack.isEmpty()) {
+        TarjanFrame frame = callStack.pop();
+        String v = frame.node;
 
-      if (Objects.equals(lowMap.get(v), indexMap.get(v))) {
-        Set<String> scc = new LinkedHashSet<>();
-        String w;
-        do {
-          w = stack.pop();
-          onStack.remove(w);
-          scc.add(w);
-        } while (!w.equals(v));
-        result.add(Collections.unmodifiableSet(scc));
+        if (!frame.isReturn) {
+          indexMap.put(v, index);
+          lowMap.put(v, index);
+          index++;
+          stack.push(v);
+          onStack.add(v);
+
+          List<String> neighbors =
+              new ArrayList<>(graph.getOrDefault(v, Collections.emptySet()));
+          callStack.push(new TarjanFrame(v, true, neighbors));
+
+          List<String> unvisited = neighbors.stream()
+              .filter(w -> !indexMap.containsKey(w))
+              .toList();
+          for (int i = unvisited.size() - 1; i >= 0; i--) {
+            callStack.push(new TarjanFrame(unvisited.get(i), false, null));
+          }
+        } else {
+          List<String> neighbors = frame.neighbors;
+          for (String w : neighbors) {
+            if (indexMap.containsKey(w) && indexMap.get(w) > indexMap.get(v)) {
+              lowMap.put(v, Math.min(lowMap.get(v), lowMap.get(w)));
+            } else if (onStack.contains(w)) {
+              lowMap.put(v, Math.min(lowMap.get(v), indexMap.get(w)));
+            }
+          }
+
+          if (Objects.equals(lowMap.get(v), indexMap.get(v))) {
+            Set<String> scc = new LinkedHashSet<>();
+            String w;
+            do {
+              w = stack.pop();
+              onStack.remove(w);
+              scc.add(w);
+            } while (!w.equals(v));
+            result.add(Collections.unmodifiableSet(scc));
+          }
+        }
       }
     }
+
+    private record TarjanFrame(String node, boolean isReturn, List<String> neighbors) {}
   }
 }

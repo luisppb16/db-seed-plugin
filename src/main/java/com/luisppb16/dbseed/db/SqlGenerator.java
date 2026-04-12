@@ -90,8 +90,23 @@ public class SqlGenerator {
 
   private static final Set<String> RESERVED_KEYWORDS =
       Set.of(
-          "select", "from", "where", "group", "order", "limit", "offset", "insert", "update",
-          "delete", "user", "table", "level", "option", "public", "session", "size", "start");
+          "abort", "access", "action", "add", "after", "aggregate", "alias", "all", "alter",
+          "analyze", "and", "as", "asc", "authorization", "between", "binary", "by", "cache",
+          "cascade", "case", "cast", "check", "cluster", "collate", "column", "comment", "commit",
+          "constraint", "copy", "create", "cross", "current", "cursor", "database", "date",
+          "deallocate", "debug", "declare", "default", "deferred", "delete", "desc", "distinct",
+          "do", "double", "drop", "each", "else", "end", "escape", "except", "execute", "exists",
+          "explain", "external", "extract", "false", "fetch", "first", "float", "for", "force",
+          "foreign", "from", "full", "function", "grant", "group", "having", "if", "in", "index",
+          "inner", "insert", "integer", "intersect", "into", "is", "join", "key", "last", "left",
+          "like", "limit", "lock", "match", "max", "merge", "min", "natural", "no", "not", "null",
+          "of", "offset", "on", "only", "option", "or", "order", "outer", "over", "partition",
+          "position", "precision", "primary", "privilege", "public", "range", "read", "real",
+          "recursive", "references", "rename", "restrict", "revoke", "right", "role", "rollback",
+          "row", "rows", "schema", "select", "session", "set", "size", "some", "start", "status",
+          "table", "temporary", "than", "then", "time", "to", "transaction", "trigger", "true",
+          "truncate", "type", "union", "unique", "update", "user", "using", "value", "values",
+          "varchar", "when", "where", "with", "write");
 
   public static String generate(
       Map<Table, List<Row>> data, List<PendingUpdate> updates, boolean deferred) {

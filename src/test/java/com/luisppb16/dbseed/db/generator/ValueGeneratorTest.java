@@ -366,4 +366,17 @@ class ValueGeneratorTest {
   void regexGeneration_invalidPattern_returnsNull() {
     assertThat(gen.generateStringFromRegex("[", 10, Types.VARCHAR)).isNull();
   }
+
+  @Test
+  void decimalBounds_generatesValuesInRange() {
+    final Column c = new Column("c", Types.DECIMAL, null, false, false, false, 5, 2, 1.5, 99.5, Set.of());
+    final ValueGenerator vg = new ValueGenerator(new Faker(), List.of(), true, new HashSet<>(), 2);
+    for (int i = 0; i < 100; i++) {
+      final Object val = vg.generateValue(c, ParsedConstraint.empty(), i);
+      assertThat(val).isNotNull();
+      if (val instanceof Number n) {
+        assertThat(n.doubleValue()).isBetween(1.5, 99.5);
+      }
+    }
+  }
 }

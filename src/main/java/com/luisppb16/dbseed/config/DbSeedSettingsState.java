@@ -13,6 +13,7 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import com.luisppb16.dbseed.model.RepetitionRule;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,13 +106,10 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   @Override
   public void loadState(@NotNull final DbSeedSettingsState state) {
-    XmlSerializerUtil.copyBean(state, this);
-
     this.defaultOutputDirectory =
-        Objects.requireNonNullElse(this.defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
-    if (this.columnSpinnerStep <= 0) {
-      this.columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
-    }
+        Objects.requireNonNullElse(state.defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
+    this.columnSpinnerStep =
+        state.columnSpinnerStep > 0 ? state.columnSpinnerStep : DEFAULT_COLUMN_SPINNER_STEP;
     this.useLatinDictionary = state.useLatinDictionary;
     this.useEnglishDictionary = state.useEnglishDictionary;
     this.useSpanishDictionary = state.useSpanishDictionary;
@@ -132,17 +130,17 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
 
     this.repetitionRules =
-        Objects.nonNull(state.repetitionRules) ? state.repetitionRules : new HashMap<>();
+        Objects.nonNull(state.repetitionRules) ? new HashMap<>(state.repetitionRules) : new HashMap<>();
     this.circularReferences =
-        Objects.nonNull(state.circularReferences) ? state.circularReferences : new HashMap<>();
+        Objects.nonNull(state.circularReferences) ? new HashMap<>(state.circularReferences) : new HashMap<>();
     this.circularReferenceTerminationModes =
         Objects.nonNull(state.circularReferenceTerminationModes)
-            ? state.circularReferenceTerminationModes
+            ? new HashMap<>(state.circularReferenceTerminationModes)
             : new HashMap<>();
   }
 
   public Map<String, List<RepetitionRule>> getRepetitionRules() {
-    return repetitionRules;
+    return Collections.unmodifiableMap(repetitionRules);
   }
 
   public void setRepetitionRules(final Map<String, List<RepetitionRule>> repetitionRules) {
@@ -150,7 +148,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public Map<String, Map<String, Integer>> getCircularReferences() {
-    return circularReferences;
+    return Collections.unmodifiableMap(circularReferences);
   }
 
   public void setCircularReferences(final Map<String, Map<String, Integer>> circularReferences) {
@@ -158,7 +156,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public Map<String, Map<String, String>> getCircularReferenceTerminationModes() {
-    return circularReferenceTerminationModes;
+    return Collections.unmodifiableMap(circularReferenceTerminationModes);
   }
 
   public void setCircularReferenceTerminationModes(

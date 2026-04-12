@@ -331,6 +331,13 @@ public final class RowGenerator {
                         }
                       });
             });
+    if (generatedCount.get() < rowsPerTable) {
+      log.warn(
+          "Could only generate {}/{} rows for table '{}' due to constraint restrictions",
+          generatedCount.get(),
+          rowsPerTable,
+          table.name());
+    }
   }
 
   private Optional<Row> generateAndValidateRow() {
@@ -606,7 +613,8 @@ public final class RowGenerator {
                   if (col.length() > 0 && finalTrimmed.length() > col.length()) {
                     finalTrimmed = finalTrimmed.substring(0, col.length());
                   }
-                  finalValue = finalTrimmed;
+                  final Object parsed = parseValue(finalTrimmed, col);
+                  finalValue = parsed != null ? parsed : finalTrimmed;
                 }
                 synchronized (row) {
                   row.values().put(colName, finalValue);

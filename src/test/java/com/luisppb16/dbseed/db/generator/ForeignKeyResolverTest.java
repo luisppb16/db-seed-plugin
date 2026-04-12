@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.db.generator;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.Mockito.mock;
@@ -375,7 +376,7 @@ class ForeignKeyResolverTest {
   }
 
   @Test
-  void uniqueFk_moreChildrenThanParents_nonNullable_throws() {
+  void uniqueFk_moreChildrenThanParents_nonNullable_returnsNull() {
     final Table parent =
         new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
     final Table child =
@@ -395,20 +396,17 @@ class ForeignKeyResolverTest {
     final Map<String, Table> tableMap = new LinkedHashMap<>();
     tableMap.put("parent", parent);
     tableMap.put("child", child);
-    // ensure parent first
     final Map<Table, List<Row>> data = new LinkedHashMap<>();
     data.put(parent, List.of(p1));
     data.put(child, List.of(c1, c2, c3));
 
-    // 3 children but only 1 parent with unique FK - should throw for non-nullable
-    assertThatThrownBy(
-            () -> {
-              final ForeignKeyResolver resolver =
-                  new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
-              resolver.resolve();
-            })
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Not enough rows");
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
+    resolver.resolve();
+
+    assertThat(c1.values().get("parent_id")).isEqualTo(1);
+    assertThat(c2.values().get("parent_id")).isNull();
+    assertThat(c3.values().get("parent_id")).isNull();
   }
 
   @Test
@@ -567,6 +565,60 @@ class ForeignKeyResolverTest {
         .extracting(
             update -> update.pkValues().get("id"), update -> update.fkValues().get("manager_id"))
         .containsExactly(tuple(1, 2), tuple(2, 3));
+  }
+
+  @Test
+  void circularReferences_depthZero_usesDefaultDepth3() {
+    final Table table =
+        new Table(
+            "users",
+            List.of(intCol("id"), nullableCol("manager_id")),
+            List.of("id"),
+            List.of(new ForeignKey("fk_manager", "users", Map.of("manager_id", "id"), false)),
+            List.of(),
+            List.of());
+
+    final List<Row> rows =
+        List.of(
+            new Row(new LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new LinkedHashMap<>(Map.of("id", 3))));
+
+    final Map<String, Table> tableMap = Map.of("users", table);
+    final Map<Table, List<Row>> data = Map.of(table, rows);
+
+    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 0));
+
+    final ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, true, circularReferences);
+
+    assertThatCode(() -> resolver.resolve()).doesNotThrowAnyException();
+  }
+
+  @Test
+  void circularReferences_depthNegative_usesDefaultDepth3() {
+    final Table table =
+        new Table(
+            "users",
+            List.of(intCol("id"), nullableCol("manager_id")),
+            List.of("id"),
+            List.of(new ForeignKey("fk_manager", "users", Map.of("manager_id", "id"), false)),
+            List.of(),
+            List.of());
+
+    final List<Row> rows =
+        List.of(
+            new Row(new LinkedHashMap<>(Map.of("id", 1))),
+            new Row(new LinkedHashMap<>(Map.of("id", 2))),
+            new Row(new LinkedHashMap<>(Map.of("id", 3))));
+
+    final Map<String, Table> tableMap = Map.of("users", table);
+    final Map<Table, List<Row>> data = Map.of(table, rows);
+
+    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", -5));
+
+    final ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, true, circularReferences);
+
+    assertThatCode(() -> resolver.resolve()).doesNotThrowAnyException();
   }
 }
 

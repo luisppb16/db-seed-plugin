@@ -130,7 +130,7 @@ public class DbSeedSettingsComponent {
     tabbedPane.addTab("Profiles", createProfilesTab());
     tabbedPane.addTab("Dictionaries", createDictionariesTab());
     tabbedPane.addTab("Soft Delete", createSoftDeleteTab());
-    tabbedPane.addTab("AI/Ollama", createAiTab());
+    tabbedPane.addTab("AI", createAiTab());
     tabbedPane.addTab("Advanced", createAdvancedTab());
 
     myMainPanel = new JPanel(new BorderLayout());

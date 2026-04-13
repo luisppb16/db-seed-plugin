@@ -89,9 +89,6 @@ public class DbSeedSettingsComponent {
   private final List<String> originalProfiles = new ArrayList<>();
   private boolean suppressProviderWarning = false;
   private volatile boolean disposed = false;
-
-  private JPanel ollamaServerPanel;
-  private JPanel openRouterServerPanel;
   private JPanel serverCardPanel;
 
   public DbSeedSettingsComponent(final Project project) {
@@ -359,6 +356,8 @@ public class DbSeedSettingsComponent {
   }
 
   private JComponent createAiTab() {
+    JPanel openRouterServerPanel;
+    JPanel ollamaServerPanel;
     final JBLabel description =
         new JBLabel(
             "<html>Use AI to generate context-aware data."
@@ -400,9 +399,11 @@ public class DbSeedSettingsComponent {
             .addLabeledComponent(new JBLabel("Model:"), openRouterModelPanel, 1, false)
             .getPanel();
 
-    // ── Provider dropdown (left-aligned, not stretched) ────────────────
-    final JPanel providerPanel = new JPanel(new BorderLayout());
-    providerPanel.add(myAiProviderDropdown, BorderLayout.WEST);
+    // Keep provider label and dropdown visually together at the left edge.
+    final JPanel providerInlinePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+    providerInlinePanel.setOpaque(false);
+    providerInlinePanel.add(new JBLabel("AI provider:"));
+    providerInlinePanel.add(myAiProviderDropdown);
 
     // ── Card layout for provider switch ──────────────────────────────────
     serverCardPanel = new JPanel(new CardLayout());
@@ -435,7 +436,7 @@ public class DbSeedSettingsComponent {
             .addVerticalGap(12)
             .addComponent(new TitledSeparator("Provider"))
             .addVerticalGap(4)
-            .addLabeledComponent(new JBLabel("AI provider:"), providerPanel, 1, false)
+            .addComponent(providerInlinePanel, 1)
             .addVerticalGap(12)
             .addComponent(new TitledSeparator("Server Configuration"))
             .addVerticalGap(4)

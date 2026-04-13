@@ -124,7 +124,14 @@ public interface AiClient {
             .formatted(contextLine, count, columnName, tableName, sqlType, elementCount);
       } else {
         return "%sGenerate exactly %d unique array values for column \"%s\" (table: %s, type: %s). Format: {el1,el2,el3} with %d elements, up to %d words each. PostgreSQL array syntax. One per line. Raw values only."
-            .formatted(contextLine, count, columnName, tableName, sqlType, elementCount, effectiveWordCount);
+            .formatted(
+                contextLine,
+                count,
+                columnName,
+                tableName,
+                sqlType,
+                elementCount,
+                effectiveWordCount);
       }
     } else {
       if (effectiveWordCount == 1) {
@@ -145,11 +152,14 @@ public interface AiClient {
 
     if (isArrayType) {
       final int elementCount = 3;
-      return count * elementCount * Math.max(batchNumPredictFactor, effectiveWordCount * wordCountPredictMultiplier);
+      return count
+          * elementCount
+          * Math.max(batchNumPredictFactor, effectiveWordCount * wordCountPredictMultiplier);
     } else if (effectiveWordCount == 1) {
       return count * batchNumPredictFactor;
     } else {
-      return count * Math.max(batchNumPredictFactor, effectiveWordCount * wordCountPredictMultiplier);
+      return count
+          * Math.max(batchNumPredictFactor, effectiveWordCount * wordCountPredictMultiplier);
     }
   }
 

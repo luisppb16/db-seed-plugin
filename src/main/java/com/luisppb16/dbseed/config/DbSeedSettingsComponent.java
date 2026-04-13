@@ -105,6 +105,7 @@ public class DbSeedSettingsComponent {
     myAiRequestTimeout.setValue(settings.getAiRequestTimeoutSeconds());
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
+    myAiApplicationContext.setBorder(JBUI.Borders.empty(4));
     myOllamaUrl.setText(settings.getOllamaUrl());
 
     if (Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isEmpty()) {

@@ -263,6 +263,7 @@ public final class RowGenerator {
                       if (generatedRow.isPresent()) {
                         rows.add(generatedRow.get());
                         generatedCount.incrementAndGet();
+                        tracker.advance();
                         break;
                       }
                       attempts++;

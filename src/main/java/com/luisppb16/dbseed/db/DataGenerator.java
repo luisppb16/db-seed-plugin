@@ -33,6 +33,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
@@ -208,14 +209,14 @@ public class DataGenerator {
             tracker);
 
     // Phase 2: Run AI generation with bounded parallelism across AI columns
-    generateAiValues(generators, tracker);
+    generateAiValues(generators, aiWork, tracker);
 
-    tracker.setText("Validating constraints...");
+    tracker.setText("Phase 3/4: Validating constraints...");
     tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
     validateNumericConstraints(
         orderedTables, tableConstraints, data, params.numericScale(), tracker);
 
-    tracker.setText("Resolving foreign keys...");
+    tracker.setText("Phase 4/4: Resolving foreign keys...");
     tracker.setText2("Processing deferred FK dependencies");
     final ForeignKeyResolver fkResolver =
         new ForeignKeyResolver(
@@ -297,11 +298,11 @@ public class DataGenerator {
             i -> {
               final Table table = orderedTables.get(i);
               tracker.setText(
-                  "Generating table "
+                  "Phase 1/4 (Rows): Table "
                       .concat(String.valueOf(i + 1))
                       .concat("/")
                       .concat(String.valueOf(totalTables))
-                      .concat(": ")
+                      .concat(" - ")
                       .concat(table.name()));
               tracker.setText2(
                   table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
@@ -342,7 +343,10 @@ public class DataGenerator {
 
               // Advance by however many rows were actually generated (the RowGenerator
               // already advanced per-row; reconcile any gap if fewer rows were produced).
-              // RowGenerator advances inside fillRemainingRows, so nothing extra here.
+              final int gap = rowsPerTable - rows.size();
+              if (gap > 0) {
+                tracker.advance(gap);
+              }
 
               final long elapsed = System.currentTimeMillis() - startTime;
               tracker.setText2(rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
@@ -353,18 +357,26 @@ public class DataGenerator {
 
   /** Phase 2: Runs AI value generation with bounded parallelism across all selected AI columns. */
   private static void generateAiValues(
-      final List<RowGenerator> generators, final ProgressTracker tracker) {
+      final List<RowGenerator> generators,
+      final long expectedAiWork,
+      final ProgressTracker tracker) {
     final List<RowGenerator> aiGenerators =
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
-    if (aiGenerators.isEmpty()) return;
+    if (aiGenerators.isEmpty()) {
+      tracker.advance(expectedAiWork);
+      return;
+    }
+
+    final AtomicLong actualAiWork = new AtomicLong(0);
 
     final long totalAiColumns =
         aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
     final AtomicInteger completedColumns = new AtomicInteger(0);
+    final long completedBefore = tracker.getCompleted();
     final List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-    tracker.setText("AI column 0/" + totalAiColumns);
+    tracker.setText("Phase 2/4 (AI): Col 0/" + totalAiColumns);
     tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
 
     futures.addAll(
@@ -386,7 +398,7 @@ public class DataGenerator {
                           } finally {
                             final int completed = completedColumns.incrementAndGet();
                             tracker.setText(
-                                "AI column "
+                                "Phase 2/4 (AI): Col "
                                     .concat(String.valueOf(completed))
                                     .concat("/")
                                     .concat(String.valueOf(totalAiColumns)));
@@ -399,6 +411,12 @@ public class DataGenerator {
       CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
     } catch (final Exception ex) {
       log.warn("Some AI column generations failed: {}", ex.getMessage());
+    } finally {
+      final long completedAfter = tracker.getCompleted();
+      final long gap = expectedAiWork - (completedAfter - completedBefore);
+      if (gap > 0) {
+        tracker.advance(gap);
+      }
     }
 
     tracker.setText2("AI generation complete");

@@ -143,8 +143,8 @@ public final class GenerateSeedAction extends AnAction {
                 @Override
                 public void run(@NotNull final ProgressIndicator indicator) {
                   try {
-                    indicator.setIndeterminate(false);
                     indicator.setFraction(0.0);
+                    indicator.setIndeterminate(false);
                     indicator.setText("Preparing generation...");
                     indicator.setText2(
                         tables.size()

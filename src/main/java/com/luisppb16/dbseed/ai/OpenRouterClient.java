@@ -152,7 +152,8 @@ public class OpenRouterClient implements AiClient {
       final int wordCount,
       final int count) {
 
-    final String prompt = AiClient.buildPrompt(applicationContext, tableName, columnName, sqlType, wordCount, count);
+    final String prompt =
+        AiClient.buildPrompt(applicationContext, tableName, columnName, sqlType, wordCount, count);
     final int numPredict = AiClient.computeNumPredict(count, wordCount, sqlType);
 
     try {
@@ -211,7 +212,8 @@ public class OpenRouterClient implements AiClient {
         }
       }
     }
-    throw new RuntimeException("Invalid response from OpenRouter: missing 'choices[0].message.content'");
+    throw new RuntimeException(
+        "Invalid response from OpenRouter: missing 'choices[0].message.content'");
   }
 
   private String buildChatRequestBody(

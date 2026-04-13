@@ -36,18 +36,45 @@ final class IntegrationTestSupport {
 
   static final DriverInfo POSTGRES_DRIVER =
       new DriverInfo(
-          "PostgreSQL", null, null, null, "org.postgresql.Driver",
-          "jdbc:postgresql://localhost/test", false, true, true, true, "postgresql");
+          "PostgreSQL",
+          null,
+          null,
+          null,
+          "org.postgresql.Driver",
+          "jdbc:postgresql://localhost/test",
+          false,
+          true,
+          true,
+          true,
+          "postgresql");
 
   static final DriverInfo MYSQL_DRIVER =
       new DriverInfo(
-          "MySQL", null, null, null, "com.mysql.cj.jdbc.Driver",
-          "jdbc:mysql://localhost/test", false, true, true, false, "mysql");
+          "MySQL",
+          null,
+          null,
+          null,
+          "com.mysql.cj.jdbc.Driver",
+          "jdbc:mysql://localhost/test",
+          false,
+          true,
+          true,
+          false,
+          "mysql");
 
   static final DriverInfo SQLITE_DRIVER =
       new DriverInfo(
-          "SQLite", "org.xerial", "sqlite-jdbc", "3.46.1.3", "org.sqlite.JDBC",
-          "jdbc:sqlite:test.db", false, false, false, false, "sqlite");
+          "SQLite",
+          "org.xerial",
+          "sqlite-jdbc",
+          "3.46.1.3",
+          "org.sqlite.JDBC",
+          "jdbc:sqlite:test.db",
+          false,
+          false,
+          false,
+          false,
+          "sqlite");
 
   private IntegrationTestSupport() {}
 

@@ -11,7 +11,6 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
-import com.intellij.util.xmlb.XmlSerializerUtil;
 import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import java.util.Collections;
@@ -126,8 +125,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
     this.ollamaUrl = Objects.requireNonNullElse(state.ollamaUrl, DEFAULT_OLLAMA_URL);
     this.ollamaModel = Objects.requireNonNullElse(state.ollamaModel, DEFAULT_OLLAMA_MODEL);
-    this.aiProvider =
-        Objects.requireNonNullElse(state.aiProvider, AiProvider.OLLAMA.name());
+    this.aiProvider = Objects.requireNonNullElse(state.aiProvider, AiProvider.OLLAMA.name());
     this.openRouterModel = Objects.requireNonNullElse(state.openRouterModel, "");
     this.openRouterApiKey = Objects.requireNonNullElse(state.openRouterApiKey, "");
 
@@ -138,9 +136,13 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
 
     this.repetitionRules =
-        Objects.nonNull(state.repetitionRules) ? new HashMap<>(state.repetitionRules) : new HashMap<>();
+        Objects.nonNull(state.repetitionRules)
+            ? new HashMap<>(state.repetitionRules)
+            : new HashMap<>();
     this.circularReferences =
-        Objects.nonNull(state.circularReferences) ? new HashMap<>(state.circularReferences) : new HashMap<>();
+        Objects.nonNull(state.circularReferences)
+            ? new HashMap<>(state.circularReferences)
+            : new HashMap<>();
     this.circularReferenceTerminationModes =
         Objects.nonNull(state.circularReferenceTerminationModes)
             ? new HashMap<>(state.circularReferenceTerminationModes)

@@ -23,20 +23,6 @@ public interface AiClient {
           + "Never add introductions, headers, numbering, bullet points, quotes, labels, or explanations. "
           + "Start immediately with the first value.";
 
-  CompletableFuture<Void> ping();
-
-  CompletableFuture<List<String>> listModels();
-
-  CompletableFuture<List<String>> generateBatchValues(
-      @NotNull String applicationContext,
-      @NotNull String tableName,
-      @NotNull String columnName,
-      @NotNull String sqlType,
-      int wordCount,
-      int count);
-
-  CompletableFuture<Void> warmModel();
-
   static String sanitizeAiOutput(final String value, @Nullable final String columnName) {
     if (Objects.isNull(value)) return null;
     String cleaned = value.lines().findFirst().orElse("").trim();
@@ -166,4 +152,18 @@ public interface AiClient {
       return count * Math.max(batchNumPredictFactor, effectiveWordCount * wordCountPredictMultiplier);
     }
   }
+
+  CompletableFuture<Void> ping();
+
+  CompletableFuture<List<String>> listModels();
+
+  CompletableFuture<List<String>> generateBatchValues(
+      @NotNull String applicationContext,
+      @NotNull String tableName,
+      @NotNull String columnName,
+      @NotNull String sqlType,
+      int wordCount,
+      int count);
+
+  CompletableFuture<Void> warmModel();
 }

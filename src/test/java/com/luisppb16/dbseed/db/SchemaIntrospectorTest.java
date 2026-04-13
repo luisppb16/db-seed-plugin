@@ -170,7 +170,8 @@ class SchemaIntrospectorTest {
   void singleFkMapping() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))");
-    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final Table child =
+        findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
     assertThat(child.foreignKeys()).hasSize(1);
     final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.pkTable()).isEqualToIgnoringCase("parent");
@@ -182,7 +183,8 @@ class SchemaIntrospectorTest {
     exec("CREATE TABLE parent (a INT, b INT, PRIMARY KEY (a, b))");
     exec(
         "CREATE TABLE child (id INT PRIMARY KEY, fa INT, fb INT, FOREIGN KEY (fa, fb) REFERENCES parent(a, b))");
-    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final Table child =
+        findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
     final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.columnMapping()).hasSize(2);
   }
@@ -191,7 +193,8 @@ class SchemaIntrospectorTest {
   void fkWithUnique_uniqueOnFkTrue() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT UNIQUE REFERENCES parent(id))");
-    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final Table child =
+        findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
     final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.uniqueOnFk()).isTrue();
   }
@@ -200,7 +203,8 @@ class SchemaIntrospectorTest {
   void fkWithoutUnique() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))");
-    final Table child = findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
+    final Table child =
+        findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD");
     final ForeignKey fk = child.foreignKeys().get(0);
     assertThat(fk.uniqueOnFk()).isFalse();
   }

@@ -147,7 +147,8 @@ public class DataGenerator {
       final String apiKey = loadOpenRouterApiKey();
       aiClient =
           (apiKey != null && !apiKey.isBlank())
-              ? new OpenRouterClient(apiKey, settings.getOpenRouterModel(), settings.getAiRequestTimeoutSeconds())
+              ? new OpenRouterClient(
+                  apiKey, settings.getOpenRouterModel(), settings.getAiRequestTimeoutSeconds())
               : null;
     } else {
       aiClient =
@@ -477,6 +478,10 @@ public class DataGenerator {
             });
   }
 
+  private static String loadOpenRouterApiKey() {
+    return DbSeedSettingsState.getInstance().getOpenRouterApiKey();
+  }
+
   public record GenerationParameters(
       List<Table> tables,
       int rowsPerTable,
@@ -640,8 +645,4 @@ public class DataGenerator {
   }
 
   public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
-
-  private static String loadOpenRouterApiKey() {
-    return DbSeedSettingsState.getInstance().getOpenRouterApiKey();
-  }
 }

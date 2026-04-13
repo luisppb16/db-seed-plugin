@@ -87,7 +87,8 @@ public class DialectFactory {
     String detected = detectDialect(driver);
     String key = Objects.nonNull(detected) ? detected : "standard";
     return DIALECT_CACHE.computeIfAbsent(
-        key, k -> "standard".equals(k) ? new StandardDialect() : new StandardDialect(k + ".properties"));
+        key,
+        k -> "standard".equals(k) ? new StandardDialect() : new StandardDialect(k + ".properties"));
   }
 
   private static String detectDialect(DriverInfo driver) {

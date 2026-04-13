@@ -104,7 +104,8 @@ class ValueGeneratorTest {
 
   @Test
   void decimal_generatesBigDecimal() {
-    final Column c = new Column("c", Types.DECIMAL, null, false, false, false, 10, 2, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.DECIMAL, null, false, false, false, 10, 2, null, null, Set.of());
     assertThat(gen.generateValue(c, noConstraint(), 0)).isInstanceOf(BigDecimal.class);
   }
 
@@ -127,7 +128,8 @@ class ValueGeneratorTest {
 
   @Test
   void uuid_uniqueUuid() {
-    final Column c = new Column("c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of());
     final Object v1 = gen.generateValue(c, noConstraint(), 0);
     final Object v2 = gen.generateValue(c, noConstraint(), 1);
     assertThat(v1).isInstanceOf(UUID.class);
@@ -139,7 +141,17 @@ class ValueGeneratorTest {
     final UUID expected = UUID.randomUUID();
     final Column c =
         new Column(
-            "c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of(expected.toString()));
+            "c",
+            Types.VARCHAR,
+            null,
+            false,
+            false,
+            true,
+            0,
+            0,
+            null,
+            null,
+            Set.of(expected.toString()));
     final Object val = gen.generateValue(c, noConstraint(), 0);
     assertThat(val).isEqualTo(expected);
   }
@@ -148,14 +160,16 @@ class ValueGeneratorTest {
 
   @Test
   void uuid_generatesNew() {
-    final Column c = new Column("c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.VARCHAR, null, false, false, true, 0, 0, null, null, Set.of());
     assertThat(gen.generateValue(c, noConstraint(), 0)).isInstanceOf(UUID.class);
   }
 
   @Test
   void columnAllowedValues() {
     final Column c =
-        new Column("c", Types.VARCHAR, null, false, false, false, 0, 0, null, null, Set.of("a", "b"));
+        new Column(
+            "c", Types.VARCHAR, null, false, false, false, 0, 0, null, null, Set.of("a", "b"));
     final Object val = gen.generateValue(c, noConstraint(), 0);
     assertThat(val).isIn("a", "b");
   }
@@ -194,7 +208,8 @@ class ValueGeneratorTest {
 
   @Test
   void charPadding() {
-    final Column c = new Column("c", Types.CHAR, null, false, false, false, 10, 0, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.CHAR, null, false, false, false, 10, 0, null, null, Set.of());
     final Object val = gen.generateValue(c, noConstraint(), 0);
     if (val instanceof String s) {
       assertThat(s.length()).isEqualTo(10);
@@ -203,7 +218,8 @@ class ValueGeneratorTest {
 
   @Test
   void nullable_sometimesNull() {
-    final Column c = new Column("c", Types.VARCHAR, null, true, false, false, 50, 0, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.VARCHAR, null, true, false, false, 50, 0, null, null, Set.of());
     boolean foundNull = false;
     boolean foundNonNull = false;
     for (int i = 0; i < 100; i++) {
@@ -219,7 +235,8 @@ class ValueGeneratorTest {
 
   @Test
   void nonNullable_neverNull() {
-    final Column c = new Column("c", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
     for (int i = 0; i < 100; i++) {
       assertThat(gen.generateValue(c, noConstraint(), i)).isNotNull();
     }
@@ -247,7 +264,8 @@ class ValueGeneratorTest {
 
   @Test
   void numericBounds_decimal() {
-    final Column c = new Column("c", Types.DECIMAL, null, false, false, false, 10, 2, null, null, Set.of());
+    final Column c =
+        new Column("c", Types.DECIMAL, null, false, false, false, 10, 2, null, null, Set.of());
     final ParsedConstraint pc = new ParsedConstraint(1.0, 10.0, Set.of(), null);
     for (int i = 0; i < 50; i++) {
       final Object val = gen.generateNumericWithinBounds(c, pc);
@@ -369,7 +387,8 @@ class ValueGeneratorTest {
 
   @Test
   void decimalBounds_generatesValuesInRange() {
-    final Column c = new Column("c", Types.DECIMAL, null, false, false, false, 5, 2, 1.5, 99.5, Set.of());
+    final Column c =
+        new Column("c", Types.DECIMAL, null, false, false, false, 5, 2, 1.5, 99.5, Set.of());
     final ValueGenerator vg = new ValueGenerator(new Faker(), List.of(), true, new HashSet<>(), 2);
     for (int i = 0; i < 100; i++) {
       final Object val = vg.generateValue(c, ParsedConstraint.empty(), i);

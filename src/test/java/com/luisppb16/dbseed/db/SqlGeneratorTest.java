@@ -139,7 +139,17 @@ class SqlGeneratorTest {
   void generate_deferred_dialectSpecific() {
     final DriverInfo mysql =
         new DriverInfo(
-            null, null, null, null, "com.mysql.cj.jdbc.Driver", null, false, false, false, false, "mysql");
+            null,
+            null,
+            null,
+            null,
+            "com.mysql.cj.jdbc.Driver",
+            null,
+            false,
+            false,
+            false,
+            false,
+            "mysql");
     final String sql = SqlGenerator.generate(new LinkedHashMap<>(), List.of(), true, mysql);
     assertThat(sql).contains("START TRANSACTION");
   }

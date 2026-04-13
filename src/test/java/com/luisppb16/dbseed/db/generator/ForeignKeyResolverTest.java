@@ -181,7 +181,8 @@ class ForeignKeyResolverTest {
             List.of(),
             List.of(),
             List.of());
-    final ForeignKey mfk = new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), false);
+    final ForeignKey mfk =
+        new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), false);
     final Table child =
         new Table(
             "child",
@@ -289,7 +290,8 @@ class ForeignKeyResolverTest {
             List.of(fk("B", "b_id", "id")),
             List.of(),
             List.of());
-    final Table b = new Table("B", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
+    final Table b =
+        new Table("B", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
 
     final Row rowA = mutableRow("id", 1, "b_id", null);
     final Row rowB = mutableRow("id", 2);
@@ -321,7 +323,8 @@ class ForeignKeyResolverTest {
             List.of(fk("B", "b_id", "id")),
             List.of(),
             List.of());
-    final Table b = new Table("B", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
+    final Table b =
+        new Table("B", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
     final Row rowA = mutableRow("id", 1, "b_id", null);
     final Row rowB = mutableRow("id", 2);
     final Map<String, Table> tableMap = new LinkedHashMap<>();
@@ -332,7 +335,8 @@ class ForeignKeyResolverTest {
     data.put(b, List.of(rowB));
     final ForeignKeyResolver resolver =
         new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
-    // Ya no esperamos excepción, solo que el valor FK siga siendo null o se maneje según la nueva lógica
+    // Ya no esperamos excepción, solo que el valor FK siga siendo null o se maneje según la nueva
+    // lógica
     resolver.resolve();
     assertThat(rowA.values().get("b_id")).isNull();
   }
@@ -432,9 +436,11 @@ class ForeignKeyResolverTest {
     final Map<Table, List<Row>> data = Map.of(table, rows);
 
     // Max depth of 3
-    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 3));
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("users", Map.of("fk_manager", 3));
 
-    final ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, true, circularReferences);
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, circularReferences);
 
     final List<PendingUpdate> updates = resolver.resolve();
 
@@ -470,9 +476,11 @@ class ForeignKeyResolverTest {
     final Map<String, Table> tableMap = Map.of("users", table);
     final Map<Table, List<Row>> data = Map.of(table, rows);
 
-    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 2));
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("users", Map.of("fk_manager", 2));
 
-    final ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, false, circularReferences);
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, circularReferences);
 
     final List<PendingUpdate> updates = resolver.resolve();
 
@@ -513,7 +521,8 @@ class ForeignKeyResolverTest {
 
     final Map<String, Table> tableMap = Map.of("users", table);
     final Map<Table, List<Row>> data = Map.of(table, rows);
-    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 3));
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("users", Map.of("fk_manager", 3));
     final Map<String, Map<String, String>> terminationModes =
         Map.of("users", Map.of("fk_manager", CircularReferenceTerminationMode.NULL_FK.name()));
 
@@ -549,7 +558,8 @@ class ForeignKeyResolverTest {
 
     final Map<String, Table> tableMap = Map.of("users", table);
     final Map<Table, List<Row>> data = Map.of(table, rows);
-    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 3));
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("users", Map.of("fk_manager", 3));
     final Map<String, Map<String, String>> terminationModes =
         Map.of("users", Map.of("fk_manager", CircularReferenceTerminationMode.NULL_FK.name()));
 
@@ -587,9 +597,11 @@ class ForeignKeyResolverTest {
     final Map<String, Table> tableMap = Map.of("users", table);
     final Map<Table, List<Row>> data = Map.of(table, rows);
 
-    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", 0));
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("users", Map.of("fk_manager", 0));
 
-    final ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, true, circularReferences);
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, circularReferences);
 
     assertThatCode(() -> resolver.resolve()).doesNotThrowAnyException();
   }
@@ -614,11 +626,12 @@ class ForeignKeyResolverTest {
     final Map<String, Table> tableMap = Map.of("users", table);
     final Map<Table, List<Row>> data = Map.of(table, rows);
 
-    final Map<String, Map<String, Integer>> circularReferences = Map.of("users", Map.of("fk_manager", -5));
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("users", Map.of("fk_manager", -5));
 
-    final ForeignKeyResolver resolver = new ForeignKeyResolver(tableMap, data, true, circularReferences);
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, circularReferences);
 
     assertThatCode(() -> resolver.resolve()).doesNotThrowAnyException();
   }
 }
-

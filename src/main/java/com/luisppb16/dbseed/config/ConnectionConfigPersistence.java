@@ -12,6 +12,8 @@ import com.intellij.credentialStore.CredentialAttributesKt;
 import com.intellij.credentialStore.Credentials;
 import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.openapi.project.Project;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.experimental.UtilityClass;
@@ -36,19 +38,21 @@ public class ConnectionConfigPersistence {
     }
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
+    List<ConnectionProfile> mutableProfiles = new ArrayList<>(state.getProfiles());
+    mutableProfiles.removeIf(p -> p == null || !p.hasValidName());
 
     final ConnectionProfile profile =
-        state.getProfiles().stream()
+        mutableProfiles.stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
             .findFirst()
             .orElseGet(
                 () -> {
                   final ConnectionProfile newProfile = new ConnectionProfile();
                   newProfile.setName(normalizedProfileName);
-                  state.getProfiles().add(newProfile);
+                  mutableProfiles.add(newProfile);
                   return newProfile;
                 });
+    state.setProfiles(mutableProfiles);
 
     profile.setUrl(config.url());
     profile.setUser(config.user());
@@ -82,9 +86,12 @@ public class ConnectionConfigPersistence {
     }
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
+    List<ConnectionProfile> mutableProfiles = new ArrayList<>(state.getProfiles());
+    mutableProfiles.removeIf(p -> p == null || !p.hasValidName());
+    state.setProfiles(mutableProfiles);
+
     final Optional<ConnectionProfile> profileOpt =
-        state.getProfiles().stream()
+        mutableProfiles.stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
             .findFirst();
 

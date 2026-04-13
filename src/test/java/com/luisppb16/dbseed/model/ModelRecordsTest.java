@@ -66,7 +66,11 @@ class ModelRecordsTest {
     mutable.add(new Column("a", 4, null, true, false, false, 0, 0, null, null, Set.of()));
     final Table t = new Table("t", mutable, List.of(), List.of(), List.of(), List.of());
     // El IDE recomienda que la lambda tenga solo una invocación que pueda lanzar excepción
-    assertThatThrownBy(() -> { t.columns().add(new Column("b", 4, null, true, false, false, 0, 0, null, null, Set.of())); })
+    assertThatThrownBy(
+            () -> {
+              t.columns()
+                  .add(new Column("b", 4, null, true, false, false, 0, 0, null, null, Set.of()));
+            })
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
@@ -101,7 +105,8 @@ class ModelRecordsTest {
   @Test
   void column_nullName_throwsNPE() {
     assertThatNullPointerException()
-        .isThrownBy(() -> new Column(null, 4, null, true, false, false, 0, 0, null, null, Set.of()));
+        .isThrownBy(
+            () -> new Column(null, 4, null, true, false, false, 0, 0, null, null, Set.of()));
   }
 
   @Test
@@ -146,7 +151,10 @@ class ModelRecordsTest {
     final Map<String, String> mutable = new HashMap<>(Map.of("a", "b"));
     final ForeignKey fk = new ForeignKey("fk", "p", mutable, false);
     // El IDE recomienda que la lambda tenga solo una invocación que pueda lanzar excepción
-    assertThatThrownBy(() -> { fk.columnMapping().put("c", "d"); })
+    assertThatThrownBy(
+            () -> {
+              fk.columnMapping().put("c", "d");
+            })
         .isInstanceOf(UnsupportedOperationException.class);
   }
 

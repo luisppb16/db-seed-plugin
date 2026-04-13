@@ -16,6 +16,7 @@ import com.intellij.util.xmlb.XmlSerializerUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
@@ -26,11 +27,17 @@ import org.jetbrains.annotations.Nullable;
 @State(name = "DbSeedProjectState", storages = @Storage(StoragePathMacros.WORKSPACE_FILE))
 public class DbSeedProjectState implements PersistentStateComponent<DbSeedProjectState> {
 
+  @Setter(AccessLevel.NONE)
   private List<ConnectionProfile> profiles = new ArrayList<>();
+
   private String activeProfileName = "";
 
   public static DbSeedProjectState getInstance(@NotNull Project project) {
     return project.getService(DbSeedProjectState.class);
+  }
+
+  public void setProfiles(List<ConnectionProfile> profiles) {
+    this.profiles = profiles == null ? new ArrayList<>() : new ArrayList<>(profiles);
   }
 
   @Nullable

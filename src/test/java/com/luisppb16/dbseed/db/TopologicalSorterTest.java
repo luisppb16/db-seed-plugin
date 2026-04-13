@@ -208,13 +208,20 @@ class TopologicalSorterTest {
     final List<Table> tables = new ArrayList<>();
     for (int i = 0; i < depth; i++) {
       final String name = "t" + i;
-      final List<ForeignKey> fks = i > 0
-          ? List.of(new ForeignKey(null, "t" + (i - 1), Map.of("fk_id", "id"), false))
-          : List.of();
-      tables.add(new Table(name,
-          List.of(new Column("id", 4, null, false, true, false, 0, 0, null, null, Set.of()),
-              new Column("fk_id", 4, null, true, false, false, 0, 0, null, null, Set.of())),
-          List.of("id"), fks, List.of(), List.of()));
+      final List<ForeignKey> fks =
+          i > 0
+              ? List.of(new ForeignKey(null, "t" + (i - 1), Map.of("fk_id", "id"), false))
+              : List.of();
+      tables.add(
+          new Table(
+              name,
+              List.of(
+                  new Column("id", 4, null, false, true, false, 0, 0, null, null, Set.of()),
+                  new Column("fk_id", 4, null, true, false, false, 0, 0, null, null, Set.of())),
+              List.of("id"),
+              fks,
+              List.of(),
+              List.of()));
     }
     final SortResult sort = TopologicalSorter.sort(tables);
     assertThat(sort.ordered()).hasSize(depth);

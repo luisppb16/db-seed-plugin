@@ -71,8 +71,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
             mySettingsComponent.getAiApplicationContext(), settings.getAiApplicationContext())
         || !Objects.equals(mySettingsComponent.getOllamaUrl(), settings.getOllamaUrl())
         || !Objects.equals(mySettingsComponent.getOllamaModel(), settings.getOllamaModel())
-        || !Objects.equals(
-            mySettingsComponent.getOpenRouterModel(), settings.getOpenRouterModel())
+        || !Objects.equals(mySettingsComponent.getOpenRouterModel(), settings.getOpenRouterModel())
         || !Objects.equals(
             mySettingsComponent.getOpenRouterApiKey(), settings.getOpenRouterApiKey())
         || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
@@ -148,9 +147,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
                   ? pingError.get().getCause()
                   : pingError.get();
           throw new ConfigurationException(
-              "Could not validate OpenRouter API key.\n\n"
-                  + "Error: "
-                  + cause.getMessage(),
+              "Could not validate OpenRouter API key.\n\n" + "Error: " + cause.getMessage(),
               "OpenRouter Connection Error");
         }
       }

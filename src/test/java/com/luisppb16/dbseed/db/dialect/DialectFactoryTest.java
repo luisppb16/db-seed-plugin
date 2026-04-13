@@ -42,7 +42,10 @@ class DialectFactoryTest {
   @ParameterizedTest
   @MethodSource("dialectCases")
   void resolve_loadsCorrectProperties(
-      final String dialect, final String expectedQuoteStart, final String expectedTrue, final String expectedFalse) {
+      final String dialect,
+      final String expectedQuoteStart,
+      final String expectedTrue,
+      final String expectedFalse) {
     DatabaseDialect d = DialectFactory.resolve(driver(dialect));
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("col")).startsWith(expectedQuoteStart);
@@ -56,7 +59,17 @@ class DialectFactoryTest {
   void resolve_explicitDialect_overridesAutoDetection() {
     final DriverInfo info =
         new DriverInfo(
-            null, null, null, null, "com.mysql.cj.jdbc.Driver", null, false, false, false, false, "oracle");
+            null,
+            null,
+            null,
+            null,
+            "com.mysql.cj.jdbc.Driver",
+            null,
+            false,
+            false,
+            false,
+            false,
+            "oracle");
     final DatabaseDialect d = DialectFactory.resolve(info);
     assertThat(d.quote("col")).isEqualTo("\"COL\"");
   }

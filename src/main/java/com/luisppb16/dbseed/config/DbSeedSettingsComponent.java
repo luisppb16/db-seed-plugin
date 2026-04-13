@@ -57,21 +57,17 @@ public class DbSeedSettingsComponent {
   private static final String CARD_OPENROUTER = "OPENROUTER";
 
   private final JPanel myMainPanel = new JPanel(new BorderLayout());
-  private boolean suppressProviderWarning = false;
   private final JSpinner myColumnSpinnerStep = new JSpinner(new SpinnerNumberModel(1, 1, 10, 1));
   private final TextFieldWithBrowseButton myDefaultOutputDirectory =
       new TextFieldWithBrowseButton();
-
   private final JBCheckBox myUseLatinDictionary =
       new JBCheckBox("Use Latin dictionary (Faker default)");
   private final JBCheckBox myUseEnglishDictionary = new JBCheckBox("Use English dictionary");
   private final JBCheckBox myUseSpanishDictionary = new JBCheckBox("Use Spanish dictionary");
-
   private final JBTextField mySoftDeleteColumns = new JBTextField();
   private final JBCheckBox mySoftDeleteUseSchemaDefault =
       new JBCheckBox("Use schema default value");
   private final JBTextField mySoftDeleteValue = new JBTextField();
-
   private final JBCheckBox myUseAiGeneration = new JBCheckBox("Enable AI-based data generation");
   private final ComboBox<AiProvider> myAiProviderDropdown = new ComboBox<>(AiProvider.values());
   private final JBTextField myOllamaUrl = new JBTextField();
@@ -91,6 +87,7 @@ public class DbSeedSettingsComponent {
   private final CollectionListModel<String> myProfilesModel = new CollectionListModel<>();
   private final JBList<String> myProfilesList = new JBList<>(myProfilesModel);
   private final List<String> originalProfiles = new ArrayList<>();
+  private boolean suppressProviderWarning = false;
   private volatile boolean disposed = false;
 
   private JPanel ollamaServerPanel;
@@ -124,7 +121,8 @@ public class DbSeedSettingsComponent {
       myOllamaModelDropdown.addItem(settings.getOllamaModel());
       myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
     }
-    if (Objects.nonNull(settings.getOpenRouterModel()) && !settings.getOpenRouterModel().isEmpty()) {
+    if (Objects.nonNull(settings.getOpenRouterModel())
+        && !settings.getOpenRouterModel().isEmpty()) {
       myOpenRouterModelDropdown.addItem(settings.getOpenRouterModel());
       myOpenRouterModelDropdown.setSelectedItem(settings.getOpenRouterModel());
     }
@@ -141,20 +139,23 @@ public class DbSeedSettingsComponent {
 
     myAiProviderDropdown.setMaximumRowCount(AiProvider.values().length);
     myAiProviderDropdown.setAlignmentX(JComponent.LEFT_ALIGNMENT);
-    myAiProviderDropdown.addActionListener(e -> {
-      switchProviderCard();
-      if (!suppressProviderWarning) {
-        AiProvider selected = (AiProvider) myAiProviderDropdown.getSelectedItem();
-        if (selected == AiProvider.OPENROUTER) {
-          ApplicationManager.getApplication().invokeLater(() ->
-              Messages.showWarningDialog(
-                  DbSeedSettingsComponent.this.myMainPanel,
-                  "OpenRouter free-tier limits are very low and may be insufficient for data generation.\n\n"
-                      + "If you are on the free tier, it is recommended to use Ollama instead.",
-                  "OpenRouter Free-Tier Warning"));
-        }
-      }
-    });
+    myAiProviderDropdown.addActionListener(
+        e -> {
+          switchProviderCard();
+          if (!suppressProviderWarning) {
+            AiProvider selected = (AiProvider) myAiProviderDropdown.getSelectedItem();
+            if (selected == AiProvider.OPENROUTER) {
+              ApplicationManager.getApplication()
+                  .invokeLater(
+                      () ->
+                          Messages.showWarningDialog(
+                              DbSeedSettingsComponent.this.myMainPanel,
+                              "OpenRouter free-tier limits are very low and may be insufficient for data generation.\n\n"
+                                  + "If you are on the free tier, it is recommended to use Ollama instead.",
+                              "OpenRouter Free-Tier Warning"));
+            }
+          }
+        });
 
     updateAiFieldsEnabled(settings.isUseAiGeneration());
     myUseAiGeneration.addActionListener(e -> updateAiFieldsEnabled(myUseAiGeneration.isSelected()));

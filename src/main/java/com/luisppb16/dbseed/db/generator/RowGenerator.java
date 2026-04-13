@@ -262,7 +262,12 @@ public final class RowGenerator {
                       final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
                       if (generatedRow.isPresent()) {
                         rows.add(generatedRow.get());
-                        generatedCount.incrementAndGet();
+                        final int count = generatedCount.incrementAndGet();
+                        tracker.advance(); // 1 work unit per row generated
+                        if (count % 50 == 0) {
+                          tracker.setText2(
+                              "Row " + count + "/" + rowsPerTable + " for " + table.name());
+                        }
                         break;
                       }
                       attempts++;

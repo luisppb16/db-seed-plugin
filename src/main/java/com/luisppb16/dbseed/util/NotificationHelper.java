@@ -47,7 +47,8 @@ public class NotificationHelper {
 
   static {
     NOTIFICATION_GROUP =
-        NotificationGroupManager.getInstance().getNotificationGroup(Constant.NOTIFICATION_ID.getValue());
+        NotificationGroupManager.getInstance()
+            .getNotificationGroup(Constant.NOTIFICATION_ID.getValue());
   }
 
   public static void notifyError(@Nullable final Project project, @NotNull final String message) {

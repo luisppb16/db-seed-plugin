@@ -98,6 +98,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private static final String TREAT_AS_UUID_PREFIX = "Treat as UUID: ";
   private static final String IS_TABLE_PROPERTY = "isTable";
   private static final String LABEL_DISABLED_FOREGROUND = "Label.disabledForeground";
+  private static final int TABLE_HEADER_GAP = 5;
 
   private final List<Table> tables;
   private final GenerationConfig initialConfig;
@@ -117,6 +118,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   private final Map<String, Set<String>> aiColumnsByTable = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> aiCheckBoxes = new LinkedHashMap<>();
+  private final Map<String, JCheckBox> aiTableCheckBoxes = new LinkedHashMap<>();
 
   private final Map<String, Map<String, JCheckBox>> pkCheckBoxes = new LinkedHashMap<>();
   private final Map<String, Map<String, JCheckBox>> excludeCheckBoxes = new LinkedHashMap<>();
@@ -631,10 +633,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
           warningLabel.setVisible(false);
           tableWarningLabels.put(table.name(), warningLabel);
 
-          final JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-          headerPanel.setOpaque(false);
-          headerPanel.add(tblBox);
-          headerPanel.add(warningLabel);
+          final JPanel headerPanel = createTableHeaderPanel(tblBox, warningLabel);
 
           final List<JCheckBox> currentTableColumnBoxes = new ArrayList<>();
           table
@@ -692,6 +691,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       }
     }
 
+    updateAiTableCheckBox(tableName);
     updateWarningLabels();
   }
 
@@ -738,7 +738,32 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       onExcludeBoxChanged(tableName, colName != null ? colName : colBox.getText(), isSelected);
     }
 
+    // Sync the AI table-level checkbox
+    final JCheckBox aiTblBox = aiTableCheckBoxes.get(tableName);
+    if (Objects.nonNull(aiTblBox)) {
+      if (isSelected) {
+        aiTblBox.setEnabled(false);
+        aiTblBox.setSelected(false);
+      } else {
+        aiTblBox.setEnabled(true);
+        updateAiTableCheckBox(tableName);
+      }
+    }
+
     updateWarningLabels();
+  }
+
+  private JPanel createTableHeaderPanel(final JCheckBox tableCheckBox, final JComponent accessory) {
+    final JPanel headerPanel = new JPanel();
+    headerPanel.setOpaque(false);
+    headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.X_AXIS));
+    headerPanel.setBorder(JBUI.Borders.empty());
+    headerPanel.add(tableCheckBox);
+    if (Objects.nonNull(accessory)) {
+      headerPanel.add(Box.createHorizontalStrut(TABLE_HEADER_GAP));
+      headerPanel.add(accessory);
+    }
+    return headerPanel;
   }
 
   private JPanel createTablePanel(JComponent header, List<JCheckBox> columnBoxes) {
@@ -973,9 +998,10 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
             return;
           }
 
-          final JLabel tblLabel = new JLabel(table.name());
-          tblLabel.setFont(tblLabel.getFont().deriveFont(Font.BOLD));
-          tblLabel.setBorder(JBUI.Borders.emptyBottom(4));
+          final JCheckBox tblBox = new JCheckBox(table.name());
+          tblBox.putClientProperty(IS_TABLE_PROPERTY, true);
+          tblBox.setFont(tblBox.getFont().deriveFont(Font.BOLD));
+          aiTableCheckBoxes.put(table.name(), tblBox);
 
           final List<JCheckBox> tableBoxes = new ArrayList<>();
           stringColumns.forEach(
@@ -1010,12 +1036,26 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                     .computeIfAbsent(table.name(), k -> new LinkedHashMap<>())
                     .put(column.name(), box);
                 box.addActionListener(
-                    e -> onAiBoxChanged(table.name(), column.name(), box.isSelected()));
+                    e -> {
+                      onAiBoxChanged(table.name(), column.name(), box.isSelected());
+                      updateAiTableCheckBox(table.name());
+                    });
                 tableBoxes.add(box);
                 checkBoxes.add(box);
               });
 
-          listPanel.add(createTablePanel(tblLabel, tableBoxes), c);
+          // Set initial state of table checkbox based on column checkboxes
+          final List<JCheckBox> enabledBoxes =
+              tableBoxes.stream().filter(Component::isEnabled).toList();
+          tblBox.setSelected(
+              !enabledBoxes.isEmpty()
+                  && enabledBoxes.stream().allMatch(AbstractButton::isSelected));
+
+          tblBox.addActionListener(
+              e -> onTableAiBoxChanged(table.name(), tblBox.isSelected(), tableBoxes));
+          checkBoxes.add(tblBox);
+
+          listPanel.add(createTablePanel(createTableHeaderPanel(tblBox, null), tableBoxes), c);
           c.gridy++;
         });
 
@@ -1029,6 +1069,30 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     } else {
       aiColumnsByTable.get(tableName).remove(columnName);
     }
+  }
+
+  private void onTableAiBoxChanged(
+      String tableName, boolean isSelected, List<JCheckBox> columnBoxes) {
+    for (final JCheckBox colBox : columnBoxes) {
+      if (colBox.isEnabled()) {
+        colBox.setSelected(isSelected);
+        final String colName = (String) colBox.getClientProperty("columnName");
+        onAiBoxChanged(tableName, colName != null ? colName : colBox.getText(), isSelected);
+      }
+    }
+  }
+
+  private void updateAiTableCheckBox(String tableName) {
+    final JCheckBox tblBox = aiTableCheckBoxes.get(tableName);
+    if (Objects.isNull(tblBox)) {
+      return;
+    }
+    final Map<String, JCheckBox> colBoxes =
+        aiCheckBoxes.getOrDefault(tableName, Collections.emptyMap());
+    final List<JCheckBox> enabledBoxes =
+        colBoxes.values().stream().filter(Component::isEnabled).toList();
+    tblBox.setSelected(
+        !enabledBoxes.isEmpty() && enabledBoxes.stream().allMatch(AbstractButton::isSelected));
   }
 
   public Map<String, Set<String>> getAiColumnsByTable() {

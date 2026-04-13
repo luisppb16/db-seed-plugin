@@ -349,6 +349,23 @@ public class DbSeedSettingsComponent {
     timeoutDesc.setFont(JBUI.Fonts.smallFont());
     timeoutDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
+    final JPanel serverConfigPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
+            .getPanel();
+
+    final JPanel aiBehaviorPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent(new JBLabel("Words per value:"), myAiWordCount, 1, false)
+            .addComponent(wordCountDesc, 0)
+            .addVerticalGap(8)
+            .addLabeledComponent(new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
+            .addComponent(timeoutDesc, 0)
+            .getPanel();
+
+    final JPanel contextPanel = FormBuilder.createFormBuilder()
+            .addLabeledComponent(new JBLabel("Domain description:"), contextScrollPane, 1, false)
+            .getPanel();
+
     final JPanel panel =
         FormBuilder.createFormBuilder()
             .addComponent(description)
@@ -356,21 +373,15 @@ public class DbSeedSettingsComponent {
             .addVerticalGap(12)
             .addComponent(new TitledSeparator("Server Configuration"))
             .addVerticalGap(4)
-            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
+            .addComponent(serverConfigPanel)
             .addVerticalGap(12)
             .addComponent(new TitledSeparator("AI Behavior"))
             .addVerticalGap(4)
-            .addLabeledComponent(new JBLabel("Words per value:"), myAiWordCount, 1, false)
-            .addComponent(wordCountDesc, 0)
-            .addVerticalGap(8)
-            .addLabeledComponent(
-                new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
-            .addComponent(timeoutDesc, 0)
+            .addComponent(aiBehaviorPanel)
             .addVerticalGap(12)
             .addComponent(new TitledSeparator("Application Context"))
             .addVerticalGap(4)
-            .addLabeledComponent(new JBLabel("Domain description:"), contextScrollPane, 1, false)
+            .addComponent(contextPanel)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
 

@@ -90,7 +90,6 @@ public class RepetitionRulesPanel extends JPanel {
 
   private static final String STRATEGY_CONSTANT_RANDOM = "Constant (Random)";
   private static final String STRATEGY_CONSTANT_VALUE = "Constant (Value)";
-  private static final String REGEX_VALID_TITLE = "Regex Validation";
   private static final String REGEX_INVALID_TITLE = "Regex Validation Error";
   private static final int MIN_DIALOG_WIDTH_WITH_OVERRIDE = 980;
 
@@ -576,14 +575,6 @@ public class RepetitionRulesPanel extends JPanel {
       gbc.fill = GridBagConstraints.HORIZONTAL;
       panel.add(patternField, gbc);
 
-      final JButton validateButton = new JButton("Validate Regex");
-      validateButton.addActionListener(e -> validatePattern());
-
-      gbc.gridx = 2;
-      gbc.weightx = 0;
-      gbc.fill = GridBagConstraints.NONE;
-      panel.add(validateButton, gbc);
-
       return panel;
     }
 
@@ -610,25 +601,6 @@ public class RepetitionRulesPanel extends JPanel {
         return "";
       }
       return pt;
-    }
-
-    private void validatePattern() {
-      final String candidate = getPattern().trim();
-      if (candidate.isEmpty()) {
-        Messages.showInfoMessage(
-            getContentPane(),
-            "Regex is empty (it will clear the current regex).",
-            REGEX_VALID_TITLE);
-        return;
-      }
-
-      try {
-        Pattern.compile(candidate);
-        Messages.showInfoMessage(getContentPane(), "Regex is valid.", REGEX_VALID_TITLE);
-      } catch (final PatternSyntaxException ex) {
-        Messages.showErrorDialog(
-            getContentPane(), "Invalid regex pattern: " + ex.getDescription(), REGEX_INVALID_TITLE);
-      }
     }
   }
 }

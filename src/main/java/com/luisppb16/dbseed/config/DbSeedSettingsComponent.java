@@ -350,20 +350,24 @@ public class DbSeedSettingsComponent {
     timeoutDesc.setFont(JBUI.Fonts.smallFont());
     timeoutDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
-    final JPanel serverConfigPanel = FormBuilder.createFormBuilder()
+    final JPanel serverConfigPanel =
+        FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
             .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
             .getPanel();
 
-    final JPanel aiBehaviorPanel = FormBuilder.createFormBuilder()
+    final JPanel aiBehaviorPanel =
+        FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("Words per value:"), myAiWordCount, 1, false)
             .addComponent(wordCountDesc, 0)
             .addVerticalGap(8)
-            .addLabeledComponent(new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
+            .addLabeledComponent(
+                new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
             .addComponent(timeoutDesc, 0)
             .getPanel();
 
-    final JPanel contextPanel = FormBuilder.createFormBuilder()
+    final JPanel contextPanel =
+        FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("Domain description:"), contextScrollPane, 1, false)
             .getPanel();
 

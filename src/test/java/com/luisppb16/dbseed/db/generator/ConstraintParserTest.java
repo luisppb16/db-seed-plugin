@@ -92,7 +92,8 @@ class ConstraintParserTest {
   @Test
   void range_multipleTighteningBounds() {
     final ConstraintParser parser = new ConstraintParser("x");
-    final ParsedConstraint result = parser.parse(List.of(ce("x >= 10"), ce("x <= 50"), ce("x >= 20")), 0);
+    final ParsedConstraint result =
+        parser.parse(List.of(ce("x >= 10"), ce("x <= 50"), ce("x >= 20")), 0);
     assertThat(result.min()).isEqualTo(20.0);
     assertThat(result.max()).isEqualTo(50.0);
   }

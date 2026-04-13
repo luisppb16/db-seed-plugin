@@ -60,7 +60,8 @@ class RowGeneratorTest {
         new ProgressTracker(null, 0));
   }
 
-  private RowGenerator generator(final Table table, final int rowCount, final Set<String> excluded) {
+  private RowGenerator generator(
+      final Table table, final int rowCount, final Set<String> excluded) {
     return new RowGenerator(
         table,
         rowCount,
@@ -124,7 +125,8 @@ class RowGeneratorTest {
 
   @Test
   void integerPk_unique() {
-    final Table t = new Table("t", List.of(intPk("id")), List.of("id"), List.of(), List.of(), List.of());
+    final Table t =
+        new Table("t", List.of(intPk("id")), List.of("id"), List.of(), List.of(), List.of());
     final List<Row> rows = generator(t, 20).generate();
     final Set<Object> pkValues = new HashSet<>();
     for (final Row r : rows) {
@@ -315,7 +317,8 @@ class RowGeneratorTest {
             new ProgressTracker(null, 0));
     final List<Row> rows = gen.generate();
     // First 3 rows should have type=fixed
-    final long fixedCount = rows.stream().filter(r -> "fixed".equals(r.values().get("type"))).count();
+    final long fixedCount =
+        rows.stream().filter(r -> "fixed".equals(r.values().get("type"))).count();
     assertThat(fixedCount).isGreaterThanOrEqualTo(3);
   }
 

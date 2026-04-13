@@ -157,7 +157,8 @@ class DataGeneratorTest {
         new Table(
             "t",
             List.of(
-                new Column("id", Types.VARCHAR, null, false, true, false, 36, 0, null, null, Set.of()),
+                new Column(
+                    "id", Types.VARCHAR, null, false, true, false, 36, 0, null, null, Set.of()),
                 varcharCol("name")),
             List.of("id"),
             List.of(),
@@ -295,7 +296,9 @@ class DataGeneratorTest {
     Table t =
         new Table(
             "t",
-            List.of(new Column("val", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of())),
+            List.of(
+                new Column(
+                    "val", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of())),
             List.of(),
             List.of(),
             List.of("val BETWEEN 10 AND 20"),
@@ -392,7 +395,8 @@ class DataGeneratorTest {
 
   @Test
   void numericScale_defaultScale2_producesTwoDecimals() {
-    Column decCol = new Column("amount", Types.DECIMAL, null, false, false, false, 8, 0, null, null, Set.of());
+    Column decCol =
+        new Column("amount", Types.DECIMAL, null, false, false, false, 8, 0, null, null, Set.of());
     Table t = new Table("t", List.of(decCol), List.of(), List.of(), List.of(), List.of());
 
     GenerationParameters params =
@@ -417,7 +421,8 @@ class DataGeneratorTest {
 
   @Test
   void numericValidation_constrainedValues_withinBounds() {
-    Column intCol = new Column("score", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
+    Column intCol =
+        new Column("score", Types.INTEGER, null, false, false, false, 0, 0, null, null, Set.of());
     Table t =
         new Table(
             "t",

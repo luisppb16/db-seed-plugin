@@ -214,13 +214,11 @@ public class TopologicalSorter {
           stack.push(v);
           onStack.add(v);
 
-          List<String> neighbors =
-              new ArrayList<>(graph.getOrDefault(v, Collections.emptySet()));
+          List<String> neighbors = new ArrayList<>(graph.getOrDefault(v, Collections.emptySet()));
           callStack.push(new TarjanFrame(v, true, neighbors));
 
-          List<String> unvisited = neighbors.stream()
-              .filter(w -> !indexMap.containsKey(w))
-              .toList();
+          List<String> unvisited =
+              neighbors.stream().filter(w -> !indexMap.containsKey(w)).toList();
           for (int i = unvisited.size() - 1; i >= 0; i--) {
             callStack.push(new TarjanFrame(unvisited.get(i), false, null));
           }

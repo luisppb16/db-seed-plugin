@@ -24,22 +24,26 @@ class OllamaClientTest {
 
     @Test
     void httpProtocol_preserved() {
-      assertThat(OllamaClient.normalizeUrl("http://myserver:1234")).isEqualTo("http://myserver:1234");
+      assertThat(OllamaClient.normalizeUrl("http://myserver:1234"))
+          .isEqualTo("http://myserver:1234");
     }
 
     @Test
     void httpsProtocol_preserved() {
-      assertThat(OllamaClient.normalizeUrl("https://myserver:1234")).isEqualTo("https://myserver:1234");
+      assertThat(OllamaClient.normalizeUrl("https://myserver:1234"))
+          .isEqualTo("https://myserver:1234");
     }
 
     @Test
     void trailingSlash_removed() {
-      assertThat(OllamaClient.normalizeUrl("http://localhost:11434/")).isEqualTo("http://localhost:11434");
+      assertThat(OllamaClient.normalizeUrl("http://localhost:11434/"))
+          .isEqualTo("http://localhost:11434");
     }
 
     @Test
     void alreadyNormalized_unchanged() {
-      assertThat(OllamaClient.normalizeUrl("http://localhost:11434")).isEqualTo("http://localhost:11434");
+      assertThat(OllamaClient.normalizeUrl("http://localhost:11434"))
+          .isEqualTo("http://localhost:11434");
     }
   }
 

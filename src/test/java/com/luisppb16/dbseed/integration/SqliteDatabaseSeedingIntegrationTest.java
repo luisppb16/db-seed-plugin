@@ -360,8 +360,17 @@ class SqliteDatabaseSeedingIntegrationTest {
   void testDriverLoader_invalidCoordinatesFailDuringDownload() throws Exception {
     final DriverInfo invalidDriver =
         new DriverInfo(
-            "Invalid JDBC", "invalid.group", "missing-driver", "0.0.0", "invalid.Driver",
-            "jdbc:invalid://localhost/test", false, false, false, false, "standard");
+            "Invalid JDBC",
+            "invalid.group",
+            "missing-driver",
+            "0.0.0",
+            "invalid.Driver",
+            "jdbc:invalid://localhost/test",
+            false,
+            false,
+            false,
+            false,
+            "standard");
 
     final Path cachedJar =
         Path.of(

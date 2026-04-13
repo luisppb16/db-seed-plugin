@@ -122,7 +122,8 @@ public class DriverLoader {
 
   public static void ensureDriverPresent(final Project project, final DriverInfo info)
       throws IOException, ReflectiveOperationException, URISyntaxException, SQLException {
-    final Path jarPath = driverDir().resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
+    final Path jarPath =
+        driverDir().resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
     if (!Files.exists(jarPath)) {
       downloadDriver(project, info, jarPath);
@@ -222,7 +223,10 @@ public class DriverLoader {
         LOADED_CLASSLOADERS.put(driverClass, cl);
         log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
       } catch (final SQLException e) {
-        try { cl.close(); } catch (final IOException ignored) {}
+        try {
+          cl.close();
+        } catch (final IOException ignored) {
+        }
         throw e;
       }
     } else {
@@ -232,27 +236,36 @@ public class DriverLoader {
   }
 
   public static void deregisterAll() {
-    LOADED_DRIVERS.forEach(driverClass -> {
-      try {
-        var drivers = DriverManager.getDrivers();
-        while (drivers.hasMoreElements()) {
-          var d = drivers.nextElement();
-          if (d instanceof DriverShim shim && shim.driver().getClass().getName().equals(driverClass)) {
-            try {
-              DriverManager.deregisterDriver(shim);
-            } catch (final SQLException e) {
-              log.warn("Could not deregister driver {}: {}", driverClass, e.getMessage());
+    LOADED_DRIVERS.forEach(
+        driverClass -> {
+          try {
+            var drivers = DriverManager.getDrivers();
+            while (drivers.hasMoreElements()) {
+              var d = drivers.nextElement();
+              if (d instanceof DriverShim shim
+                  && shim.driver().getClass().getName().equals(driverClass)) {
+                try {
+                  DriverManager.deregisterDriver(shim);
+                } catch (final SQLException e) {
+                  log.warn("Could not deregister driver {}: {}", driverClass, e.getMessage());
+                }
+              }
             }
+          } catch (final Exception e) {
+            log.warn("Error iterating drivers for {}: {}", driverClass, e.getMessage());
           }
-        }
-      } catch (final Exception e) {
-        log.warn("Error iterating drivers for {}: {}", driverClass, e.getMessage());
-      }
-    });
+        });
     LOADED_DRIVERS.clear();
-    LOADED_CLASSLOADERS.values().forEach(cl -> {
-      try { cl.close(); } catch (final IOException e) { log.warn("Could not close classloader", e); }
-    });
+    LOADED_CLASSLOADERS
+        .values()
+        .forEach(
+            cl -> {
+              try {
+                cl.close();
+              } catch (final IOException e) {
+                log.warn("Could not close classloader", e);
+              }
+            });
     LOADED_CLASSLOADERS.clear();
   }
 }

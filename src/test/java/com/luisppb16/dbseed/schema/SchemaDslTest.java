@@ -96,7 +96,8 @@ class SchemaDslTest {
 
   @Test
   void toSql_multipleTables() {
-    final Schema s = schema(table("a", column("x", SqlType.INT)), table("b", column("y", SqlType.TEXT)));
+    final Schema s =
+        schema(table("a", column("x", SqlType.INT)), table("b", column("y", SqlType.TEXT)));
     final String sql = toSql(s);
     assertThat(sql).contains("CREATE TABLE \"a\"");
     assertThat(sql).contains("CREATE TABLE \"b\"");

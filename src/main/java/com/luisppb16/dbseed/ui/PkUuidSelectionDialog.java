@@ -409,11 +409,13 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     // Section header
     final JBLabel softDeleteTitle = new JBLabel("Soft delete configuration");
     softDeleteTitle.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
+    softDeleteTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
     softDeleteSection.add(softDeleteTitle);
     softDeleteSection.add(Box.createVerticalStrut(12));
 
     // Columns field
     final JPanel columnsPanel = new JPanel(new BorderLayout(8, 0));
+    columnsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
     columnsPanel.setOpaque(false);
     final JBLabel columnsLabel = new JBLabel("Columns:");
     columnsLabel.setPreferredSize(JBUI.size(140, -1));
@@ -423,11 +425,19 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     softDeleteSection.add(Box.createVerticalStrut(8));
 
     // Schema default checkbox
-    softDeleteSection.add(softDeleteUseSchemaDefaultBox);
+    final JPanel checkboxPanel = new JPanel(new BorderLayout(8, 0));
+    checkboxPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+    checkboxPanel.setOpaque(false);
+    final JBLabel emptyLabel = new JBLabel("");
+    emptyLabel.setPreferredSize(JBUI.size(140, -1));
+    checkboxPanel.add(emptyLabel, BorderLayout.WEST);
+    checkboxPanel.add(softDeleteUseSchemaDefaultBox, BorderLayout.CENTER);
+    softDeleteSection.add(checkboxPanel);
     softDeleteSection.add(Box.createVerticalStrut(8));
 
     // Value field
     final JPanel valuePanel = new JPanel(new BorderLayout(8, 0));
+    valuePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
     valuePanel.setOpaque(false);
     final JBLabel valueLabel = new JBLabel("Value:");
     valueLabel.setPreferredSize(JBUI.size(140, -1));
@@ -438,6 +448,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     // Status indicator with restore button
     final JPanel statusPanel = new JPanel(new BorderLayout());
+    statusPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
     statusPanel.setOpaque(false);
     final JBLabel statusLabel = new JBLabel("Using global settings");
     statusLabel.setFont(JBUI.Fonts.smallFont());
@@ -456,11 +467,13 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     // Section header
     final JBLabel numericTitle = new JBLabel("Numeric configuration");
     numericTitle.setFont(JBUI.Fonts.label().deriveFont(Font.BOLD, 13f));
+    numericTitle.setAlignmentX(Component.LEFT_ALIGNMENT);
     numericSection.add(numericTitle);
     numericSection.add(Box.createVerticalStrut(12));
 
     // Scale spinner
     final JPanel scalePanel = new JPanel(new BorderLayout(8, 0));
+    scalePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
     scalePanel.setOpaque(false);
     final JBLabel scaleLabel = new JBLabel("Decimal scale:");
     scaleLabel.setPreferredSize(JBUI.size(140, -1));
@@ -477,6 +490,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         new JBLabel("Applied to DECIMAL/NUMERIC columns without explicit scale");
     scaleTooltip.setFont(JBUI.Fonts.smallFont());
     scaleTooltip.setForeground(UIManager.getColor(LABEL_DISABLED_FOREGROUND));
+    scaleTooltip.setAlignmentX(Component.LEFT_ALIGNMENT);
     numericSection.add(scaleTooltip);
 
     // === Main panel ===

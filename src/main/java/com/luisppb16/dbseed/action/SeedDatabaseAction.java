@@ -410,7 +410,8 @@ public final class SeedDatabaseAction extends AnAction {
 
   private void handleException(final Project project, final String message, final Exception ex) {
     log.error(message, ex);
-    final String fullMessage = message + ex.getMessage();
+    final String detail = Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
+    final String fullMessage = message + detail;
     ApplicationManager.getApplication()
         .invokeLater(
             () -> Messages.showErrorDialog(project, fullMessage, "DBSeed Error"),

@@ -252,8 +252,12 @@ public final class GenerateSeedAction extends AnAction {
   private void handleException(final Project project, final Exception ex) {
     final String message =
         switch (ex) {
-          case SQLException sqlEx -> "Database Error: " + sqlEx.getMessage();
-          default -> "An unexpected error occurred: " + ex.getMessage();
+          case SQLException sqlEx ->
+              "Database Error: "
+                  + Objects.toString(sqlEx.getMessage(), sqlEx.getClass().getSimpleName());
+          default ->
+              "An unexpected error occurred: "
+                  + Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
         };
     log.error("Error during seed SQL generation.", ex);
 

@@ -28,6 +28,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -115,7 +116,9 @@ public class DriverLoader {
       return Optional.of(chosenDriver);
     } catch (final Exception ex) {
       log.error("Error selecting/loading driver", ex);
-      NotificationHelper.notifyError(project, "Error loading driver: " + ex.getMessage());
+      final String msg =
+          Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
+      NotificationHelper.notifyError(project, "Error loading driver: " + msg);
       return Optional.empty();
     }
   }
@@ -160,6 +163,13 @@ public class DriverLoader {
     try (final InputStream in = new URI(url).toURL().openStream()) {
       Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
       log.info("Driver downloaded to: {}", target);
+    } catch (final IOException e) {
+      try {
+        Files.deleteIfExists(target);
+      } catch (final IOException ignored) {
+        log.warn("Could not delete partial download: {}", target);
+      }
+      throw e;
     }
   }
 

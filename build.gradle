@@ -7,7 +7,7 @@
 
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.13.1'
+    id 'org.jetbrains.intellij.platform' version '2.14.0'
     id 'jacoco'
 }
 
@@ -24,6 +24,19 @@ sourceSets {
 
 group = 'com.LuisPPB16'
 version = '1.3.6.1'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
 
 intellijPlatform {
     buildSearchableOptions = false
@@ -81,20 +94,6 @@ dependencies {
     testImplementation 'org.xerial:sqlite-jdbc:3.47.2.0'
 }
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-    withSourcesJar()
-    withJavadocJar()
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-    options.release = 21
-}
-
-
 test {
     useJUnitPlatform()
     testLogging {
@@ -102,11 +101,9 @@ test {
     }
 
     // Avoid noisy CDS warnings triggered by IntelliJ test classloader configuration.
-    jvmArgs(
-            '-Xshare:off',
+    jvmArgs('-Xshare:off',
             '-Dcom.mysql.cj.disableAbandonedConnectionCleanup=true',
-            '-Dpgjdbc.config.cleanup.thread.ttl=1'
-    )
+            '-Dpgjdbc.config.cleanup.thread.ttl=1')
 
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)

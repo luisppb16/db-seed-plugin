@@ -155,7 +155,7 @@ public final class ForeignKeyResolver {
     }
 
     if (!uniqueKeysOnFks.isEmpty()) {
-      handleUniqueFkResolution(table, rows, uniqueKeysOnFks);
+      handleUniqueFkResolution(table, rows, uniqueKeysOnFks, circularFks);
     } else {
       rows.forEach(
           row ->
@@ -205,6 +205,8 @@ public final class ForeignKeyResolver {
           fk.columnMapping()
               .forEach((fkCol, pkCol) -> row.values().put(fkCol, parentRow.values().get(pkCol)));
         } else {
+          final Map<String, Object> pkVals = new LinkedHashMap<>();
+          table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
           final Map<String, Object> fkVals = new LinkedHashMap<>();
           fk.columnMapping()
               .forEach(
@@ -212,8 +214,6 @@ public final class ForeignKeyResolver {
                     fkVals.put(fkCol, parentRow.values().get(pkCol));
                     row.values().put(fkCol, null);
                   });
-          final Map<String, Object> pkVals = new LinkedHashMap<>();
-          table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
           updates.add(new PendingUpdate(table.name(), fkVals, pkVals));
         }
       }
@@ -241,24 +241,39 @@ public final class ForeignKeyResolver {
   }
 
   private void handleUniqueFkResolution(
-      final Table table, final List<Row> rows, final List<List<String>> uniqueKeysOnFks) {
+      final Table table,
+      final List<Row> rows,
+      final List<List<String>> uniqueKeysOnFks,
+      final List<ForeignKey> circularFks) {
+    final Set<String> circularFkCols =
+        circularFks.stream()
+            .flatMap(fk -> fk.columnMapping().keySet().stream())
+            .collect(Collectors.toSet());
     final Set<String> usedCombinations = new HashSet<>();
     final int maxAttempts = MAX_UNIQUE_FK_ATTEMPTS_FACTOR * rows.size();
 
     rows.forEach(
-        row ->
-            findUniqueFkCombination(table, uniqueKeysOnFks, usedCombinations, maxAttempts)
-                .ifPresent(fkValues -> row.values().putAll(fkValues)));
+        row -> {
+          if (!circularFkCols.isEmpty()) {
+            final Map<String, Object> circularValues = new LinkedHashMap<>();
+            circularFkCols.forEach(col -> circularValues.put(col, row.values().get(col)));
+            addUniqueCombinationsToSet(uniqueKeysOnFks, circularValues, usedCombinations);
+          }
+          findUniqueFkCombination(table, uniqueKeysOnFks, usedCombinations, maxAttempts, circularFkCols)
+              .ifPresent(fkValues -> row.values().putAll(fkValues));
+        });
   }
 
   private Optional<Map<String, Object>> findUniqueFkCombination(
       final Table table,
       final List<List<String>> uniqueKeysOnFks,
       final Set<String> usedCombinations,
-      final int maxAttempts) {
+      final int maxAttempts,
+      final Set<String> circularFkCols) {
 
     for (int attempt = 0; attempt < maxAttempts; attempt++) {
-      final Map<String, Object> potentialFkValues = generatePotentialFkValues(table);
+      final Map<String, Object> potentialFkValues =
+          generatePotentialFkValues(table, circularFkCols);
 
       if (!potentialFkValues.isEmpty()
           && !isUniqueFkCollision(uniqueKeysOnFks, potentialFkValues, usedCombinations)) {
@@ -269,8 +284,11 @@ public final class ForeignKeyResolver {
     return Optional.empty();
   }
 
-  private Map<String, Object> generatePotentialFkValues(final Table table) {
-    return table.foreignKeys().stream()
+  private Map<String, Object> generatePotentialFkValues(
+      final Table table, final Set<String> circularFkCols) {
+    final Map<String, Object> result = new LinkedHashMap<>();
+    table.foreignKeys().stream()
+        .filter(fk -> !circularFkCols.containsAll(fk.columnMapping().keySet()))
         .map(
             fk -> {
               final Table parent = tableMap.get(fk.pkTable());
@@ -292,8 +310,18 @@ public final class ForeignKeyResolver {
               return values;
             })
         .filter(m -> !m.isEmpty())
-        .flatMap(m -> m.entrySet().stream())
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
+        .forEach(
+            m ->
+                m.forEach(
+                    (col, val) -> {
+                      if (result.containsKey(col)) {
+                        log.warn(
+                            "Multiple FKs map to column '{}'; keeping first value.", col);
+                      } else {
+                        result.put(col, val);
+                      }
+                    }));
+    return result;
   }
 
   private boolean isUniqueFkCollision(
@@ -392,6 +420,8 @@ public final class ForeignKeyResolver {
             table.name(),
             parent.name());
       }
+      final Map<String, Object> pkVals = new LinkedHashMap<>();
+      table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
       final Map<String, Object> fkVals = new LinkedHashMap<>();
       fk.columnMapping()
           .forEach(
@@ -399,8 +429,6 @@ public final class ForeignKeyResolver {
                 fkVals.put(fkCol, parentRow.values().get(pkCol));
                 row.values().put(fkCol, null);
               });
-      final Map<String, Object> pkVals = new LinkedHashMap<>();
-      table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
       updates.add(new PendingUpdate(table.name(), fkVals, pkVals));
     }
   }

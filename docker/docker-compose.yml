@@ -1,22 +1,27 @@
 services:
   postgresql:
-    image: bitnami/postgresql:latest
+    image: postgres:16
     container_name: postgres
     restart: unless-stopped
     environment:
-      POSTGRESQL_USERNAME: admin
-      POSTGRESQL_PASSWORD: admin
-      POSTGRESQL_DATABASE: test
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: test
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/bitnami/postgresql
-      - ./initdb/schema_Postgres.sql:/docker-entrypoint-initdb.d/schema_Postgres.sql
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb/schema_Postgres.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d test" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - db_net
 
   mysql:
-    image: mysql/mysql-server:8.0
+    image: mysql:8.0
     container_name: mysql
     restart: unless-stopped
     environment:
@@ -28,7 +33,12 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./initdb/schema_MySQL.sql:/docker-entrypoint-initdb.d/schema_MySQL.sql
+      - ./initdb/schema_MySQL.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - db_net
 
@@ -37,15 +47,15 @@ services:
     container_name: sqlite
     restart: unless-stopped
     user: root
-    environment:
-      SQLITE_USER: admin
-      SQLITE_DATABASE: test
     volumes:
-      - ./sqlite_data:/var/lib/sqlite
-      - ./initdb/schema_SQLite.sql:/docker-entrypoint-initdb.d/schema_SQLite.sql
+      - ./initdb/schema_SQLite.sql:/tmp/schema.sql
+      - sqlite_data:/var/lib/sqlite
     entrypoint: ""
     command: >
-      sh -c 'sqlite3 /var/lib/sqlite/test.db < /docker-entrypoint-initdb.d/schema_SQLite.sql &&
+      sh -c 'if [ ! -f /var/lib/sqlite/.initialized ]; then
+        sqlite3 /var/lib/sqlite/test.db < /tmp/schema.sql &&
+        touch /var/lib/sqlite/.initialized;
+      fi &&
       chmod -R 777 /var/lib/sqlite &&
       tail -f /dev/null'
     networks:
@@ -54,6 +64,7 @@ services:
 volumes:
   postgres_data: { }
   mysql_data: { }
+  sqlite_data: { }
 
 networks:
   db_net:

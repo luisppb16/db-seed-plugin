@@ -29,6 +29,7 @@ import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -337,11 +338,12 @@ public final class SeedDialog extends DialogWrapper {
     if (project == null) return;
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     final List<ConnectionProfile> validProfiles =
-        state.getProfiles().stream()
-            .filter(Objects::nonNull)
-            .filter(ConnectionProfile::hasValidName)
-            .peek(p -> p.setName(p.getName().trim()))
-            .toList();
+        new ArrayList<>(
+            state.getProfiles().stream()
+                .filter(Objects::nonNull)
+                .filter(ConnectionProfile::hasValidName)
+                .peek(p -> p.setName(p.getName().trim()))
+                .toList());
     if (validProfiles.size() != state.getProfiles().size()) {
       state.setProfiles(validProfiles);
     }
@@ -366,7 +368,10 @@ public final class SeedDialog extends DialogWrapper {
 
   @Override
   protected @NotNull JComponent createCenterPanel() {
-    return createFormPanel();
+    final JPanel wrapper = new JPanel(new BorderLayout());
+    wrapper.add(createFormPanel(), BorderLayout.CENTER);
+    wrapper.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
+    return wrapper;
   }
 
   private JPanel createFormPanel() {

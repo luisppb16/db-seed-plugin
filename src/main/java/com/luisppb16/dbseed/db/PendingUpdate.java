@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.db;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Immutable record representing a pending foreign key update operation in the DBSeed plugin
@@ -44,6 +45,7 @@ import java.util.Map;
 public record PendingUpdate(
     String table, Map<String, Object> fkValues, Map<String, Object> pkValues) {
   public PendingUpdate {
+    Objects.requireNonNull(table, "Table name cannot be null");
     fkValues = Map.copyOf(fkValues);
     pkValues = Map.copyOf(pkValues);
   }

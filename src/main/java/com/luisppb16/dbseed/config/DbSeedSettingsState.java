@@ -97,6 +97,13 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         "DbSeedSettingsState service not found. Plugin might be improperly installed.");
   }
 
+  private static <V> Map<String, Map<String, V>> deepCopy(
+      final Map<String, Map<String, V>> source) {
+    final Map<String, Map<String, V>> copy = new HashMap<>();
+    source.forEach((key, value) -> copy.put(key, new HashMap<>(value)));
+    return copy;
+  }
+
   @Nullable
   @Override
   public DbSeedSettingsState getState() {
@@ -134,11 +141,11 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
             : new HashMap<>();
     this.circularReferences =
         Objects.nonNull(state.circularReferences)
-            ? new HashMap<>(state.circularReferences)
+            ? deepCopy(state.circularReferences)
             : new HashMap<>();
     this.circularReferenceTerminationModes =
         Objects.nonNull(state.circularReferenceTerminationModes)
-            ? new HashMap<>(state.circularReferenceTerminationModes)
+            ? deepCopy(state.circularReferenceTerminationModes)
             : new HashMap<>();
   }
 
@@ -147,7 +154,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public void setRepetitionRules(final Map<String, List<RepetitionRule>> repetitionRules) {
-    this.repetitionRules = repetitionRules;
+    this.repetitionRules = new HashMap<>(repetitionRules);
   }
 
   public Map<String, Map<String, Integer>> getCircularReferences() {
@@ -155,7 +162,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public void setCircularReferences(final Map<String, Map<String, Integer>> circularReferences) {
-    this.circularReferences = circularReferences;
+    this.circularReferences = deepCopy(circularReferences);
   }
 
   public Map<String, Map<String, String>> getCircularReferenceTerminationModes() {
@@ -164,6 +171,6 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
   public void setCircularReferenceTerminationModes(
       final Map<String, Map<String, String>> circularReferenceTerminationModes) {
-    this.circularReferenceTerminationModes = circularReferenceTerminationModes;
+    this.circularReferenceTerminationModes = deepCopy(circularReferenceTerminationModes);
   }
 }

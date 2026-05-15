@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -62,11 +62,9 @@ public record Table(
    * WeakHashMap so entries are automatically removed when Table instances are GC'd. These caches do
    * not participate in equals/hashCode (which is correct since they are derived data).
    */
-  private static final Map<Table, Map<String, Column>> COLUMN_MAP_CACHE =
-      Collections.synchronizedMap(new WeakHashMap<>());
+  private static final Map<Table, Map<String, Column>> COLUMN_MAP_CACHE = new ConcurrentHashMap<>();
 
-  private static final Map<Table, Set<String>> FK_COLUMN_NAMES_CACHE =
-      Collections.synchronizedMap(new WeakHashMap<>());
+  private static final Map<Table, Set<String>> FK_COLUMN_NAMES_CACHE = new ConcurrentHashMap<>();
 
   public Table {
     Objects.requireNonNull(name, "Table name cannot be null.");

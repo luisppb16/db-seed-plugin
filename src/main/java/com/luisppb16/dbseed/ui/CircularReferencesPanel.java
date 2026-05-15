@@ -126,9 +126,9 @@ public class CircularReferencesPanel extends JPanel {
   private void addFkRow(
       final Table table, final ForeignKey fk, final JPanel fksPanel, final GridBagConstraints cc) {
     final Map<String, Integer> savedTableConfig =
-        savedConfig.getOrDefault(table.name(), new HashMap<>());
+        new HashMap<>(savedConfig.getOrDefault(table.name(), Map.of()));
     final Map<String, String> savedTableModes =
-        savedTerminationModes.getOrDefault(table.name(), new HashMap<>());
+        new HashMap<>(savedTerminationModes.getOrDefault(table.name(), Map.of()));
     final Integer savedDepth = savedTableConfig.get(fk.name());
     final boolean isEnabled = savedDepth != null;
     final boolean supportsNullTermination = supportsNullTermination(table, fk);

@@ -190,6 +190,21 @@ class SchemaIntrospectorTest {
   }
 
   @Test
+  void compositeFk_columnMappingValues() throws SQLException {
+    exec("CREATE TABLE parent_comp (a INT, b INT, PRIMARY KEY (a, b))");
+    exec(
+        "CREATE TABLE child_comp (id INT PRIMARY KEY, fa INT, fb INT, "
+            + "CONSTRAINT fk_comp FOREIGN KEY (fa, fb) REFERENCES parent_comp(a, b))");
+    final Table child =
+        findTable(SchemaIntrospector.introspect(conn, "PUBLIC", h2Dialect), "CHILD_COMP");
+    assertThat(child.foreignKeys()).hasSize(1);
+    final ForeignKey fk = child.foreignKeys().get(0);
+    assertThat(fk.columnMapping()).hasSize(2);
+    assertThat(fk.columnMapping()).containsEntry("FA", "A");
+    assertThat(fk.columnMapping()).containsEntry("FB", "B");
+  }
+
+  @Test
   void fkWithUnique_uniqueOnFkTrue() throws SQLException {
     exec("CREATE TABLE parent (id INT PRIMARY KEY)");
     exec("CREATE TABLE child (id INT PRIMARY KEY, parent_id INT UNIQUE REFERENCES parent(id))");

@@ -52,6 +52,10 @@ public record ForeignKey(
     Objects.requireNonNull(pkTable, "The primary table name (pkTable) cannot be null.");
     Objects.requireNonNull(columnMapping, "The column mapping cannot be null.");
 
+    if (columnMapping.isEmpty()) {
+      throw new IllegalArgumentException("Foreign key column mapping cannot be empty.");
+    }
+
     columnMapping = Map.copyOf(columnMapping);
 
     if (Objects.isNull(name) || name.isBlank()) {

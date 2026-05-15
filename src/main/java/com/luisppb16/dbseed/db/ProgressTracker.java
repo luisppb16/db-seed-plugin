@@ -50,7 +50,8 @@ public final class ProgressTracker {
   public void advance(final long units) {
     if (Objects.isNull(indicator) || units <= 0) return;
     final long now = completed.addAndGet(units);
-    indicator.setFraction(Math.min((double) now / totalWork, 1.0));
+    final double fraction = Math.max(0.0, Math.min((double) now / totalWork, 1.0));
+    indicator.setFraction(fraction);
   }
 
   /** Convenience shorthand — advance by one unit. */

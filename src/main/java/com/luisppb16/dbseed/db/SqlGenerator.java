@@ -253,6 +253,11 @@ public class SqlGenerator {
       List<PendingUpdate> updates,
       boolean deferred,
       DriverInfo driverInfo) {
+    final boolean hasData = data != null && !data.isEmpty();
+    final boolean hasUpdates = updates != null && !updates.isEmpty();
+    if (!deferred && !hasData && !hasUpdates) {
+      return "";
+    }
     final StringBuilder sb = new StringBuilder();
     final DatabaseDialect dialect = DialectFactory.resolve(driverInfo);
     final SqlOptions opts = new SqlOptions(true);
@@ -262,7 +267,9 @@ public class SqlGenerator {
       sb.append(dialect.disableConstraints());
     }
 
-    generateInsertStatements(sb, data, opts, dialect);
+    if (hasData) {
+      generateInsertStatements(sb, data, opts, dialect);
+    }
     generateUpdateStatements(sb, updates, opts, dialect);
 
     if (deferred) {
@@ -300,44 +307,48 @@ public class SqlGenerator {
       final List<PendingUpdate> updates,
       final SqlOptions opts,
       final DatabaseDialect dialect) {
-    if (Objects.nonNull(updates) && !updates.isEmpty()) {
-      updates.forEach(
-          update -> {
-            final String tableName = qualified(opts, update.table(), dialect);
-
-            final String setPart =
-                update.fkValues().entrySet().stream()
-                    .map(
-                        e -> {
-                          StringBuilder valSb = new StringBuilder();
-                          dialect.formatValue(e.getValue(), valSb);
-                          return qualified(opts, e.getKey(), dialect)
-                              .concat(SQL_EQUALS)
-                              .concat(valSb.toString());
-                        })
-                    .collect(Collectors.joining(SQL_COMMA_SPACE));
-
-            final String wherePart =
-                update.pkValues().entrySet().stream()
-                    .map(
-                        e -> {
-                          StringBuilder valSb = new StringBuilder();
-                          dialect.formatValue(e.getValue(), valSb);
-                          return qualified(opts, e.getKey(), dialect)
-                              .concat(SQL_EQUALS)
-                              .concat(valSb.toString());
-                        })
-                    .collect(Collectors.joining(SQL_AND));
-
-            sb.append(SQL_UPDATE)
-                .append(tableName)
-                .append(SQL_SET)
-                .append(setPart)
-                .append(SQL_WHERE)
-                .append(wherePart)
-                .append(SQL_STATEMENT_END);
-          });
+    if (updates == null || updates.isEmpty()) {
+      return;
     }
+    updates.forEach(
+        update -> {
+          if (update.fkValues().isEmpty() || update.pkValues().isEmpty()) {
+            return;
+          }
+          final String tableName = qualified(opts, update.table(), dialect);
+
+          final String setPart =
+              update.fkValues().entrySet().stream()
+                  .map(
+                      e -> {
+                        StringBuilder valSb = new StringBuilder();
+                        dialect.formatValue(e.getValue(), valSb);
+                        return qualified(opts, e.getKey(), dialect)
+                            .concat(SQL_EQUALS)
+                            .concat(valSb.toString());
+                      })
+                  .collect(Collectors.joining(SQL_COMMA_SPACE));
+
+          final String wherePart =
+              update.pkValues().entrySet().stream()
+                  .map(
+                      e -> {
+                        StringBuilder valSb = new StringBuilder();
+                        dialect.formatValue(e.getValue(), valSb);
+                        return qualified(opts, e.getKey(), dialect)
+                            .concat(SQL_EQUALS)
+                            .concat(valSb.toString());
+                      })
+                  .collect(Collectors.joining(SQL_AND));
+
+          sb.append(SQL_UPDATE)
+              .append(tableName)
+              .append(SQL_SET)
+              .append(setPart)
+              .append(SQL_WHERE)
+              .append(wherePart)
+              .append(SQL_STATEMENT_END);
+        });
   }
 
   private static String qualified(

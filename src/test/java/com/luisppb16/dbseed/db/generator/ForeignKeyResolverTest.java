@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 class ForeignKeyResolverTest {
 
   private static Column intCol(final String name) {
-    return new Column(name, 4, null, true, false, false, 0, 0, null, null, Set.of());
+    return new Column(name, 4, null, false, false, false, 0, 0, null, null, Set.of());
   }
 
   private static Column nullableCol(final String name) {
@@ -140,7 +140,7 @@ class ForeignKeyResolverTest {
   }
 
   @Test
-  void emptyParentRows_null() {
+  void emptyParentRows_nullable_setsNull() {
     final Table parent =
         new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
     final Table child =
@@ -161,14 +161,44 @@ class ForeignKeyResolverTest {
     data.put(parent, List.of());
     data.put(child, List.of(childRow));
 
-    // Empty parent rows causes IllegalArgumentException from ThreadLocalRandom.nextInt(0)
+    // Empty parent rows with nullable FK: gracefully sets FK to null
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
+    resolver.resolve();
+    assertThat(childRow.values().get("parent_id")).isNull();
+  }
+
+  @Test
+  void emptyParentRows_nonNullable_throws() {
+    final Table parent =
+        new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
+    final Table child =
+        new Table(
+            "child",
+            List.of(intCol("id"), intCol("parent_id")),
+            List.of("id"),
+            List.of(fk("parent", "parent_id", "id")),
+            List.of(),
+            List.of());
+
+    final Row childRow = mutableRow("id", 1, "parent_id", 99);
+
+    final Map<String, Table> tableMap = new LinkedHashMap<>();
+    tableMap.put("parent", parent);
+    tableMap.put("child", child);
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(parent, List.of());
+    data.put(child, List.of(childRow));
+
+    // Empty parent rows with non-nullable FK: throws IllegalStateException
     assertThatThrownBy(
             () -> {
               final ForeignKeyResolver resolver =
                   new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
               resolver.resolve();
             })
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("parent");
   }
 
   @Test
@@ -633,5 +663,304 @@ class ForeignKeyResolverTest {
         new ForeignKeyResolver(tableMap, data, true, circularReferences);
 
     assertThatCode(() -> resolver.resolve()).doesNotThrowAnyException();
+  }
+
+  // ── Composite FK Tests ──
+
+  @Test
+  void multiColumnFk_deferredMode() {
+    final Table parent =
+        new Table(
+            "parent",
+            List.of(intCol("pk1"), intCol("pk2")),
+            List.of("pk1", "pk2"),
+            List.of(),
+            List.of(),
+            List.of());
+    final ForeignKey mfk =
+        new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), false);
+    final Table child =
+        new Table(
+            "child",
+            List.of(intCol("id"), intCol("fk1"), intCol("fk2")),
+            List.of("id"),
+            List.of(mfk),
+            List.of(),
+            List.of());
+
+    final Row parentRow = mutableRow("pk1", 10, "pk2", 20);
+    final Row childRow = mutableRow("id", 1, "fk1", null, "fk2", null);
+
+    final Map<String, Table> tableMap =
+        new LinkedHashMap<>(Map.of("parent", parent, "child", child));
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(parent, List.of(parentRow));
+    data.put(child, List.of(childRow));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, Collections.emptyMap());
+    final List<PendingUpdate> updates = resolver.resolve();
+
+    assertThat(updates).isEmpty();
+    assertThat(childRow.values().get("fk1")).isEqualTo(10);
+    assertThat(childRow.values().get("fk2")).isEqualTo(20);
+  }
+
+  @Test
+  void multiColumnFk_pendingUpdate_preservesPkValues() {
+    // Two-table cycle where FK columns overlap with PK columns
+    // This tests that pkValues are collected BEFORE FK columns are nullified
+    final ForeignKey fkA = new ForeignKey("fk_a", "B", Map.of("b_fk", "id"), false);
+    final ForeignKey fkB = new ForeignKey("fk_b", "A", Map.of("a_fk", "id"), false);
+    final Table tableA =
+        new Table(
+            "A",
+            List.of(intCol("id"), nullableCol("b_fk")),
+            List.of("id"),
+            List.of(fkA),
+            List.of(),
+            List.of());
+    final Table tableB =
+        new Table(
+            "B",
+            List.of(intCol("id"), nullableCol("a_fk")),
+            List.of("id"),
+            List.of(fkB),
+            List.of(),
+            List.of());
+
+    final Row rowA = mutableRow("id", 1, "b_fk", null);
+    final Row rowB = mutableRow("id", 2, "a_fk", null);
+
+    final Map<String, Table> tableMap = new LinkedHashMap<>(Map.of("A", tableA, "B", tableB));
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(tableA, List.of(rowA));
+    data.put(tableB, List.of(rowB));
+
+    // Process in cycle configuration
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("A", Map.of("fk_a", 2), "B", Map.of("fk_b", 2));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, circularReferences);
+    final List<PendingUpdate> updates = resolver.resolve();
+
+    // All PendingUpdates must have non-null PK values
+    assertThat(updates).isNotEmpty();
+    assertThat(updates)
+        .allSatisfy(update -> assertThat(update.pkValues().values()).doesNotContainNull());
+    // FK values should also be non-null (from parent rows)
+    assertThat(updates)
+        .allSatisfy(update -> assertThat(update.fkValues().values()).doesNotContainNull());
+  }
+
+  @Test
+  void multiColumnFk_uniqueOnFk() {
+    final Table parent =
+        new Table(
+            "parent",
+            List.of(intCol("pk1"), intCol("pk2")),
+            List.of("pk1", "pk2"),
+            List.of(),
+            List.of(),
+            List.of());
+    final ForeignKey mfk = new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), true);
+    final Table child =
+        new Table(
+            "child",
+            List.of(intCol("id"), intCol("fk1"), intCol("fk2")),
+            List.of("id"),
+            List.of(mfk),
+            List.of(),
+            List.of(List.of("fk1", "fk2")));
+
+    final Row p1 = mutableRow("pk1", 10, "pk2", 20);
+    final Row p2 = mutableRow("pk1", 11, "pk2", 21);
+    final Row c1 = mutableRow("id", 1, "fk1", null, "fk2", null);
+    final Row c2 = mutableRow("id", 2, "fk1", null, "fk2", null);
+
+    final Map<String, Table> tableMap =
+        new LinkedHashMap<>(Map.of("parent", parent, "child", child));
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(parent, List.of(p1, p2));
+    data.put(child, List.of(c1, c2));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
+    resolver.resolve();
+
+    // Each child should get a distinct parent combination
+    final Set<List<Object>> combos = new HashSet<>();
+    combos.add(List.of(c1.values().get("fk1"), c1.values().get("fk2")));
+    combos.add(List.of(c2.values().get("fk1"), c2.values().get("fk2")));
+    assertThat(combos).hasSize(2);
+  }
+
+  @Test
+  void compositeSelfReferencingFk_closeCycle() {
+    final ForeignKey selfFk =
+        new ForeignKey(
+            "fk_self", "composite_tree", Map.of("parent_a", "a", "parent_b", "b"), false);
+    final Table table =
+        new Table(
+            "composite_tree",
+            List.of(intCol("a"), intCol("b"), nullableCol("parent_a"), nullableCol("parent_b")),
+            List.of("a", "b"),
+            List.of(selfFk),
+            List.of(),
+            List.of());
+
+    final List<Row> rows =
+        List.of(
+            new Row(new LinkedHashMap<>(Map.of("a", 1, "b", 10))),
+            new Row(new LinkedHashMap<>(Map.of("a", 2, "b", 20))),
+            new Row(new LinkedHashMap<>(Map.of("a", 3, "b", 30))));
+
+    final Map<String, Table> tableMap = Map.of("composite_tree", table);
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(table, rows);
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("composite_tree", Map.of("fk_self", 3));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, circularReferences);
+
+    final List<PendingUpdate> updates = resolver.resolve();
+    assertThat(updates).isEmpty();
+
+    // Chain of 3 with depth 3: 0->1, 1->2, 2->0
+    assertThat(rows.get(0).values().get("parent_a")).isEqualTo(2);
+    assertThat(rows.get(0).values().get("parent_b")).isEqualTo(20);
+    assertThat(rows.get(1).values().get("parent_a")).isEqualTo(3);
+    assertThat(rows.get(1).values().get("parent_b")).isEqualTo(30);
+    assertThat(rows.get(2).values().get("parent_a")).isEqualTo(1);
+    assertThat(rows.get(2).values().get("parent_b")).isEqualTo(10);
+  }
+
+  @Test
+  void compositeSelfReferencingFk_nullTermination() {
+    final ForeignKey selfFk =
+        new ForeignKey(
+            "fk_self", "composite_tree", Map.of("parent_a", "a", "parent_b", "b"), false);
+    final Table table =
+        new Table(
+            "composite_tree",
+            List.of(intCol("a"), intCol("b"), nullableCol("parent_a"), nullableCol("parent_b")),
+            List.of("a", "b"),
+            List.of(selfFk),
+            List.of(),
+            List.of());
+
+    final List<Row> rows =
+        List.of(
+            new Row(new LinkedHashMap<>(Map.of("a", 1, "b", 10))),
+            new Row(new LinkedHashMap<>(Map.of("a", 2, "b", 20))),
+            new Row(new LinkedHashMap<>(Map.of("a", 3, "b", 30))));
+
+    final Map<String, Table> tableMap = Map.of("composite_tree", table);
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(table, rows);
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("composite_tree", Map.of("fk_self", 3));
+    final Map<String, Map<String, String>> terminationModes =
+        Map.of(
+            "composite_tree", Map.of("fk_self", CircularReferenceTerminationMode.NULL_FK.name()));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, true, circularReferences, terminationModes);
+
+    final List<PendingUpdate> updates = resolver.resolve();
+    assertThat(updates).isEmpty();
+
+    assertThat(rows.get(0).values().get("parent_a")).isEqualTo(2);
+    assertThat(rows.get(0).values().get("parent_b")).isEqualTo(20);
+    assertThat(rows.get(1).values().get("parent_a")).isEqualTo(3);
+    assertThat(rows.get(1).values().get("parent_b")).isEqualTo(30);
+    assertThat(rows.get(2).values().get("parent_a")).isNull();
+    assertThat(rows.get(2).values().get("parent_b")).isNull();
+  }
+
+  @Test
+  void multiColumnFk_nonDeferredCycle_pendingUpdate() {
+    final ForeignKey fkA =
+        new ForeignKey("fk_a", "B", Map.of("b_id1", "id1", "b_id2", "id2"), false);
+    final Table tableA =
+        new Table(
+            "A",
+            List.of(intCol("id1"), intCol("id2"), nullableCol("b_id1"), nullableCol("b_id2")),
+            List.of("id1", "id2"),
+            List.of(fkA),
+            List.of(),
+            List.of());
+    final ForeignKey fkB =
+        new ForeignKey("fk_b", "A", Map.of("a_id1", "id1", "a_id2", "id2"), false);
+    final Table tableB =
+        new Table(
+            "B",
+            List.of(intCol("id1"), intCol("id2"), nullableCol("a_id1"), nullableCol("a_id2")),
+            List.of("id1", "id2"),
+            List.of(fkB),
+            List.of(),
+            List.of());
+
+    final Row rowA = mutableRow("id1", 1, "id2", 10, "b_id1", null, "b_id2", null);
+    final Row rowB = mutableRow("id1", 2, "id2", 20, "a_id1", null, "a_id2", null);
+
+    final Map<String, Table> tableMap = new LinkedHashMap<>(Map.of("A", tableA, "B", tableB));
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(tableA, List.of(rowA));
+    data.put(tableB, List.of(rowB));
+
+    final Map<String, Map<String, Integer>> circularReferences =
+        Map.of("A", Map.of("fk_a", 2), "B", Map.of("fk_b", 2));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, circularReferences);
+    final List<PendingUpdate> updates = resolver.resolve();
+
+    // All PendingUpdates must have non-null PK values
+    for (PendingUpdate update : updates) {
+      assertThat(update.pkValues().values()).doesNotContainNull();
+    }
+  }
+
+  @Test
+  void multiColumnFk_nullableAndNonNullable() {
+    final Table parent =
+        new Table(
+            "parent",
+            List.of(intCol("pk1"), intCol("pk2")),
+            List.of("pk1", "pk2"),
+            List.of(),
+            List.of(),
+            List.of());
+    // fk1 is non-nullable, fk2 is nullable
+    final ForeignKey mfk =
+        new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), false);
+    final Table child =
+        new Table(
+            "child",
+            List.of(intCol("id"), intCol("fk1"), nullableCol("fk2")),
+            List.of("id"),
+            List.of(mfk),
+            List.of(),
+            List.of());
+
+    final Row parentRow = mutableRow("pk1", 10, "pk2", 20);
+    final Row childRow = mutableRow("id", 1, "fk1", null, "fk2", null);
+
+    final Map<String, Table> tableMap = new LinkedHashMap<>();
+    tableMap.put("parent", parent);
+    tableMap.put("child", child);
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(parent, List.of(parentRow));
+    data.put(child, List.of(childRow));
+
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
+    resolver.resolve();
+
+    assertThat(childRow.values().get("fk1")).isEqualTo(10);
+    assertThat(childRow.values().get("fk2")).isEqualTo(20);
   }
 }

@@ -242,6 +242,11 @@ public class OllamaClient {
     return lower.endsWith("[]") || lower.startsWith("_") || lower.contains("array");
   }
 
+  /** Shuts down the shared HTTP executor. Called when the plugin is being unloaded. */
+  public static void shutdown() {
+    HTTP_EXECUTOR.shutdownNow();
+  }
+
   /**
    * Pings the Ollama server to check connectivity.
    *
@@ -404,18 +409,26 @@ public class OllamaClient {
     }
   }
 
-  private List<String> parseBatchResponse(final String responseBody, final String columnName) {
+  private List<String> parseBatchResponse(final String responseBody, final String columnName)
+      throws OllamaException {
     try {
       final String raw = extractRawResponse(responseBody);
-      return raw.lines()
-          .map(line -> sanitizeAiOutput(line, columnName))
-          .filter(Objects::nonNull)
-          .filter(s -> !s.isBlank())
-          .distinct()
-          .toList();
+      final List<String> values =
+          raw.lines()
+              .map(line -> sanitizeAiOutput(line, columnName))
+              .filter(Objects::nonNull)
+              .filter(s -> !s.isBlank())
+              .distinct()
+              .toList();
+      if (values.isEmpty()) {
+        throw new OllamaException(
+            "AI response contained no valid values for column '" + columnName + "'");
+      }
+      return values;
+    } catch (OllamaException e) {
+      throw e;
     } catch (Exception e) {
-      log.warn("Failed to parse Ollama batch response", e);
-      return List.of();
+      throw new OllamaException("Failed to parse Ollama batch response: " + e.getMessage(), e);
     }
   }
 
@@ -501,6 +514,10 @@ public class OllamaClient {
   public static class OllamaException extends RuntimeException {
     public OllamaException(final String message) {
       super(message);
+    }
+
+    public OllamaException(final String message, final Throwable cause) {
+      super(message, cause);
     }
   }
 }

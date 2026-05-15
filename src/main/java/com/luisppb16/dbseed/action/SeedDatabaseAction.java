@@ -360,8 +360,11 @@ public final class SeedDatabaseAction extends AnAction {
                       indicator.setText("Done!");
                       log.info("SQL script built successfully.");
 
-                      ApplicationManager.getApplication()
-                          .invokeLater(() -> saveAndOpenSqlFile(project, sql));
+                      final Path filePath = writeSqlFile(project, sql);
+                      if (filePath != null) {
+                        ApplicationManager.getApplication()
+                            .invokeLater(() -> openFileInEditor(project, filePath));
+                      }
                     } catch (final Exception ex) {
                       handleException(project, "Error during SQL generation: ", ex);
                     }
@@ -376,16 +379,16 @@ public final class SeedDatabaseAction extends AnAction {
     }
   }
 
-  private void saveAndOpenSqlFile(final Project project, final String sql) {
+  private Path writeSqlFile(final Project project, final String sql) {
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     final String outputDir = settings.getDefaultOutputDirectory();
-    final String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date());
+    final String timestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
     final String fileName = String.format("V%s__seed.sql", timestamp);
 
     final String basePath = project.getBasePath();
     if (Objects.isNull(basePath)) {
-      Messages.showErrorDialog(project, "Could not determine project base path.", "DBSeed Error");
-      return;
+      log.error("Could not determine project base path.");
+      return null;
     }
 
     final Path path = Paths.get(basePath, outputDir, fileName);
@@ -393,18 +396,23 @@ public final class SeedDatabaseAction extends AnAction {
     try {
       Files.createDirectories(path.getParent());
       Files.writeString(path, sql, StandardCharsets.UTF_8);
-
-      final VirtualFile virtualFile =
-          LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
-      if (Objects.nonNull(virtualFile)) {
-        FileEditorManager.getInstance(project).openFile(virtualFile, true);
-        log.info("File {} saved and opened in the editor.", fileName);
-      } else {
-        log.warn("Could not find VirtualFile for path: {}", path);
-        Messages.showErrorDialog(project, "Could not open generated SQL file.", "DBSeed Error");
-      }
+      log.info("SQL file written to: {}", path);
+      return path;
     } catch (final IOException e) {
-      handleException(project, "Error saving SQL file: ", e);
+      log.error("Error writing SQL file: {}", path, e);
+      return null;
+    }
+  }
+
+  private void openFileInEditor(final Project project, final Path path) {
+    LocalFileSystem.getInstance().refresh(true);
+    final VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
+    if (Objects.nonNull(virtualFile)) {
+      FileEditorManager.getInstance(project).openFile(virtualFile, true);
+      log.info("File {} opened in the editor.", path.getFileName());
+    } else {
+      log.warn("Could not find VirtualFile for path: {}", path);
+      Messages.showErrorDialog(project, "Could not open generated SQL file.", "DBSeed Error");
     }
   }
 

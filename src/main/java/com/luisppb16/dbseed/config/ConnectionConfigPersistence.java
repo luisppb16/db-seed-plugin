@@ -37,6 +37,7 @@ public class ConnectionConfigPersistence {
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
+    state.getProfiles().removeIf(p -> normalizedProfileName.equals(p.getName().trim()));
 
     final ConnectionProfile profile =
         state.getProfiles().stream()
@@ -123,6 +124,8 @@ public class ConnectionConfigPersistence {
 
   private static CredentialAttributes createCredentialAttributes(
       @NotNull final Project project, @NotNull final String profileName) {
+    // Kotlin extension function from IntelliJ Platform credential store API.
+    // May require updates if the IntelliJ Platform changes this API.
     return new CredentialAttributes(
         CredentialAttributesKt.generateServiceName(
             "DBSeed", project.getName() + "-" + profileName));

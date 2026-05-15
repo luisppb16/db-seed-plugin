@@ -227,4 +227,40 @@ class TopologicalSorterTest {
     assertThat(sort.ordered()).hasSize(depth);
     assertThat(sort.cycles()).isEmpty();
   }
+
+  // ── Composite FK Tests ──
+
+  @Test
+  void requiresDeferred_compositeFk_nonNullableInCycle() {
+    final ForeignKey fkA = new ForeignKey(null, "B", Map.of("b1", "id1", "b2", "id2"), false);
+    final ForeignKey fkB = new ForeignKey(null, "A", Map.of("a1", "id1", "a2", "id2"), false);
+    final Table tableA =
+        new Table(
+            "A",
+            List.of(
+                new Column("id1", 4, null, false, true, false, 0, 0, null, null, Set.of()),
+                new Column("id2", 4, null, false, true, false, 0, 0, null, null, Set.of()),
+                new Column("b1", 4, null, false, false, false, 0, 0, null, null, Set.of()),
+                new Column("b2", 4, null, false, false, false, 0, 0, null, null, Set.of())),
+            List.of("id1", "id2"),
+            List.of(fkA),
+            List.of(),
+            List.of());
+    final Table tableB =
+        new Table(
+            "B",
+            List.of(
+                new Column("id1", 4, null, false, true, false, 0, 0, null, null, Set.of()),
+                new Column("id2", 4, null, false, true, false, 0, 0, null, null, Set.of()),
+                new Column("a1", 4, null, false, false, false, 0, 0, null, null, Set.of()),
+                new Column("a2", 4, null, false, false, false, 0, 0, null, null, Set.of())),
+            List.of("id1", "id2"),
+            List.of(fkB),
+            List.of(),
+            List.of());
+
+    final Map<String, Table> tableMap = Map.of("A", tableA, "B", tableB);
+    final SortResult sort = TopologicalSorter.sort(List.of(tableA, tableB));
+    assertThat(TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableMap)).isTrue();
+  }
 }

@@ -121,6 +121,21 @@ public class DialectFactory {
         || url.contains("jdbc:cockroach")) {
       return "postgresql";
     }
+    if (driverClass.contains("db2") || url.contains("jdbc:db2")) {
+      return "db2";
+    }
+    if (driverClass.contains("derby") || url.contains("jdbc:derby")) {
+      return "derby";
+    }
+    if (driverClass.contains("hive") || url.contains("jdbc:hive")) {
+      return "hive";
+    }
+    if (driverClass.contains("hsqldb") || url.contains("jdbc:hsqldb")) {
+      return "hsqldb";
+    }
+    if (driverClass.contains("bigquery") || url.contains("jdbc:bigquery")) {
+      return "bigquery";
+    }
 
     return null;
   }

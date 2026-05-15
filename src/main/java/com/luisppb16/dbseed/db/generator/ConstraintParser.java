@@ -73,7 +73,6 @@ public final class ConstraintParser {
               + CAST_REGEX
               + "[\\s()]*"
               + "$");
-
   private static final Pattern COL_EQ_VAL_PATTERN_RELAXED =
       Pattern.compile(
           "(?i)"
@@ -90,13 +89,20 @@ public final class ConstraintParser {
               + "\\d+"
               + ")"
               + "[\\s()]*");
-
   private final String columnName;
   private final ColumnPatterns patterns;
 
   public ConstraintParser(final String columnName) {
     this.columnName = Objects.requireNonNull(columnName, "Column name cannot be null");
     this.patterns = ColumnPatterns.forColumn(columnName);
+  }
+
+  /**
+   * Clears the column pattern cache. Call at the start of each generation run to avoid stale
+   * entries.
+   */
+  public static void clearCache() {
+    ColumnPatterns.clearCache();
   }
 
   private static String stripQuotes(final String s) {
@@ -168,7 +174,7 @@ public final class ConstraintParser {
         parenLevel++;
       } else if (c == ')') {
         parenLevel--;
-      } else if (parenLevel == 0 && i + 2 < input.length()) {
+      } else if (parenLevel == 0 && i + 1 < input.length()) {
         if (Character.toLowerCase(input.charAt(i)) == 'o'
             && Character.toLowerCase(input.charAt(i + 1)) == 'r'
             && (i == 0 || !Character.isLetterOrDigit(input.charAt(i - 1)))
@@ -204,7 +210,7 @@ public final class ConstraintParser {
 
   private static Map<String, String> parseAndClause(final String clause) {
     final String[] conditions =
-        clause.split("(?i)\\s+AND\\s+|(?<=\\))\\s*AND\\s*|\\s*AND\\s*(?=\\()");
+        clause.split("(?i)(?<=\\))\\s*AND\\b\\s*|\\bAND\\s*(?=\\()|\\bAND\\b");
     final Map<String, String> combination = new HashMap<>();
     for (String cond : conditions) {
       Map.Entry<String, String> entry = parseCondition(cond);
@@ -448,6 +454,10 @@ public final class ConstraintParser {
                 return size() > MAX_CACHE_SIZE;
               }
             });
+
+    static void clearCache() {
+      CACHE.clear();
+    }
 
     static ColumnPatterns forColumn(final String columnName) {
       return CACHE.computeIfAbsent(columnName, ColumnPatterns::create);

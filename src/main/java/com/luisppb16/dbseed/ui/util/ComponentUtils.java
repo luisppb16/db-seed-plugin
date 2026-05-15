@@ -8,7 +8,7 @@
 package com.luisppb16.dbseed.ui.util;
 
 import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.ide.plugins.PluginManager;
 import com.intellij.openapi.extensions.PluginId;
 import java.awt.FlowLayout;
 import java.awt.event.KeyEvent;
@@ -53,7 +53,7 @@ public class ComponentUtils {
   }
 
   public static JPanel createVersionLabel() {
-    final IdeaPluginDescriptor descriptor = PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID));
+    final IdeaPluginDescriptor descriptor = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID));
     final String version = descriptor != null ? descriptor.getVersion() : "?";
 
     final JLabel label = new JLabel("v" + version);

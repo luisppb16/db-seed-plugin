@@ -380,6 +380,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
     final JPanel content = new JPanel(new BorderLayout());
     content.add(tabbedPane, BorderLayout.CENTER);
+    content.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
     content.setPreferredSize(JBUI.size(800, 600));
     content.setMinimumSize(JBUI.size(600, 450));
     return content;
@@ -749,7 +750,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     for (final JCheckBox colBox : columnBoxes) {
       colBox.setSelected(isSelected);
       final String colName = (String) colBox.getClientProperty("columnName");
-      onExcludeBoxChanged(tableName, colName != null ? colName : colBox.getText(), isSelected);
+      final String effectiveColName = colName != null ? colName : stripFkSuffix(colBox.getText());
+      onExcludeBoxChanged(tableName, effectiveColName, isSelected);
     }
 
     // Sync the AI table-level checkbox
@@ -1076,6 +1078,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
   }
 
+  private static String stripFkSuffix(final String text) {
+    final int idx = text.indexOf(" (FK)");
+    return idx > 0 ? text.substring(0, idx) : text;
+  }
+
   private void onAiBoxChanged(String tableName, String columnName, boolean isSelected) {
     aiColumnsByTable.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
     if (isSelected) {
@@ -1091,7 +1098,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       if (colBox.isEnabled()) {
         colBox.setSelected(isSelected);
         final String colName = (String) colBox.getClientProperty("columnName");
-        onAiBoxChanged(tableName, colName != null ? colName : colBox.getText(), isSelected);
+        onAiBoxChanged(tableName, colName != null ? colName : stripFkSuffix(colBox.getText()), isSelected);
       }
     }
   }
@@ -1123,7 +1130,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   @SuppressWarnings("unused")
   public Map<String, Map<String, String>> getUuidValuesByTable() {
-    return uuidValuesByTable;
+    final Map<String, Map<String, String>> copy = new LinkedHashMap<>();
+    uuidValuesByTable.forEach((k, v) -> copy.put(k, new LinkedHashMap<>(v)));
+    return copy;
   }
 
   public Map<String, Set<String>> getExcludedColumnsByTable() {

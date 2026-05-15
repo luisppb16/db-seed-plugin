@@ -22,6 +22,15 @@ public record GenerationConfig(
     String softDeleteValue,
     int numericScale) {
 
+  public GenerationConfig {
+    if (rowsPerTable <= 0) {
+      rowsPerTable = 1;
+    }
+    if (numericScale < 0) {
+      numericScale = 2;
+    }
+  }
+
   public GenerationConfig withSoftDeleteSettings(
       final String softDeleteColumns,
       final boolean softDeleteUseSchemaDefault,

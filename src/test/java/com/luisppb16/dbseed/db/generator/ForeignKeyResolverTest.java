@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
 class ForeignKeyResolverTest {
 
   private static Column intCol(final String name) {
-    return new Column(name, 4, null, true, false, false, 0, 0, null, null, Set.of());
+    return new Column(name, 4, null, false, false, false, 0, 0, null, null, Set.of());
   }
 
   private static Column nullableCol(final String name) {
@@ -140,7 +140,7 @@ class ForeignKeyResolverTest {
   }
 
   @Test
-  void emptyParentRows_null() {
+  void emptyParentRows_nullable_setsNull() {
     final Table parent =
         new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
     final Table child =
@@ -161,14 +161,44 @@ class ForeignKeyResolverTest {
     data.put(parent, List.of());
     data.put(child, List.of(childRow));
 
-    // Empty parent rows causes IllegalArgumentException from ThreadLocalRandom.nextInt(0)
+    // Empty parent rows with nullable FK: gracefully sets FK to null
+    final ForeignKeyResolver resolver =
+        new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
+    resolver.resolve();
+    assertThat(childRow.values().get("parent_id")).isNull();
+  }
+
+  @Test
+  void emptyParentRows_nonNullable_throws() {
+    final Table parent =
+        new Table("parent", List.of(intCol("id")), List.of("id"), List.of(), List.of(), List.of());
+    final Table child =
+        new Table(
+            "child",
+            List.of(intCol("id"), intCol("parent_id")),
+            List.of("id"),
+            List.of(fk("parent", "parent_id", "id")),
+            List.of(),
+            List.of());
+
+    final Row childRow = mutableRow("id", 1, "parent_id", 99);
+
+    final Map<String, Table> tableMap = new LinkedHashMap<>();
+    tableMap.put("parent", parent);
+    tableMap.put("child", child);
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(parent, List.of());
+    data.put(child, List.of(childRow));
+
+    // Empty parent rows with non-nullable FK: throws IllegalStateException
     assertThatThrownBy(
             () -> {
               final ForeignKeyResolver resolver =
                   new ForeignKeyResolver(tableMap, data, false, Collections.emptyMap());
               resolver.resolve();
             })
-        .isInstanceOf(IllegalArgumentException.class);
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("parent");
   }
 
   @Test

@@ -10,6 +10,7 @@ package com.luisppb16.dbseed.db.generator;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
+import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.CheckExpression;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.MultiColumnConstraint;
 import com.luisppb16.dbseed.db.generator.ConstraintParser.ParsedConstraint;
@@ -36,6 +37,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
@@ -150,7 +152,7 @@ public final class RowGenerator {
             .filter(c -> Objects.nonNull(c) && !c.isBlank())
             .map(
                 c -> {
-                  final String noParens = c.replaceAll("[()]+", " ");
+                  final String noParens = SchemaIntrospector.stripParensOutsideStrings(c);
                   return new CheckExpression(c, noParens, noParens.toLowerCase(Locale.ROOT));
                 })
             .toList();
@@ -234,24 +236,53 @@ public final class RowGenerator {
 
           baseValues.putAll(buildRegexBasedFixedValues(rule.regexPatterns()));
 
+          // Normalize column names to match the actual table column case
+          final Map<String, Object> normalized = new HashMap<>(baseValues.size());
+          baseValues.forEach((key, value) -> {
+            final Column col = table.column(key);
+            normalized.put(col != null ? col.name() : key, value);
+          });
+          baseValues.clear();
+          baseValues.putAll(normalized);
+
           baseValues
               .entrySet()
               .forEach(
                   entry -> {
                     if (entry.getValue() instanceof String strValue) {
                       final Column col = table.column(entry.getKey());
-                      entry.setValue(parseValue(strValue, col));
+                      final Object parsed = parseValue(strValue, col);
+                      if (parsed != null) {
+                        entry.setValue(parsed);
+                      } else if (col != null && !col.nullable()) {
+                        entry.setValue(null);
+                      } else {
+                        entry.setValue(null);
+                      }
                     }
+                  });
+
+          // Remove null values for NOT NULL columns so they get generated later
+          baseValues
+              .entrySet()
+              .removeIf(
+                  entry -> {
+                    if (entry.getValue() == null) {
+                      final Column col = table.column(entry.getKey());
+                      return col != null && !col.nullable();
+                    }
+                    return false;
                   });
 
           rule.randomConstantColumns()
               .forEach(
                   colName -> {
                     final Column col = table.column(colName);
+                    if (col == null) return;
                     final Object val =
                         valueGenerator.generateValue(
-                            col, constraints.get(colName), generatedCount.get());
-                    baseValues.put(colName, val);
+                            col, constraints.get(col.name()), generatedCount.get());
+                    baseValues.put(col.name(), val);
                   });
 
           IntStream.range(0, rule.count())
@@ -315,8 +346,8 @@ public final class RowGenerator {
   }
 
   private void fillRemainingRows() {
-    final int maxAttempts = rowsPerTable * MAX_GENERATE_ATTEMPTS;
-    IntStream.range(0, maxAttempts)
+    final long maxAttempts = (long) rowsPerTable * MAX_GENERATE_ATTEMPTS;
+    LongStream.range(0, maxAttempts)
         .takeWhile(i -> generatedCount.get() < rowsPerTable)
         .forEach(
             i -> {
@@ -401,47 +432,47 @@ public final class RowGenerator {
       return true;
     }
 
-    multiColumnConstraints.stream()
-        .forEach(
-            mcc -> {
-              final List<Map<String, String>> compatibleCombinations =
-                  mcc.allowedCombinations().stream()
-                      .filter(
-                          combo ->
-                              combo.entrySet().stream()
-                                  .allMatch(
-                                      entry -> {
-                                        final String colName = resolveColumnName(entry.getKey());
-                                        final String expectedVal = entry.getValue();
-                                        if (!values.containsKey(colName)) {
-                                          return true;
-                                        }
-                                        final Object actualVal = values.get(colName);
-                                        return Objects.isNull(actualVal)
-                                            ? "NULL".equalsIgnoreCase(expectedVal)
-                                            : String.valueOf(actualVal).equals(expectedVal);
-                                      }))
-                      .toList();
+    boolean applied = false;
+    for (final MultiColumnConstraint mcc : multiColumnConstraints) {
+      final List<Map<String, String>> compatibleCombinations =
+          mcc.allowedCombinations().stream()
+              .filter(
+                  combo ->
+                      combo.entrySet().stream()
+                          .allMatch(
+                              entry -> {
+                                final String colName = resolveColumnName(entry.getKey());
+                                final String expectedVal = entry.getValue();
+                                if (!values.containsKey(colName)) {
+                                  return true;
+                                }
+                                final Object actualVal = values.get(colName);
+                                return Objects.isNull(actualVal)
+                                    ? "NULL".equalsIgnoreCase(expectedVal)
+                                    : String.valueOf(actualVal).equals(expectedVal);
+                              }))
+              .toList();
 
-              if (compatibleCombinations.isEmpty()) {
-                return;
-              }
+      if (compatibleCombinations.isEmpty()) {
+        continue;
+      }
 
-              final Map<String, String> selectedCombination =
-                  compatibleCombinations.get(
-                      ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
+      final Map<String, String> selectedCombination =
+          compatibleCombinations.get(
+              ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
-              selectedCombination.entrySet().stream()
-                  .forEach(
-                      entry -> {
-                        final String colName = resolveColumnName(entry.getKey());
-                        if (!values.containsKey(colName)) {
-                          final Column col = table.column(colName);
-                          values.put(colName, parseValue(entry.getValue(), col));
-                        }
-                      });
-            });
-    return true;
+      for (final Map.Entry<String, String> entry : selectedCombination.entrySet()) {
+        final String colName = resolveColumnName(entry.getKey());
+        if (!values.containsKey(colName)) {
+          final Column col = table.column(colName);
+          if (col != null) {
+            values.put(colName, parseValue(entry.getValue(), col));
+            applied = true;
+          }
+        }
+      }
+    }
+    return applied || multiColumnConstraints.stream().allMatch(mcc -> mcc.allowedCombinations().isEmpty());
   }
 
   private void generateRemainingColumnValues(final Map<String, Object> values) {
@@ -450,6 +481,8 @@ public final class RowGenerator {
         .forEach(
             column -> {
               if (!values.containsKey(column.name())) {
+                values.put(column.name(), generateColumnValue(column));
+              } else if (values.get(column.name()) == null && !column.nullable()) {
                 values.put(column.name(), generateColumnValue(column));
               }
             });
@@ -571,6 +604,15 @@ public final class RowGenerator {
                     retries++;
                   }
                 }
+              }
+
+              if (allValues.size() < batchCount) {
+                log.warn(
+                    "AI generation only filled {}/{} values for column '{}.{}', remaining rows will use random data",
+                    allValues.size(),
+                    batchCount,
+                    table.name(),
+                    colName);
               }
 
               applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
@@ -772,7 +814,9 @@ public final class RowGenerator {
                   final String colName = resolveColumnName(entry.getKey());
                   if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
                     final Column col = table.column(colName);
-                    values.put(colName, parseValue(entry.getValue(), col));
+                    if (col != null) {
+                      values.put(colName, parseValue(entry.getValue(), col));
+                    }
                   }
                 });
       }
@@ -790,7 +834,9 @@ public final class RowGenerator {
               final String colName = resolveColumnName(entry.getKey());
               if (resolvedColumns.contains(colName)) {
                 final Column col = table.column(colName);
-                values.put(colName, parseValue(entry.getValue(), col));
+                if (col != null) {
+                  values.put(colName, parseValue(entry.getValue(), col));
+                }
               }
             });
   }

@@ -81,6 +81,16 @@ public class SchemaDsl {
     return "\"" + identifier.replace("\"", "\"\"") + "\"";
   }
 
+  private static boolean isNumericLiteral(final String value) {
+    if (value.isEmpty()) return false;
+    try {
+      Double.parseDouble(value);
+      return true;
+    } catch (final NumberFormatException e) {
+      return false;
+    }
+  }
+
   private static String tableSql(final Table table) {
     final String quotedName = quoteIdentifier(table.name());
     if (table.columns().isEmpty()) {
@@ -104,7 +114,14 @@ public class SchemaDsl {
       sql.append(" NOT NULL");
     }
     if (Objects.nonNull(column.defaultValue())) {
-      sql.append(" DEFAULT %s".formatted(column.defaultValue()));
+      final String dv = column.defaultValue();
+      if ("NULL".equalsIgnoreCase(dv)) {
+        sql.append(" DEFAULT NULL");
+      } else if (isNumericLiteral(dv) || "TRUE".equalsIgnoreCase(dv) || "FALSE".equalsIgnoreCase(dv)) {
+        sql.append(" DEFAULT %s".formatted(dv));
+      } else {
+        sql.append(" DEFAULT '%s'".formatted(dv.replace("'", "''")));
+      }
     }
     if (column.unique()) {
       sql.append(" UNIQUE");

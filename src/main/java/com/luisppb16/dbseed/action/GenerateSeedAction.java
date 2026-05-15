@@ -52,8 +52,6 @@ import org.jetbrains.annotations.NotNull;
 @Slf4j
 public final class GenerateSeedAction extends AnAction {
 
-  private static final String FILE_NAME = "query_batch.sql";
-
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
     final Project project = e.getProject();
@@ -243,10 +241,12 @@ public final class GenerateSeedAction extends AnAction {
   }
 
   private void openEditor(final Project project, final String sql) {
-    final FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(FILE_NAME);
-    final LightVirtualFile file = new LightVirtualFile(FILE_NAME, fileType, sql);
+    final String timestamp = new java.text.SimpleDateFormat("yyyyMMddHHmmssSSS").format(new java.util.Date());
+    final String fileName = "seed_" + timestamp + ".sql";
+    final FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName);
+    final LightVirtualFile file = new LightVirtualFile(fileName, fileType, sql);
     FileEditorManager.getInstance(project).openFile(file, true);
-    log.info("File {} opened in the editor.", FILE_NAME);
+    log.info("File {} opened in the editor.", fileName);
   }
 
   private void handleException(final Project project, final Exception ex) {

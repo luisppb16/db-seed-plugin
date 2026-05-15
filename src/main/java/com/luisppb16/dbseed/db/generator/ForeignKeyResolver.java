@@ -75,7 +75,6 @@ public final class ForeignKeyResolver {
   private final Map<String, Map<String, Integer>> circularReferences;
   private final Map<String, Map<String, String>> circularReferenceTerminationModes;
   private final Set<String> inserted = new HashSet<>();
-  private final Set<String> resolving = new HashSet<>();
   private final List<PendingUpdate> updates = new ArrayList<>();
   private final Map<String, Deque<Row>> uniqueFkParentQueues = new HashMap<>();
 
@@ -131,7 +130,9 @@ public final class ForeignKeyResolver {
                     fk ->
                         fk.columnMapping().keySet().stream()
                             .map(table::column)
-                            .allMatch(Column::nullable)));
+                            .filter(Objects::nonNull)
+                            .allMatch(Column::nullable),
+                    (v1, v2) -> v1));
 
     final List<List<String>> uniqueKeysOnFks = extractUniqueKeysOnForeignKeys(table);
 
@@ -180,7 +181,7 @@ public final class ForeignKeyResolver {
       final Map<String, String> terminationModes) {
 
     for (ForeignKey fk : circularFks) {
-      int maxDepth = depths.getOrDefault(fk.name(), 3);
+      int maxDepth = (depths != null) ? depths.getOrDefault(fk.name(), 3) : 3;
       if (maxDepth <= 0) maxDepth = 3;
       final CircularReferenceTerminationMode terminationMode =
           CircularReferenceTerminationMode.fromPersistedValue(
@@ -326,6 +327,13 @@ public final class ForeignKeyResolver {
 
     final Table parent = tableMap.get(fk.pkTable());
     if (Objects.isNull(parent)) {
+      if (!fkNullable) {
+        log.warn(
+            "Parent table '{}' not found for non-nullable FK '{}' on table '{}'. Setting FK columns to null.",
+            fk.pkTable(),
+            fk.name(),
+            table.name());
+      }
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
@@ -333,10 +341,43 @@ public final class ForeignKeyResolver {
     final List<Row> parentRows = data.get(parent);
     final boolean parentInserted = inserted.contains(parent.name());
 
+    if (Objects.isNull(parentRows) || parentRows.isEmpty()) {
+      if (!fkNullable) {
+        throw new IllegalStateException(
+            "Cannot resolve non-nullable FK '"
+                + fk.name()
+                + "' on table '"
+                + table.name()
+                + "': parent table '"
+                + parent.name()
+                + "' has no rows. Add rows to the parent table or make the FK nullable.");
+      }
+      log.warn(
+          "No parent rows available for nullable FK '{}' on table '{}'. Setting FK columns to null.",
+          fk.name(),
+          table.name());
+      fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
+      return;
+    }
+
     final Row parentRow =
         getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), fkNullable);
 
     if (Objects.isNull(parentRow)) {
+      if (!fkNullable) {
+        throw new IllegalStateException(
+            "Cannot resolve non-nullable 1:1 FK '"
+                + fk.name()
+                + "' on table '"
+                + table.name()
+                + "': not enough unique parent rows in '"
+                + parent.name()
+                + "'. Increase rows per table or remove the unique FK constraint.");
+      }
+      log.warn(
+          "No parent row available for nullable FK '{}' on table '{}'. Setting FK columns to null.",
+          fk.name(),
+          table.name());
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }

@@ -37,7 +37,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
   @Override
   public JComponent getPreferredFocusedComponent() {
-    return mySettingsComponent.getPreferredFocusedComponent();
+    return mySettingsComponent != null ? mySettingsComponent.getPreferredFocusedComponent() : null;
   }
 
   @Nullable
@@ -49,6 +49,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
   @Override
   public boolean isModified() {
+    if (mySettingsComponent == null) return false;
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     boolean isProfileModified = mySettingsComponent.isProfileModified();
 
@@ -82,37 +83,9 @@ public class DbSeedSettingsConfigurable implements Configurable {
             "Please enter a valid Ollama URL when AI generation is enabled.",
             "Invalid Ollama Configuration");
       }
-
-      AtomicReference<Exception> pingError = new AtomicReference<>();
-      ProgressManager.getInstance()
-          .runProcessWithProgressSynchronously(
-              () -> {
-                try {
-                  new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
-                } catch (Exception e) {
-                  pingError.set(e);
-                }
-              },
-              "Checking Ollama Server...",
-              false,
-              null);
-
-      if (Objects.nonNull(pingError.get())) {
-        Throwable cause =
-            Objects.nonNull(pingError.get().getCause())
-                ? pingError.get().getCause()
-                : pingError.get();
-        throw new ConfigurationException(
-            "No Ollama server found at "
-                + url.trim()
-                + ".\n"
-                + "Ensure Ollama is running and the URL is correct.\n\n"
-                + "Error: "
-                + cause.getMessage(),
-            "Server Not Reachable");
-      }
     }
 
+    // Save all settings first, regardless of Ollama availability
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
     settings.setColumnSpinnerStep(mySettingsComponent.getColumnSpinnerStep());
@@ -133,6 +106,41 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
 
     mySettingsComponent.applyProfileSettings();
+
+    // Validate Ollama connection as a non-blocking warning (settings are already saved)
+    if (mySettingsComponent.getUseAiGeneration()) {
+      String url = mySettingsComponent.getOllamaUrl();
+      if (Objects.nonNull(url) && !url.trim().isEmpty()) {
+        AtomicReference<Exception> pingError = new AtomicReference<>();
+        ProgressManager.getInstance()
+            .runProcessWithProgressSynchronously(
+                () -> {
+                  try {
+                    new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
+                  } catch (Exception e) {
+                    pingError.set(e);
+                  }
+                },
+                "Checking Ollama Server...",
+                false,
+                null);
+
+        if (Objects.nonNull(pingError.get())) {
+          Throwable cause =
+              Objects.nonNull(pingError.get().getCause())
+                  ? pingError.get().getCause()
+                  : pingError.get();
+          throw new ConfigurationException(
+              "Settings saved, but no Ollama server found at "
+                  + url.trim()
+                  + ".\n"
+                  + "AI generation may not work until Ollama is available.\n\n"
+                  + "Error: "
+                  + Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName()),
+              "Ollama Server Not Reachable");
+        }
+      }
+    }
   }
 
   @Override

@@ -42,7 +42,12 @@ public class DbSeedProjectState implements PersistentStateComponent<DbSeedProjec
   @Override
   public void loadState(@NotNull DbSeedProjectState state) {
     XmlSerializerUtil.copyBean(state, this);
+    this.profiles = new ArrayList<>(profiles);
     sanitizeProfiles();
+  }
+
+  public void setProfiles(List<ConnectionProfile> profiles) {
+    this.profiles = new ArrayList<>(profiles);
   }
 
   public void sanitizeProfiles() {

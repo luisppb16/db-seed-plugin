@@ -13,6 +13,8 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.config.DriverInfo;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
+import java.awt.BorderLayout;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -111,7 +113,7 @@ public class DriverSelectionDialog extends DialogWrapper {
   }
 
   private JTextField createProjectIdField() {
-    final JTextField field = new JTextField(getTitle().length());
+    final JTextField field = new JTextField(30);
     field
         .getDocument()
         .addDocumentListener(
@@ -154,7 +156,10 @@ public class DriverSelectionDialog extends DialogWrapper {
 
   @Override
   protected @Nullable JComponent createCenterPanel() {
-    return mainPanel;
+    final JPanel wrapper = new JPanel(new BorderLayout());
+    wrapper.add(mainPanel, BorderLayout.CENTER);
+    wrapper.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
+    return wrapper;
   }
 
   @Override
@@ -182,7 +187,7 @@ public class DriverSelectionDialog extends DialogWrapper {
       return null;
     }
     final String url = selectedDriver.urlTemplate().replace("%your_project_id%", currentProjectId);
-    log.info("Generated BigQuery URL: {}", url);
+    log.debug("Generated BigQuery URL for driver configuration");
     return new DriverInfo(
         selectedDriver.name(),
         selectedDriver.mavenGroupId(),

@@ -22,6 +22,7 @@ import com.intellij.ui.table.JBTable;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.schema.SchemaDsl;
 import com.luisppb16.dbseed.schema.SqlType;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -121,7 +122,12 @@ public final class SchemaDesigner extends AnAction {
 
       final JPanel content = new JPanel(new BorderLayout());
       content.add(mainSplitPane, BorderLayout.CENTER);
-      content.add(buttonsPanel, BorderLayout.SOUTH);
+
+      final JPanel southPanel = new JPanel(new BorderLayout());
+      southPanel.add(buttonsPanel, BorderLayout.CENTER);
+      southPanel.add(ComponentUtils.createVersionLabel(), BorderLayout.EAST);
+      content.add(southPanel, BorderLayout.SOUTH);
+
       content.setPreferredSize(JBUI.size(800, 600));
       return content;
     }
@@ -132,6 +138,14 @@ public final class SchemaDesigner extends AnAction {
         final String tableName = dialog.getTableName();
         final List<SchemaDsl.Column> columns = dialog.getColumns();
         if (Objects.nonNull(tableName) && !tableName.isBlank() && !columns.isEmpty()) {
+          final boolean duplicate =
+              Collections.list(model.elements()).stream()
+                  .anyMatch(t -> t.name().equalsIgnoreCase(tableName));
+          if (duplicate) {
+            Messages.showErrorDialog(
+                getWindow(), "A table named '" + tableName + "' already exists.", "Duplicate Table");
+            return;
+          }
           model.addElement(new UiTable(tableName, columns));
         }
       }
@@ -141,6 +155,7 @@ public final class SchemaDesigner extends AnAction {
       final JDialog progressDialog = new JDialog();
       progressDialog.setTitle("Generating SQL");
       progressDialog.setModal(true);
+      progressDialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
       final JProgressBar progressBar = new JProgressBar();
       progressBar.setIndeterminate(true);
       progressDialog.add(BorderLayout.CENTER, progressBar);
@@ -165,7 +180,11 @@ public final class SchemaDesigner extends AnAction {
 
             @Override
             protected void done() {
-              progressDialog.dispose();
+              try {
+                progressDialog.dispose();
+              } catch (final Exception ignored) {
+                // Ensure dialog is always dismissed
+              }
               try {
                 sqlArea.setText(get());
               } catch (final InterruptedException e) {
@@ -233,6 +252,7 @@ public final class SchemaDesigner extends AnAction {
     @Override
     protected @NotNull JComponent createCenterPanel() {
       final JPanel panel = new JPanel(new BorderLayout(0, 8));
+      panel.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
 
       final JPanel namePanel = new JPanel(new BorderLayout(8, 0));
       namePanel.add(new JBLabel("Table name:"), BorderLayout.WEST);

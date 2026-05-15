@@ -7,42 +7,32 @@
 
 package com.luisppb16.dbseed.ui.util;
 
+import com.intellij.ide.plugins.IdeaPluginDescriptor;
+import com.intellij.ide.plugins.PluginManager;
+import com.intellij.openapi.extensions.PluginId;
+import java.awt.FlowLayout;
 import java.awt.event.KeyEvent;
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
 import javax.swing.JComponent;
 import javax.swing.JFormattedTextField;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JSpinner;
 import javax.swing.KeyStroke;
+import javax.swing.UIManager;
 import lombok.experimental.UtilityClass;
 
 /**
- * Comprehensive utility suite for configuring and enhancing UI component behavior in the DBSeed
- * plugin.
+ * Utility suite for configuring and enhancing UI component behavior in the DBSeed plugin.
  *
- * <p>This utility class centralizes common UI component customization patterns used throughout the
- * DBSeed plugin's user interface. It provides specialized methods for enhancing component
- * functionality, improving user experience, and ensuring consistent behavior across different UI
- * elements. The class focuses on addressing common UI/UX challenges and providing reusable
- * solutions for component configuration.
- *
- * <p>Key responsibilities include:
- *
- * <ul>
- *   <li>Configuring keyboard navigation and interaction patterns for enhanced accessibility
- *   <li>Customizing spinner controls with intuitive arrow-key functionality
- *   <li>Providing consistent input handling across different component types
- *   <li>Implementing platform-appropriate UI behavior modifications
- *   <li>Centralizing component configuration logic to promote code reuse
- * </ul>
- *
- * <p>The implementation follows best practices for Swing component manipulation, ensuring proper
- * event handling and maintaining component state integrity. All methods are designed to be safely
- * callable from the Event Dispatch Thread and implement proper null-safety checks to prevent
- * runtime exceptions.
+ * <p>Centralizes common UI component customization patterns used throughout the plugin's interface,
+ * providing reusable solutions for component configuration.
  */
 @UtilityClass
 public class ComponentUtils {
+
+  private static final String PLUGIN_ID = "com.luisppb16.dbseed";
 
   public static void configureSpinnerArrowKeyControls(final JSpinner spinner) {
     final JComponent editor = spinner.getEditor();
@@ -60,5 +50,19 @@ public class ComponentUtils {
       textFieldActionMap.put(incrementAction, spinnerActionMap.get(incrementAction));
       textFieldActionMap.put(decrementAction, spinnerActionMap.get(decrementAction));
     }
+  }
+
+  public static JPanel createVersionLabel() {
+    final IdeaPluginDescriptor descriptor = PluginManager.getPlugin(PluginId.getId(PLUGIN_ID));
+    final String version = descriptor != null ? descriptor.getVersion() : "?";
+
+    final JLabel label = new JLabel("v" + version);
+    label.setFont(label.getFont().deriveFont(10f));
+    label.setForeground(UIManager.getColor("Label.disabledForeground"));
+
+    final JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    panel.setOpaque(false);
+    panel.add(label);
+    return panel;
   }
 }

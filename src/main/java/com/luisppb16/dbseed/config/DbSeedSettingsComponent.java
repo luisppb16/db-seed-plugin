@@ -33,6 +33,7 @@ import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -135,6 +136,7 @@ public class DbSeedSettingsComponent {
 
     myMainPanel = new JPanel(new BorderLayout());
     myMainPanel.add(tabbedPane, BorderLayout.CENTER);
+    myMainPanel.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
     myMainPanel.setPreferredSize(new Dimension(600, 600));
   }
 
@@ -165,11 +167,12 @@ public class DbSeedSettingsComponent {
       final DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
       if (projectState != null) {
         final List<ConnectionProfile> validProfiles =
-            projectState.getProfiles().stream()
-                .filter(Objects::nonNull)
-                .filter(ConnectionProfile::hasValidName)
-                .peek(p -> p.setName(p.getName().trim()))
-                .toList();
+            new ArrayList<>(
+                projectState.getProfiles().stream()
+                    .filter(Objects::nonNull)
+                    .filter(ConnectionProfile::hasValidName)
+                    .peek(p -> p.setName(p.getName().trim()))
+                    .toList());
         validProfiles.forEach(
             p -> {
               originalProfiles.add(p.getName());
@@ -233,12 +236,13 @@ public class DbSeedSettingsComponent {
             .map(String::trim)
             .toList();
     final List<ConnectionProfile> toKeep =
-        projectState.getProfiles().stream()
-            .filter(Objects::nonNull)
-            .filter(ConnectionProfile::hasValidName)
-            .filter(p -> currentList.contains(p.getName().trim()))
-            .peek(p -> p.setName(p.getName().trim()))
-            .toList();
+        new ArrayList<>(
+            projectState.getProfiles().stream()
+                .filter(Objects::nonNull)
+                .filter(ConnectionProfile::hasValidName)
+                .filter(p -> currentList.contains(p.getName().trim()))
+                .peek(p -> p.setName(p.getName().trim()))
+                .toList());
     projectState.setProfiles(toKeep);
     if (toKeep.isEmpty()) {
       projectState.setActiveProfileName("");

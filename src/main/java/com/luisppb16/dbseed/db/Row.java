@@ -18,23 +18,16 @@ import java.util.Set;
  * <p>This record class represents a single row of data in a database table, containing the column
  * values as a map from column names to their corresponding values. It serves as the fundamental
  * unit of data during the seeding process, encapsulating the generated or existing data for a
- * specific table row. The class provides a simple structure for storing and accessing row data
- * throughout the data generation and SQL generation phases.
+ * specific table row.
  *
- * <p>Key responsibilities include:
- *
- * <ul>
- *   <li>Storing column values for a database row as key-value pairs
- *   <li>Serving as a data container during data generation and SQL output
- *   <li>Ensuring type safety through generic value storage
- *   <li>Supporting concurrent modifications via synchronized map during AI column generation
- * </ul>
- *
- * <p>The implementation uses a synchronized LinkedHashMap to store column values, allowing for
- * flexible data types, efficient lookups by column name, and safe concurrent modifications during
- * parallel AI value generation. Null values are supported.
+ * <p>Thread safety: column values are stored in a synchronized map to support concurrent writes
+ * during parallel AI value generation (Phase 2). Individual {@code put}/{@code get} operations are
+ * atomic. For compound operations (iteration, bulk read), callers must synchronize on the Row
+ * instance. SQL generation and FK resolution run sequentially after all parallel work completes,
+ * so no additional synchronization is needed in those phases.
  *
  * @param values A mapping of column names to their corresponding values in the row
+ * @param explicitColumns The set of columns whose values were explicitly set (not auto-generated)
  */
 public record Row(Map<String, Object> values, Set<String> explicitColumns) {
   public Row(Map<String, Object> values) {

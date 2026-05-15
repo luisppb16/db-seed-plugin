@@ -113,7 +113,7 @@ public class SchemaIntrospector {
   private static final String CAST_PATTERN = "(?:\\s*::[a-zA-Z0-9 ]+)*";
 
   private static final Pattern CHECK_WRAPPER_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
-  private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*?)\\)");
+  private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)", Pattern.DOTALL);
 
   private static final Map<String, Pattern> IN_PATTERNS = new ConcurrentHashMap<>();
   private static final Map<String, Pattern> ANY_ARRAY_PATTERNS = new ConcurrentHashMap<>();
@@ -184,8 +184,8 @@ public class SchemaIntrospector {
                 rs.getInt(DATA_TYPE),
                 rs.getString(TYPE_NAME),
                 "YES".equalsIgnoreCase(rs.getString(IS_NULLABLE)),
-                rs.getInt(COLUMN_SIZE),
-                rs.getInt(DECIMAL_DIGITS),
+                getNullableInt(rs, COLUMN_SIZE),
+                getNullableInt(rs, DECIMAL_DIGITS),
                 safe(rs.getString(REMARKS)));
         map.computeIfAbsent(key, k -> new ArrayList<>()).add(col);
       }
@@ -226,8 +226,8 @@ public class SchemaIntrospector {
               !isPk && raw.nullable(),
               isPk,
               isUuid,
-              raw.length(),
-              raw.scale(),
+              raw.length() != null ? raw.length() : 0,
+              raw.scale() != null ? raw.scale() : 0,
               minValue,
               maxValue,
               allowedValues));
@@ -447,7 +447,7 @@ public class SchemaIntrospector {
             .forEach(allowed::add);
       }
 
-      final String exprNoParens = check.replaceAll("[()]+", " ");
+      final String exprNoParens = stripParensOutsideStrings(check);
       final Matcher ma = anyArrayPattern.matcher(exprNoParens);
       while (ma.find()) {
         final String inside = ma.group(1);
@@ -586,7 +586,8 @@ public class SchemaIntrospector {
         }
       }
     } catch (final SQLException e) {
-      log.warn("Failed to load check constraints via query, constraints may be incomplete", e);
+      log.warn(
+          "Failed to load check constraints via query: {}", e.getMessage());
     }
   }
 
@@ -599,6 +600,37 @@ public class SchemaIntrospector {
 
   private static String safe(final String s) {
     return Objects.requireNonNullElse(s, "");
+  }
+
+  private static Integer getNullableInt(final ResultSet rs, final String columnLabel)
+      throws SQLException {
+    final int value = rs.getInt(columnLabel);
+    return rs.wasNull() ? null : value;
+  }
+
+  /**
+   * Removes parentheses outside of quoted string literals, preserving parentheses inside strings.
+   * Handles both single-quoted and double-quoted strings, with escaped quotes within.
+   */
+  public static String stripParensOutsideStrings(final String input) {
+    final StringBuilder sb = new StringBuilder(input.length());
+    boolean inSingleQuote = false;
+    boolean inDoubleQuote = false;
+    for (int i = 0; i < input.length(); i++) {
+      final char c = input.charAt(i);
+      if (c == '\'' && !inDoubleQuote) {
+        inSingleQuote = !inSingleQuote;
+        sb.append(c);
+      } else if (c == '"' && !inSingleQuote) {
+        inDoubleQuote = !inDoubleQuote;
+        sb.append(c);
+      } else if ((c == '(' || c == ')') && !inSingleQuote && !inDoubleQuote) {
+        sb.append(' ');
+      } else {
+        sb.append(c);
+      }
+    }
+    return sb.toString();
   }
 
   private static double[] inferBoundsFromChecks(
@@ -631,7 +663,7 @@ public class SchemaIntrospector {
 
     for (final String check : checks) {
       if (Objects.isNull(check) || check.isBlank()) continue;
-      final String exprNoParens = check.replaceAll("[()]+", " ");
+      final String exprNoParens = stripParensOutsideStrings(check);
 
       final double[] betweenBounds = parseBounds(exprNoParens, betweenPattern);
       if (betweenBounds.length == 2) return betweenBounds;
@@ -664,8 +696,8 @@ public class SchemaIntrospector {
       int type,
       String typeName,
       boolean nullable,
-      int length,
-      int scale,
+      Integer length,
+      Integer scale,
       String remarks) {}
 
   private record TableKey(String schema, String table) {}

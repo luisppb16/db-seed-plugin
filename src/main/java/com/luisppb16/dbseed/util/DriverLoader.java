@@ -26,6 +26,7 @@ import java.nio.file.StandardCopyOption;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -132,9 +133,8 @@ public class DriverLoader {
       downloadDriver(project, info, jarPath);
     }
 
-    if (!LOADED_DRIVERS.contains(info.driverClass())) {
+    if (LOADED_DRIVERS.add(info.driverClass())) {
       loadDriver(jarPath.toUri().toURL(), info.driverClass());
-      LOADED_DRIVERS.add(info.driverClass());
     } else {
       log.debug("Driver {} already loaded, skipping registration.", info.driverClass());
     }
@@ -160,10 +160,19 @@ public class DriverLoader {
     }
 
     log.info("Downloading driver from: {}", url);
-    try (final InputStream in = new URI(url).toURL().openStream()) {
-      Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+    final Path tempFile = target.resolveSibling(target.getFileName() + ".tmp");
+    try {
+      try (final InputStream in = new URI(url).toURL().openStream()) {
+        Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+      }
+      Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       log.info("Driver downloaded to: {}", target);
     } catch (final IOException e) {
+      try {
+        Files.deleteIfExists(tempFile);
+      } catch (final IOException ignored) {
+        log.warn("Could not delete partial download: {}", tempFile);
+      }
       try {
         Files.deleteIfExists(target);
       } catch (final IOException ignored) {
@@ -246,25 +255,29 @@ public class DriverLoader {
   }
 
   public static void deregisterAll() {
-    LOADED_DRIVERS.forEach(
-        driverClass -> {
-          try {
-            var drivers = DriverManager.getDrivers();
-            while (drivers.hasMoreElements()) {
-              var d = drivers.nextElement();
-              if (d instanceof DriverShim shim
-                  && shim.driver().getClass().getName().equals(driverClass)) {
-                try {
-                  DriverManager.deregisterDriver(shim);
-                } catch (final SQLException e) {
-                  log.warn("Could not deregister driver {}: {}", driverClass, e.getMessage());
-                }
-              }
-            }
-          } catch (final Exception e) {
-            log.warn("Error iterating drivers for {}: {}", driverClass, e.getMessage());
-          }
-        });
+    // Collect all DriverShim instances that match our loaded drivers in a single pass
+    final List<DriverShim> toDeregister = new ArrayList<>();
+    try {
+      var drivers = DriverManager.getDrivers();
+      while (drivers.hasMoreElements()) {
+        var d = drivers.nextElement();
+        if (d instanceof DriverShim shim && LOADED_DRIVERS.contains(shim.driver().getClass().getName())) {
+          toDeregister.add(shim);
+        }
+      }
+    } catch (final Exception e) {
+      log.warn("Error iterating registered drivers: {}", e.getMessage());
+    }
+
+    // Deregister outside the enumeration to avoid ConcurrentModificationException
+    for (final DriverShim shim : toDeregister) {
+      try {
+        DriverManager.deregisterDriver(shim);
+      } catch (final SQLException e) {
+        log.warn("Could not deregister driver: {}", e.getMessage());
+      }
+    }
+
     LOADED_DRIVERS.clear();
     LOADED_CLASSLOADERS
         .values()

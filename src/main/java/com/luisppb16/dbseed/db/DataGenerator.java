@@ -30,10 +30,10 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
@@ -119,6 +119,7 @@ public class DataGenerator {
           });
 
   public static GenerationResult generate(final GenerationParameters params) {
+    ConstraintParser.clearCache();
     final List<Table> orderedTables =
         applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
     final Map<String, Table> tableMap =
@@ -128,7 +129,7 @@ public class DataGenerator {
         DictionaryLoader.loadWords(params.useEnglishDictionary(), params.useSpanishDictionary());
     final Faker faker = new Faker();
     final Map<Table, List<Row>> data = new LinkedHashMap<>();
-    final Set<UUID> usedUuids = new HashSet<>();
+    final Set<UUID> usedUuids = ConcurrentHashMap.newKeySet();
     final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints =
         new HashMap<>();
     final Set<String> softDeleteCols = parseSoftDeleteColumns(params.softDeleteColumns());
@@ -214,7 +215,7 @@ public class DataGenerator {
     tracker.setText("Phase 3/4: Validating constraints...");
     tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
     validateNumericConstraints(
-        orderedTables, tableConstraints, data, params.numericScale(), tracker);
+        orderedTables, tableConstraints, data, faker, params.numericScale(), tracker);
 
     tracker.setText("Phase 4/4: Resolving foreign keys...");
     tracker.setText2("Processing deferred FK dependencies");
@@ -265,7 +266,7 @@ public class DataGenerator {
             .map(String::trim)
             .filter(s -> !s.isEmpty())
             .collect(Collectors.toCollection(HashSet::new))
-        : new HashSet<>();
+        : Set.of();
   }
 
   private static List<RowGenerator> generateTableRows(
@@ -368,8 +369,6 @@ public class DataGenerator {
       return;
     }
 
-    final AtomicLong actualAiWork = new AtomicLong(0);
-
     final long totalAiColumns =
         aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
     final AtomicInteger completedColumns = new AtomicInteger(0);
@@ -426,11 +425,11 @@ public class DataGenerator {
       final List<Table> orderedTables,
       final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints,
       final Map<Table, List<Row>> data,
+      final Faker faker,
       final int numericScale,
       final ProgressTracker tracker) {
 
-    final Faker faker = new Faker();
-    final ValueGenerator vg = new ValueGenerator(faker, null, false, new HashSet<>(), numericScale);
+    final ValueGenerator vg = new ValueGenerator(faker, null, false, Set.of(), numericScale);
 
     orderedTables.forEach(
         table -> {
@@ -477,6 +476,11 @@ public class DataGenerator {
                 row.values().put(col.name(), val);
               }
             });
+  }
+
+  /** Shuts down the AI column generation executor. Called when the plugin is being unloaded. */
+  public static void shutdown() {
+    AI_COLUMN_EXECUTOR.shutdownNow();
   }
 
   public record GenerationParameters(

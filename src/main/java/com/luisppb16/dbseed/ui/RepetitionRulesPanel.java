@@ -17,6 +17,7 @@ import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Component;
@@ -154,7 +155,9 @@ public class RepetitionRulesPanel extends JPanel {
               rightPanelLayout.show(rightPanelContainer, table.name());
             } else if (selectedValue instanceof ColumnItem(Column column)) {
               final Table parentTable = findParentTable(tables, column);
-              rightPanelLayout.show(rightPanelContainer, parentTable.name());
+              if (parentTable != null) {
+                rightPanelLayout.show(rightPanelContainer, parentTable.name());
+              }
             }
           }
         });
@@ -251,7 +254,7 @@ public class RepetitionRulesPanel extends JPanel {
     headerPanel.add(new JLabel("Repeat Count:"));
     final JSpinner countSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
     countSpinner.setValue(ruleModel.count);
-    countSpinner.addChangeListener(e -> ruleModel.count = (Integer) countSpinner.getValue());
+    countSpinner.addChangeListener(e -> ruleModel.count = ((Number) countSpinner.getValue()).intValue());
     headerPanel.add(countSpinner);
 
     final JButton removeRuleButton = new JButton(AllIcons.Actions.Cancel);
@@ -549,7 +552,7 @@ public class RepetitionRulesPanel extends JPanel {
 
     @Override
     protected JComponent createCenterPanel() {
-      final JPanel panel = new JPanel(new GridBagLayout());
+      final JPanel formPanel = new JPanel(new GridBagLayout());
       final GridBagConstraints gbc = new GridBagConstraints();
       gbc.insets = JBUI.insets(4);
       gbc.anchor = GridBagConstraints.WEST;
@@ -557,7 +560,7 @@ public class RepetitionRulesPanel extends JPanel {
       gbc.gridx = 0;
       gbc.gridy = 0;
       gbc.gridwidth = 3;
-      panel.add(
+      formPanel.add(
           new JLabel(
               "Enter a Java regex pattern used to generate values for this column (e.g. #[0-9A-F]{6})."),
           gbc);
@@ -568,14 +571,17 @@ public class RepetitionRulesPanel extends JPanel {
       gbc.fill = GridBagConstraints.NONE;
 
       gbc.gridx = 0;
-      panel.add(new JLabel("  Regex:"), gbc);
+      formPanel.add(new JLabel("  Regex:"), gbc);
 
       gbc.gridx = 1;
       gbc.weightx = 1;
       gbc.fill = GridBagConstraints.HORIZONTAL;
-      panel.add(patternField, gbc);
+      formPanel.add(patternField, gbc);
 
-      return panel;
+      final JPanel wrapper = new JPanel(new BorderLayout());
+      wrapper.add(formPanel, BorderLayout.CENTER);
+      wrapper.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
+      return wrapper;
     }
 
     @Override

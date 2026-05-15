@@ -236,7 +236,10 @@ public record ValueGenerator(
 
   public Object generateSoftDeleteValue(
       final Column column, final boolean useSchemaDefault, final String value) {
-    return useSchemaDefault ? SqlKeyword.DEFAULT : convertStringValue(value, column);
+    if (useSchemaDefault) return SqlKeyword.DEFAULT;
+    if (value == null || "NULL".equalsIgnoreCase(value)) return null;
+    final Object converted = convertStringValue(value, column);
+    return converted != null ? converted : value;
   }
 
   private Object generateUuidValue(final Column column, final ParsedConstraint constraint) {
@@ -274,16 +277,14 @@ public record ValueGenerator(
 
   @SuppressWarnings("java:S2245")
   private UUID generateUuid() {
-    return IntStream.range(0, UUID_GENERATION_LIMIT)
-        .mapToObj(i -> UUID.randomUUID())
-        .filter(usedUuids::add)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                new IllegalStateException(
-                    "Unable to generate a unique UUID after "
-                        + UUID_GENERATION_LIMIT
-                        + " attempts"));
+    for (int i = 0; i < UUID_GENERATION_LIMIT; i++) {
+      final UUID candidate = UUID.randomUUID();
+      if (usedUuids.add(candidate)) {
+        return candidate;
+      }
+    }
+    throw new IllegalStateException(
+        "Unable to generate a unique UUID after " + UUID_GENERATION_LIMIT + " attempts");
   }
 
   private ParsedConstraint determineEffectiveNumericConstraint(
@@ -524,6 +525,9 @@ public record ValueGenerator(
           min = max;
           max = t;
         }
+        if (max == Integer.MAX_VALUE) {
+          yield ThreadLocalRandom.current().nextInt(min, Integer.MAX_VALUE);
+        }
         yield ThreadLocalRandom.current().nextInt(min, max + 1);
       }
       case Types.BIGINT -> {
@@ -533,6 +537,12 @@ public record ValueGenerator(
           final long t = min;
           min = max;
           max = t;
+        }
+        if (max == Long.MAX_VALUE) {
+          if (min == Long.MIN_VALUE) {
+            yield ThreadLocalRandom.current().nextLong();
+          }
+          yield ThreadLocalRandom.current().nextLong(min, Long.MAX_VALUE);
         }
         yield ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
       }

@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
+import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
@@ -45,6 +46,7 @@ import java.util.stream.IntStream;
  *   <li>{@code supportsMultiRowInsert} — whether multi-row VALUES is supported (default true)
  * </ul>
  */
+@Slf4j
 public sealed class AbstractDialect implements DatabaseDialect permits StandardDialect {
 
   private static final String NULL_STR = "NULL";
@@ -55,8 +57,11 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
       try (InputStream is = getClass().getResourceAsStream("/dialects/" + resourceName)) {
         if (Objects.nonNull(is)) {
           props.load(is);
+        } else {
+          log.error("Dialect properties file not found: /dialects/{}", resourceName);
         }
-      } catch (IOException ignored) {
+      } catch (IOException e) {
+        log.error("Failed to load dialect properties: /dialects/{}", resourceName, e);
       }
     }
   }
@@ -68,11 +73,20 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
 
   @Override
   public String quote(String identifier) {
-    String quoteChar = props.getProperty("quoteChar", "\"");
-    String quoteEscape = props.getProperty("quoteEscape", "\"\"");
+    String openQuote = props.getProperty("quoteChar", "\"");
+    String closeQuote = props.getProperty("closeQuoteChar", openQuote);
+    String quoteEscape = props.getProperty("quoteEscape", "");
     boolean uppercase = Boolean.parseBoolean(props.getProperty("uppercaseIdentifiers", "false"));
     String id = uppercase ? identifier.toUpperCase(Locale.ROOT) : identifier;
-    return quoteChar + id.replace(quoteChar, quoteEscape) + quoteChar;
+    // For symmetric quotes (e.g. "), escape the quote char inside the identifier
+    // For asymmetric quotes (e.g. [ ]), escape the close char inside the identifier
+    String charToEscape = closeQuote;
+    String escapeWith = quoteEscape.isEmpty() ? closeQuote + closeQuote : quoteEscape;
+    if (openQuote.equals(closeQuote)) {
+      charToEscape = openQuote;
+      escapeWith = quoteEscape.isEmpty() ? openQuote + openQuote : quoteEscape;
+    }
+    return openQuote + id.replace(charToEscape, escapeWith) + closeQuote;
   }
 
   @Override
@@ -219,16 +233,18 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
       List<Row> rows,
       List<String> columnOrder) {
 
+    String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
+    String prefix = props.getProperty("batchRowPrefix", "(");
+    String suffix = props.getProperty("batchRowSuffix", ")");
+    String footer = props.getProperty("batchFooter", ";\n");
     String stmtSep = props.getProperty("statementSeparator", ";\n");
 
     for (Row row : rows) {
-      sb.append("INSERT INTO ")
-          .append(tableName)
-          .append(" (")
-          .append(columnList)
-          .append(") VALUES (");
+      sb.append(header.replace("${table}", tableName).replace("${columns}", columnList));
+      sb.append(prefix.replace("${table}", tableName).replace("${columns}", columnList));
       appendRowValues(sb, row, columnOrder);
-      sb.append(")").append(stmtSep);
+      sb.append(suffix);
+      sb.append(footer.isEmpty() ? stmtSep : footer.replace("${table}", tableName).replace("${columns}", columnList));
     }
   }
 

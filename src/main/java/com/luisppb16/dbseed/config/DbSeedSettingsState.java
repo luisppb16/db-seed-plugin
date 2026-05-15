@@ -97,6 +97,13 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         "DbSeedSettingsState service not found. Plugin might be improperly installed.");
   }
 
+  private static <V> Map<String, Map<String, V>> deepCopy(
+      final Map<String, Map<String, V>> source) {
+    final Map<String, Map<String, V>> copy = new HashMap<>();
+    source.forEach((key, value) -> copy.put(key, new HashMap<>(value)));
+    return copy;
+  }
+
   @Nullable
   @Override
   public DbSeedSettingsState getState() {
@@ -165,12 +172,5 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   public void setCircularReferenceTerminationModes(
       final Map<String, Map<String, String>> circularReferenceTerminationModes) {
     this.circularReferenceTerminationModes = deepCopy(circularReferenceTerminationModes);
-  }
-
-  private static <V> Map<String, Map<String, V>> deepCopy(
-      final Map<String, Map<String, V>> source) {
-    final Map<String, Map<String, V>> copy = new HashMap<>();
-    source.forEach((key, value) -> copy.put(key, new HashMap<>(value)));
-    return copy;
   }
 }

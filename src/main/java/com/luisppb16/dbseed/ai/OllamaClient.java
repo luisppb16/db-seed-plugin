@@ -242,6 +242,11 @@ public class OllamaClient {
     return lower.endsWith("[]") || lower.startsWith("_") || lower.contains("array");
   }
 
+  /** Shuts down the shared HTTP executor. Called when the plugin is being unloaded. */
+  public static void shutdown() {
+    HTTP_EXECUTOR.shutdownNow();
+  }
+
   /**
    * Pings the Ollama server to check connectivity.
    *
@@ -504,11 +509,6 @@ public class OllamaClient {
       log.warn("Failed to warm model: {}", e.getMessage());
       return CompletableFuture.completedFuture(null);
     }
-  }
-
-  /** Shuts down the shared HTTP executor. Called when the plugin is being unloaded. */
-  public static void shutdown() {
-    HTTP_EXECUTOR.shutdownNow();
   }
 
   public static class OllamaException extends RuntimeException {

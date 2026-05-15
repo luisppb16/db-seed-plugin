@@ -241,7 +241,8 @@ public final class GenerateSeedAction extends AnAction {
   }
 
   private void openEditor(final Project project, final String sql) {
-    final String timestamp = new java.text.SimpleDateFormat("yyyyMMddHHmmssSSS").format(new java.util.Date());
+    final String timestamp =
+        new java.text.SimpleDateFormat("yyyyMMddHHmmssSSS").format(new java.util.Date());
     final String fileName = "seed_" + timestamp + ".sql";
     final FileType fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName);
     final LightVirtualFile file = new LightVirtualFile(fileName, fileType, sql);

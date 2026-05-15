@@ -113,7 +113,8 @@ public class SchemaIntrospector {
   private static final String CAST_PATTERN = "(?:\\s*::[a-zA-Z0-9 ]+)*";
 
   private static final Pattern CHECK_WRAPPER_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)");
-  private static final Pattern TEXT_CHECK_PATTERN = Pattern.compile("(?i)CHECK\\s*\\((.*)\\)", Pattern.DOTALL);
+  private static final Pattern TEXT_CHECK_PATTERN =
+      Pattern.compile("(?i)CHECK\\s*\\((.*)\\)", Pattern.DOTALL);
 
   private static final Map<String, Pattern> IN_PATTERNS = new ConcurrentHashMap<>();
   private static final Map<String, Pattern> ANY_ARRAY_PATTERNS = new ConcurrentHashMap<>();
@@ -586,8 +587,7 @@ public class SchemaIntrospector {
         }
       }
     } catch (final SQLException e) {
-      log.warn(
-          "Failed to load check constraints via query: {}", e.getMessage());
+      log.warn("Failed to load check constraints via query: {}", e.getMessage());
     }
   }
 

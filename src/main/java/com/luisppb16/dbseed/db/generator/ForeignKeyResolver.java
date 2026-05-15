@@ -259,7 +259,8 @@ public final class ForeignKeyResolver {
             circularFkCols.forEach(col -> circularValues.put(col, row.values().get(col)));
             addUniqueCombinationsToSet(uniqueKeysOnFks, circularValues, usedCombinations);
           }
-          findUniqueFkCombination(table, uniqueKeysOnFks, usedCombinations, maxAttempts, circularFkCols)
+          findUniqueFkCombination(
+                  table, uniqueKeysOnFks, usedCombinations, maxAttempts, circularFkCols)
               .ifPresent(fkValues -> row.values().putAll(fkValues));
         });
   }
@@ -315,8 +316,7 @@ public final class ForeignKeyResolver {
                 m.forEach(
                     (col, val) -> {
                       if (result.containsKey(col)) {
-                        log.warn(
-                            "Multiple FKs map to column '{}'; keeping first value.", col);
+                        log.warn("Multiple FKs map to column '{}'; keeping first value.", col);
                       } else {
                         result.put(col, val);
                       }

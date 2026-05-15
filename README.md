@@ -11,13 +11,15 @@ pattern matching, functional programming with Streams, `Optional` to avoid nulls
 
 - **action**: IntelliJ actions (`SeedDatabaseAction`, `GenerateSeedAction`).
 - **config**: configuration persistence and settings UI (`GenerationConfig`, `DbSeedSettingsState`, `ConnectionConfigPersistence`).
-- **db**: main engine with introspection (`SchemaIntrospector`), topological sorting (`TopologicalSorter`), data generation (`DataGenerator`),
+- **db**: main engine with introspection (`SchemaIntrospector`), topological sorting (`TopologicalSorter`), data generation (
+  `DataGenerator`),
   and SQL construction (`SqlGenerator`).
 - **model**: immutable models (`Table`, `Column`, `ForeignKey`, `RepetitionRule`).
 - **registry**: driver and runtime registries used by the plugin.
 - **schema**: DSL for manually defining schemas (`SchemaDsl`, `SqlType`).
 - **ui**: Swing/IntelliJ dialogs and screens (`SeedDialog`, `PkUuidSelectionDialog`, `SchemaDesigner`).
 - **util**: shared infrastructure and helper utilities.
+
 ---
 
 ### ✅ Marketplace Compliance Notes
@@ -271,7 +273,7 @@ This is useful when manually testing introspection, FK handling, and dialect-spe
 ### 📋 Quick Example
 
 1. Select the database driver from the list (PostgreSQL, MySQL, SQL Server, SQLite, etc.).
-   - If it is not installed, the plugin will offer to download it automatically.
+    - If it is not installed, the plugin will offer to download it automatically.
 2. Configure the connection in the **SeedDialog** (JDBC URL, user, password, schema).
 3. Optionally save the connection as a profile for future runs.
 4. Mark the PKs you want to treat as UUIDs in the **PkUuidSelectionDialog**.

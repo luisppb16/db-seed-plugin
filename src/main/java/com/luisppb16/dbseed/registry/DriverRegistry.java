@@ -38,10 +38,16 @@ public class DriverRegistry {
       tempDrivers = mapper.readValue(in, new TypeReference<>() {});
       log.info("Loaded {} drivers from {}", tempDrivers.size(), DRIVERS_JSON_PATH);
     } catch (final JsonProcessingException e) {
-      log.error("Error parsing drivers.json: {}. The driver selection dialog will be empty.", e.getMessage(), e);
+      log.error(
+          "Error parsing drivers.json: {}. The driver selection dialog will be empty.",
+          e.getMessage(),
+          e);
       tempDrivers = Collections.emptyList();
     } catch (final IOException e) {
-      log.error("Error reading drivers.json: {}. The driver selection dialog will be empty.", e.getMessage(), e);
+      log.error(
+          "Error reading drivers.json: {}. The driver selection dialog will be empty.",
+          e.getMessage(),
+          e);
       tempDrivers = Collections.emptyList();
     } catch (final IllegalStateException e) {
       log.error("{}. The driver selection dialog will be empty.", e.getMessage());

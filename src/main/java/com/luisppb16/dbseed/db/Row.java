@@ -23,8 +23,8 @@ import java.util.Set;
  * <p>Thread safety: column values are stored in a synchronized map to support concurrent writes
  * during parallel AI value generation (Phase 2). Individual {@code put}/{@code get} operations are
  * atomic. For compound operations (iteration, bulk read), callers must synchronize on the Row
- * instance. SQL generation and FK resolution run sequentially after all parallel work completes,
- * so no additional synchronization is needed in those phases.
+ * instance. SQL generation and FK resolution run sequentially after all parallel work completes, so
+ * no additional synchronization is needed in those phases.
  *
  * @param values A mapping of column names to their corresponding values in the row
  * @param explicitColumns The set of columns whose values were explicitly set (not auto-generated)

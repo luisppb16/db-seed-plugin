@@ -691,7 +691,8 @@ class ForeignKeyResolverTest {
     final Row parentRow = mutableRow("pk1", 10, "pk2", 20);
     final Row childRow = mutableRow("id", 1, "fk1", null, "fk2", null);
 
-    final Map<String, Table> tableMap = new LinkedHashMap<>(Map.of("parent", parent, "child", child));
+    final Map<String, Table> tableMap =
+        new LinkedHashMap<>(Map.of("parent", parent, "child", child));
     final Map<Table, List<Row>> data = new LinkedHashMap<>();
     data.put(parent, List.of(parentRow));
     data.put(child, List.of(childRow));
@@ -709,10 +710,8 @@ class ForeignKeyResolverTest {
   void multiColumnFk_pendingUpdate_preservesPkValues() {
     // Two-table cycle where FK columns overlap with PK columns
     // This tests that pkValues are collected BEFORE FK columns are nullified
-    final ForeignKey fkA =
-        new ForeignKey("fk_a", "B", Map.of("b_fk", "id"), false);
-    final ForeignKey fkB =
-        new ForeignKey("fk_b", "A", Map.of("a_fk", "id"), false);
+    final ForeignKey fkA = new ForeignKey("fk_a", "B", Map.of("b_fk", "id"), false);
+    final ForeignKey fkB = new ForeignKey("fk_b", "A", Map.of("a_fk", "id"), false);
     final Table tableA =
         new Table(
             "A",
@@ -748,9 +747,11 @@ class ForeignKeyResolverTest {
 
     // All PendingUpdates must have non-null PK values
     assertThat(updates).isNotEmpty();
-    assertThat(updates).allSatisfy(update -> assertThat(update.pkValues().values()).doesNotContainNull());
+    assertThat(updates)
+        .allSatisfy(update -> assertThat(update.pkValues().values()).doesNotContainNull());
     // FK values should also be non-null (from parent rows)
-    assertThat(updates).allSatisfy(update -> assertThat(update.fkValues().values()).doesNotContainNull());
+    assertThat(updates)
+        .allSatisfy(update -> assertThat(update.fkValues().values()).doesNotContainNull());
   }
 
   @Test
@@ -763,8 +764,7 @@ class ForeignKeyResolverTest {
             List.of(),
             List.of(),
             List.of());
-    final ForeignKey mfk =
-        new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), true);
+    final ForeignKey mfk = new ForeignKey(null, "parent", Map.of("fk1", "pk1", "fk2", "pk2"), true);
     final Table child =
         new Table(
             "child",
@@ -779,7 +779,8 @@ class ForeignKeyResolverTest {
     final Row c1 = mutableRow("id", 1, "fk1", null, "fk2", null);
     final Row c2 = mutableRow("id", 2, "fk1", null, "fk2", null);
 
-    final Map<String, Table> tableMap = new LinkedHashMap<>(Map.of("parent", parent, "child", child));
+    final Map<String, Table> tableMap =
+        new LinkedHashMap<>(Map.of("parent", parent, "child", child));
     final Map<Table, List<Row>> data = new LinkedHashMap<>();
     data.put(parent, List.of(p1, p2));
     data.put(child, List.of(c1, c2));
@@ -798,7 +799,8 @@ class ForeignKeyResolverTest {
   @Test
   void compositeSelfReferencingFk_closeCycle() {
     final ForeignKey selfFk =
-        new ForeignKey("fk_self", "composite_tree", Map.of("parent_a", "a", "parent_b", "b"), false);
+        new ForeignKey(
+            "fk_self", "composite_tree", Map.of("parent_a", "a", "parent_b", "b"), false);
     final Table table =
         new Table(
             "composite_tree",
@@ -838,7 +840,8 @@ class ForeignKeyResolverTest {
   @Test
   void compositeSelfReferencingFk_nullTermination() {
     final ForeignKey selfFk =
-        new ForeignKey("fk_self", "composite_tree", Map.of("parent_a", "a", "parent_b", "b"), false);
+        new ForeignKey(
+            "fk_self", "composite_tree", Map.of("parent_a", "a", "parent_b", "b"), false);
     final Table table =
         new Table(
             "composite_tree",
@@ -860,7 +863,8 @@ class ForeignKeyResolverTest {
     final Map<String, Map<String, Integer>> circularReferences =
         Map.of("composite_tree", Map.of("fk_self", 3));
     final Map<String, Map<String, String>> terminationModes =
-        Map.of("composite_tree", Map.of("fk_self", CircularReferenceTerminationMode.NULL_FK.name()));
+        Map.of(
+            "composite_tree", Map.of("fk_self", CircularReferenceTerminationMode.NULL_FK.name()));
 
     final ForeignKeyResolver resolver =
         new ForeignKeyResolver(tableMap, data, true, circularReferences, terminationModes);

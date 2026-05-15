@@ -18,9 +18,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
-import lombok.extern.slf4j.Slf4j;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Property-driven foundation for database dialect implementations.
@@ -244,7 +244,10 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
       sb.append(prefix.replace("${table}", tableName).replace("${columns}", columnList));
       appendRowValues(sb, row, columnOrder);
       sb.append(suffix);
-      sb.append(footer.isEmpty() ? stmtSep : footer.replace("${table}", tableName).replace("${columns}", columnList));
+      sb.append(
+          footer.isEmpty()
+              ? stmtSep
+              : footer.replace("${table}", tableName).replace("${columns}", columnList));
     }
   }
 

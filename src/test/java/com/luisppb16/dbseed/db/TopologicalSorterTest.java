@@ -232,10 +232,8 @@ class TopologicalSorterTest {
 
   @Test
   void requiresDeferred_compositeFk_nonNullableInCycle() {
-    final ForeignKey fkA =
-        new ForeignKey(null, "B", Map.of("b1", "id1", "b2", "id2"), false);
-    final ForeignKey fkB =
-        new ForeignKey(null, "A", Map.of("a1", "id1", "a2", "id2"), false);
+    final ForeignKey fkA = new ForeignKey(null, "B", Map.of("b1", "id1", "b2", "id2"), false);
+    final ForeignKey fkB = new ForeignKey(null, "A", Map.of("a1", "id1", "a2", "id2"), false);
     final Table tableA =
         new Table(
             "A",

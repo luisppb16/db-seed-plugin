@@ -136,7 +136,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
                   + ".\n"
                   + "AI generation may not work until Ollama is available.\n\n"
                   + "Error: "
-                  + Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName()),
+                  + Objects.requireNonNullElse(
+                      cause.getMessage(), cause.getClass().getSimpleName()),
               "Ollama Server Not Reachable");
         }
       }

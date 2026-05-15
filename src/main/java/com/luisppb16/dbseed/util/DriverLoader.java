@@ -117,8 +117,7 @@ public class DriverLoader {
       return Optional.of(chosenDriver);
     } catch (final Exception ex) {
       log.error("Error selecting/loading driver", ex);
-      final String msg =
-          Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
+      final String msg = Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
       NotificationHelper.notifyError(project, "Error loading driver: " + msg);
       return Optional.empty();
     }
@@ -165,7 +164,8 @@ public class DriverLoader {
       try (final InputStream in = new URI(url).toURL().openStream()) {
         Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
       }
-      Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      Files.move(
+          tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       log.info("Driver downloaded to: {}", target);
     } catch (final IOException e) {
       try {
@@ -261,7 +261,8 @@ public class DriverLoader {
       var drivers = DriverManager.getDrivers();
       while (drivers.hasMoreElements()) {
         var d = drivers.nextElement();
-        if (d instanceof DriverShim shim && LOADED_DRIVERS.contains(shim.driver().getClass().getName())) {
+        if (d instanceof DriverShim shim
+            && LOADED_DRIVERS.contains(shim.driver().getClass().getName())) {
           toDeregister.add(shim);
         }
       }

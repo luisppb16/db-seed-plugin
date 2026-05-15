@@ -406,8 +406,7 @@ public final class SeedDatabaseAction extends AnAction {
 
   private void openFileInEditor(final Project project, final Path path) {
     LocalFileSystem.getInstance().refresh(true);
-    final VirtualFile virtualFile =
-        LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
+    final VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
     if (Objects.nonNull(virtualFile)) {
       FileEditorManager.getInstance(project).openFile(virtualFile, true);
       log.info("File {} opened in the editor.", path.getFileName());

@@ -254,7 +254,8 @@ public class RepetitionRulesPanel extends JPanel {
     headerPanel.add(new JLabel("Repeat Count:"));
     final JSpinner countSpinner = new JSpinner(new SpinnerNumberModel(1, 1, 10000, 1));
     countSpinner.setValue(ruleModel.count);
-    countSpinner.addChangeListener(e -> ruleModel.count = ((Number) countSpinner.getValue()).intValue());
+    countSpinner.addChangeListener(
+        e -> ruleModel.count = ((Number) countSpinner.getValue()).intValue());
     headerPanel.add(countSpinner);
 
     final JButton removeRuleButton = new JButton(AllIcons.Actions.Cancel);

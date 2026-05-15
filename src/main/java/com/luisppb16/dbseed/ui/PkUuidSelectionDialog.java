@@ -168,6 +168,11 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         : component instanceof final JLabel label ? label.getText() : null;
   }
 
+  private static String stripFkSuffix(final String text) {
+    final int idx = text.indexOf(" (FK)");
+    return idx > 0 ? text.substring(0, idx) : text;
+  }
+
   private void initDefaults() {
     tables.forEach(
         table -> {
@@ -1078,11 +1083,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     return createTogglableListPanel(listPanel, checkBoxes, this::filterPanelComponents);
   }
 
-  private static String stripFkSuffix(final String text) {
-    final int idx = text.indexOf(" (FK)");
-    return idx > 0 ? text.substring(0, idx) : text;
-  }
-
   private void onAiBoxChanged(String tableName, String columnName, boolean isSelected) {
     aiColumnsByTable.computeIfAbsent(tableName, k -> new LinkedHashSet<>());
     if (isSelected) {
@@ -1098,7 +1098,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       if (colBox.isEnabled()) {
         colBox.setSelected(isSelected);
         final String colName = (String) colBox.getClientProperty("columnName");
-        onAiBoxChanged(tableName, colName != null ? colName : stripFkSuffix(colBox.getText()), isSelected);
+        onAiBoxChanged(
+            tableName, colName != null ? colName : stripFkSuffix(colBox.getText()), isSelected);
       }
     }
   }

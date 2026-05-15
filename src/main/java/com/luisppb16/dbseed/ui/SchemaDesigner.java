@@ -143,7 +143,9 @@ public final class SchemaDesigner extends AnAction {
                   .anyMatch(t -> t.name().equalsIgnoreCase(tableName));
           if (duplicate) {
             Messages.showErrorDialog(
-                getWindow(), "A table named '" + tableName + "' already exists.", "Duplicate Table");
+                getWindow(),
+                "A table named '" + tableName + "' already exists.",
+                "Duplicate Table");
             return;
           }
           model.addElement(new UiTable(tableName, columns));

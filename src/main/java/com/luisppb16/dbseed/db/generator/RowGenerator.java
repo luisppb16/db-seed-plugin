@@ -238,10 +238,11 @@ public final class RowGenerator {
 
           // Normalize column names to match the actual table column case
           final Map<String, Object> normalized = new HashMap<>(baseValues.size());
-          baseValues.forEach((key, value) -> {
-            final Column col = table.column(key);
-            normalized.put(col != null ? col.name() : key, value);
-          });
+          baseValues.forEach(
+              (key, value) -> {
+                final Column col = table.column(key);
+                normalized.put(col != null ? col.name() : key, value);
+              });
           baseValues.clear();
           baseValues.putAll(normalized);
 
@@ -472,7 +473,8 @@ public final class RowGenerator {
         }
       }
     }
-    return applied || multiColumnConstraints.stream().allMatch(mcc -> mcc.allowedCombinations().isEmpty());
+    return applied
+        || multiColumnConstraints.stream().allMatch(mcc -> mcc.allowedCombinations().isEmpty());
   }
 
   private void generateRemainingColumnValues(final Map<String, Object> values) {

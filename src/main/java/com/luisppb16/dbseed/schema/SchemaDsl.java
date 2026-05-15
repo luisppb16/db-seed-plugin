@@ -117,7 +117,9 @@ public class SchemaDsl {
       final String dv = column.defaultValue();
       if ("NULL".equalsIgnoreCase(dv)) {
         sql.append(" DEFAULT NULL");
-      } else if (isNumericLiteral(dv) || "TRUE".equalsIgnoreCase(dv) || "FALSE".equalsIgnoreCase(dv)) {
+      } else if (isNumericLiteral(dv)
+          || "TRUE".equalsIgnoreCase(dv)
+          || "FALSE".equalsIgnoreCase(dv)) {
         sql.append(" DEFAULT %s".formatted(dv));
       } else {
         sql.append(" DEFAULT '%s'".formatted(dv.replace("'", "''")));

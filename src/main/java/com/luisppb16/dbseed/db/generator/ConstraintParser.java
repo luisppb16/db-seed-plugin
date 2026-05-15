@@ -52,11 +52,6 @@ import java.util.stream.Stream;
  */
 public final class ConstraintParser {
 
-  /** Clears the column pattern cache. Call at the start of each generation run to avoid stale entries. */
-  public static void clearCache() {
-    ColumnPatterns.clearCache();
-  }
-
   private static final String CAST_REGEX = "(?:\\s*::[\\w\\[\\]]+(?:\\s+[\\w\\[\\]]+)*)*";
   private static final Pattern COL_EQ_VAL_PATTERN =
       Pattern.compile(
@@ -78,7 +73,6 @@ public final class ConstraintParser {
               + CAST_REGEX
               + "[\\s()]*"
               + "$");
-
   private static final Pattern COL_EQ_VAL_PATTERN_RELAXED =
       Pattern.compile(
           "(?i)"
@@ -95,13 +89,20 @@ public final class ConstraintParser {
               + "\\d+"
               + ")"
               + "[\\s()]*");
-
   private final String columnName;
   private final ColumnPatterns patterns;
 
   public ConstraintParser(final String columnName) {
     this.columnName = Objects.requireNonNull(columnName, "Column name cannot be null");
     this.patterns = ColumnPatterns.forColumn(columnName);
+  }
+
+  /**
+   * Clears the column pattern cache. Call at the start of each generation run to avoid stale
+   * entries.
+   */
+  public static void clearCache() {
+    ColumnPatterns.clearCache();
   }
 
   private static String stripQuotes(final String s) {

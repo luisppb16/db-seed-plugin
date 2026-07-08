@@ -252,14 +252,7 @@ public final class RowGenerator {
                   entry -> {
                     if (entry.getValue() instanceof String strValue) {
                       final Column col = table.column(entry.getKey());
-                      final Object parsed = parseValue(strValue, col);
-                      if (parsed != null) {
-                        entry.setValue(parsed);
-                      } else if (col != null && !col.nullable()) {
-                        entry.setValue(null);
-                      } else {
-                        entry.setValue(null);
-                      }
+                      entry.setValue(parseValue(strValue, col));
                     }
                   });
 

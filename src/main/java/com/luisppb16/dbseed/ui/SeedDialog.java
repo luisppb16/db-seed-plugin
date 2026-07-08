@@ -322,11 +322,7 @@ public final class SeedDialog extends DialogWrapper {
           if (selected != null) {
             final Project project = this.project;
             if (project != null) {
-              final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-              state.getProfiles().removeIf(p -> p != null && selected.equals(p.getName()));
-              if (selected.equals(state.getActiveProfileName())) {
-                state.setActiveProfileName("");
-              }
+              ConnectionConfigPersistence.deleteProfile(project, selected);
               loadProfiles();
             }
           }

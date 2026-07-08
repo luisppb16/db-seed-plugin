@@ -7,11 +7,11 @@
 
 package com.luisppb16.dbseed.ui.util;
 
-import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.ide.plugins.PluginManager;
-import com.intellij.openapi.extensions.PluginId;
 import java.awt.FlowLayout;
 import java.awt.event.KeyEvent;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
 import javax.swing.ActionMap;
 import javax.swing.InputMap;
 import javax.swing.JComponent;
@@ -32,7 +32,29 @@ import lombok.experimental.UtilityClass;
 @UtilityClass
 public class ComponentUtils {
 
-  private static final String PLUGIN_ID = "com.luisppb16.dbseed";
+  /**
+   * Version baked into a plugin resource at build time (see processResources in build.gradle).
+   * Reading it avoids PluginManager lookups, which are internal API since IntelliJ 2026.2.
+   */
+  private static final String PLUGIN_VERSION = loadPluginVersion();
+
+  private static String loadPluginVersion() {
+    try (final InputStream is =
+        ComponentUtils.class.getResourceAsStream("/dbseed/plugin-version.properties")) {
+      if (is != null) {
+        final Properties props = new Properties();
+        props.load(is);
+        final String version = props.getProperty("version", "").trim();
+        // An unexpanded template token means we are running from raw sources.
+        if (!version.isEmpty() && !version.contains("${")) {
+          return version;
+        }
+      }
+    } catch (final IOException ignored) {
+      // Fall through to the placeholder below.
+    }
+    return "?";
+  }
 
   public static void configureSpinnerArrowKeyControls(final JSpinner spinner) {
     final JComponent editor = spinner.getEditor();
@@ -53,10 +75,7 @@ public class ComponentUtils {
   }
 
   public static JPanel createVersionLabel() {
-    final IdeaPluginDescriptor descriptor = PluginManager.getInstance().findEnabledPlugin(PluginId.getId(PLUGIN_ID));
-    final String version = descriptor != null ? descriptor.getVersion() : "?";
-
-    final JLabel label = new JLabel("v" + version);
+    final JLabel label = new JLabel("v" + PLUGIN_VERSION);
     label.setFont(label.getFont().deriveFont(10f));
     label.setForeground(UIManager.getColor("Label.disabledForeground"));
 

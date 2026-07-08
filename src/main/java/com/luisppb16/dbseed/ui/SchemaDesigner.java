@@ -8,8 +8,10 @@
 package com.luisppb16.dbseed.ui;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
@@ -72,7 +74,12 @@ import org.jetbrains.annotations.Nullable;
  * resource management patterns. The visual design follows IntelliJ's UI guidelines to ensure
  * consistency with the overall development environment.
  */
-public final class SchemaDesigner extends AnAction {
+public final class SchemaDesigner extends AnAction implements DumbAware {
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
+  }
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
@@ -213,6 +220,7 @@ public final class SchemaDesigner extends AnAction {
 
     private final JTextField tableNameField = new JTextField(20);
     private final DefaultTableModel tableModel;
+    private JBTable columnsTable;
 
     AddTableDialog(@Nullable Window parent) {
       super(parent, true);
@@ -232,6 +240,19 @@ public final class SchemaDesigner extends AnAction {
       // Start with one empty row
       tableModel.addRow(new Object[] {"", SqlType.INT, Boolean.FALSE});
       init();
+    }
+
+    @Override
+    protected void doOKAction() {
+      stopActiveCellEditing();
+      super.doOKAction();
+    }
+
+    private void stopActiveCellEditing() {
+      // Commit any in-progress cell edit so typed values are not silently dropped.
+      if (columnsTable != null && columnsTable.isEditing()) {
+        columnsTable.getCellEditor().stopCellEditing();
+      }
     }
 
     @Override
@@ -262,6 +283,9 @@ public final class SchemaDesigner extends AnAction {
       panel.add(namePanel, BorderLayout.NORTH);
 
       final JBTable table = new JBTable(tableModel);
+      this.columnsTable = table;
+      // Commit in-progress cell edits when focus moves away (e.g. to the OK button).
+      table.putClientProperty("terminateEditOnFocusLost", Boolean.TRUE);
       // Set up the SQL type column with a combo box editor
       final ComboBox<SqlType> typeCombo = new ComboBox<>(SqlType.values());
       table.getColumnModel().getColumn(1).setCellEditor(new DefaultCellEditor(typeCombo));

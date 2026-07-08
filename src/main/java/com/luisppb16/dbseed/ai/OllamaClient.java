@@ -193,7 +193,7 @@ public class OllamaClient {
   }
 
   static boolean isAiPreamble(final String text) {
-    final String lower = text.toLowerCase();
+    final String lower = text.toLowerCase(Locale.ROOT);
     return lower.startsWith("here are")
         || lower.startsWith("here is")
         || lower.startsWith("sure,")
@@ -208,7 +208,7 @@ public class OllamaClient {
   }
 
   static boolean isAiRefusal(final String text) {
-    final String lower = text.toLowerCase();
+    final String lower = text.toLowerCase(Locale.ROOT);
     return lower.startsWith("i cannot")
         || lower.startsWith("i can't")
         || lower.startsWith("i'm sorry")
@@ -220,8 +220,8 @@ public class OllamaClient {
   }
 
   static String stripColumnPrefix(final String text, final String columnName) {
-    final String lower = text.toLowerCase();
-    final String colLower = columnName.toLowerCase();
+    final String lower = text.toLowerCase(Locale.ROOT);
+    final String colLower = columnName.toLowerCase(Locale.ROOT);
     if (lower.startsWith(colLower)) {
       String rest = text.substring(columnName.length()).trim();
       if (rest.startsWith("=") || rest.startsWith(":")) {

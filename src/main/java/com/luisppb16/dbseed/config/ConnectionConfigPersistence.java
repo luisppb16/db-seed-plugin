@@ -37,8 +37,8 @@ public class ConnectionConfigPersistence {
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
-    state.getProfiles().removeIf(p -> normalizedProfileName.equals(p.getName().trim()));
 
+    // Update the existing profile in place (keeps list order) or append a new one.
     final ConnectionProfile profile =
         state.getProfiles().stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
@@ -120,6 +120,32 @@ public class ConnectionConfigPersistence {
   public static GenerationConfig load(@NotNull final Project project) {
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     return loadProfile(project, state.getActiveProfileName());
+  }
+
+  /** Removes a saved profile and its stored credentials. */
+  public static void deleteProfile(
+      @NotNull final Project project, @NotNull final String profileName) {
+    final String normalizedProfileName = profileName.trim();
+    if (!ConnectionProfile.isValidName(normalizedProfileName)) {
+      return;
+    }
+
+    final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
+    state
+        .getProfiles()
+        .removeIf(
+            p ->
+                p == null || !p.hasValidName() || normalizedProfileName.equals(p.getName().trim()));
+    if (normalizedProfileName.equals(state.getActiveProfileName())) {
+      state.setActiveProfileName("");
+    }
+
+    // Drop the credentials so they do not linger in the keychain after profile removal.
+    PasswordSafe.getInstance()
+        .set(createCredentialAttributes(project, normalizedProfileName), null);
+
+    log.info(
+        "Connection profile {} deleted for project {}.", normalizedProfileName, project.getName());
   }
 
   private static CredentialAttributes createCredentialAttributes(

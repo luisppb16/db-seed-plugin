@@ -8,6 +8,10 @@
 package com.luisppb16.dbseed.util;
 
 import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.application.Application;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.luisppb16.dbseed.config.DriverInfo;
@@ -15,10 +19,12 @@ import com.luisppb16.dbseed.registry.DriverRegistry;
 import com.luisppb16.dbseed.ui.DriverSelectionDialog;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -33,6 +39,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -115,6 +122,9 @@ public class DriverLoader {
 
       ensureDriverPresent(project, chosenDriver);
       return Optional.of(chosenDriver);
+    } catch (final DownloadCanceledException ex) {
+      log.debug("Driver download canceled by user.");
+      return Optional.empty();
     } catch (final Exception ex) {
       log.error("Error selecting/loading driver", ex);
       final String msg = Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
@@ -133,7 +143,14 @@ public class DriverLoader {
     }
 
     if (LOADED_DRIVERS.add(info.driverClass())) {
-      loadDriver(jarPath.toUri().toURL(), info.driverClass());
+      try {
+        loadDriver(jarPath.toUri().toURL(), info.driverClass());
+      } catch (final Exception e) {
+        // Roll back the marker so a later retry does not skip loading a driver
+        // that was never actually registered.
+        LOADED_DRIVERS.remove(info.driverClass());
+        throw e;
+      }
     } else {
       log.debug("Driver {} already loaded, skipping registration.", info.driverClass());
     }
@@ -155,19 +172,68 @@ public class DriverLoader {
             .formatted(groupPath, info.mavenArtifactId(), info.version(), jarFile);
 
     if (!confirmDriverDownload(project, info, url, target)) {
-      throw new IOException("Driver download canceled by user.");
+      throw new DownloadCanceledException("Driver download canceled by user.");
     }
 
     log.info("Downloading driver from: {}", url);
+    final Application app = ApplicationManager.getApplication();
+    if (Objects.nonNull(project) && Objects.nonNull(app) && app.isDispatchThread()) {
+      // Never block the EDT with network I/O: run the download under a modal,
+      // cancelable progress dialog instead.
+      final AtomicReference<Exception> failure = new AtomicReference<>();
+      final boolean completed =
+          ProgressManager.getInstance()
+              .runProcessWithProgressSynchronously(
+                  () -> {
+                    try {
+                      transferToFile(url, target);
+                    } catch (final IOException | URISyntaxException e) {
+                      failure.set(e);
+                    }
+                  },
+                  "Downloading JDBC Driver: " + info.name(),
+                  true,
+                  project);
+      switch (failure.get()) {
+        case IOException ioe -> throw ioe;
+        case URISyntaxException use -> throw use;
+        case null, default -> {
+          if (!completed) {
+            throw new DownloadCanceledException("Driver download canceled by user.");
+          }
+        }
+      }
+    } else {
+      transferToFile(url, target);
+    }
+    log.info("Driver downloaded to: {}", target);
+  }
+
+  private static void transferToFile(final String url, final Path target)
+      throws IOException, URISyntaxException {
     final Path tempFile = target.resolveSibling(target.getFileName() + ".tmp");
     try {
-      try (final InputStream in = new URI(url).toURL().openStream()) {
-        Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+      final Application app = ApplicationManager.getApplication();
+      final ProgressIndicator indicator =
+          Objects.nonNull(app) ? ProgressManager.getInstance().getProgressIndicator() : null;
+      try (final InputStream in = new URI(url).toURL().openStream();
+          final OutputStream out = Files.newOutputStream(tempFile)) {
+        final byte[] buffer = new byte[64 * 1024];
+        int read;
+        while ((read = in.read(buffer)) >= 0) {
+          if (Objects.nonNull(indicator)) {
+            indicator.checkCanceled();
+          }
+          out.write(buffer, 0, read);
+        }
       }
-      Files.move(
-          tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-      log.info("Driver downloaded to: {}", target);
-    } catch (final IOException e) {
+      try {
+        Files.move(
+            tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      } catch (final AtomicMoveNotSupportedException e) {
+        Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
+      }
+    } catch (final Exception e) {
       try {
         Files.deleteIfExists(tempFile);
       } catch (final IOException ignored) {
@@ -235,22 +301,22 @@ public class DriverLoader {
       throws ReflectiveOperationException, SQLException, IOException {
     final URLClassLoader cl =
         new URLClassLoader(new URL[] {jarUrl}, DriverLoader.class.getClassLoader());
-    final Class<?> clazz = Class.forName(driverClass, true, cl);
-    if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
-      try {
+    try {
+      final Class<?> clazz = Class.forName(driverClass, true, cl);
+      if (clazz.getDeclaredConstructor().newInstance() instanceof Driver driver) {
         DriverManager.registerDriver(new DriverShim(driver));
         LOADED_CLASSLOADERS.put(driverClass, cl);
         log.info("Driver {} loaded successfully from {}", driverClass, jarUrl);
-      } catch (final SQLException e) {
-        try {
-          cl.close();
-        } catch (final IOException ignored) {
-        }
-        throw e;
+      } else {
+        throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
       }
-    } else {
-      cl.close();
-      throw new IllegalArgumentException("Class " + driverClass + " is not a Driver");
+    } catch (final Exception e) {
+      // The classloader must stay open only while a registered driver uses it.
+      try {
+        cl.close();
+      } catch (final IOException ignored) {
+      }
+      throw e;
     }
   }
 
@@ -291,5 +357,12 @@ public class DriverLoader {
               }
             });
     LOADED_CLASSLOADERS.clear();
+  }
+
+  /** Signals that the user canceled a driver download; not an error condition. */
+  public static final class DownloadCanceledException extends IOException {
+    public DownloadCanceledException(final String message) {
+      super(message);
+    }
   }
 }

@@ -9,6 +9,7 @@ package com.luisppb16.dbseed.action;
 
 import static com.luisppb16.dbseed.model.Constant.APP_NAME;
 
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
@@ -17,6 +18,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
@@ -42,8 +44,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -105,9 +107,16 @@ import org.jetbrains.annotations.NotNull;
  * @see DriverLoader
  */
 @Slf4j
-public final class SeedDatabaseAction extends AnAction {
+public final class SeedDatabaseAction extends AnAction implements DumbAware {
 
   private static final long INSERT_THRESHOLD = 10000L;
+  private static final DateTimeFormatter FILE_TIMESTAMP =
+      DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
+
+  @Override
+  public @NotNull ActionUpdateThread getActionUpdateThread() {
+    return ActionUpdateThread.BGT;
+  }
 
   @Override
   public void actionPerformed(@NotNull final AnActionEvent e) {
@@ -170,7 +179,7 @@ public final class SeedDatabaseAction extends AnAction {
 
     ProgressManager.getInstance()
         .run(
-            new Task.Backgroundable(project, "Introspecting schema", false) {
+            new Task.Backgroundable(project, "Introspecting Schema", true) {
               @Override
               public void run(@NotNull final ProgressIndicator indicator) {
                 indicator.setIndeterminate(true);
@@ -364,6 +373,15 @@ public final class SeedDatabaseAction extends AnAction {
                       if (filePath != null) {
                         ApplicationManager.getApplication()
                             .invokeLater(() -> openFileInEditor(project, filePath));
+                      } else {
+                        ApplicationManager.getApplication()
+                            .invokeLater(
+                                () ->
+                                    Messages.showErrorDialog(
+                                        project,
+                                        "Could not write the generated SQL file. See the IDE log for details.",
+                                        "DBSeed Error"),
+                                ModalityState.defaultModalityState());
                       }
                     } catch (final Exception ex) {
                       handleException(project, "Error during SQL generation: ", ex);
@@ -382,7 +400,7 @@ public final class SeedDatabaseAction extends AnAction {
   private Path writeSqlFile(final Project project, final String sql) {
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     final String outputDir = settings.getDefaultOutputDirectory();
-    final String timestamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+    final String timestamp = FILE_TIMESTAMP.format(LocalDateTime.now());
     final String fileName = String.format("V%s__seed.sql", timestamp);
 
     final String basePath = project.getBasePath();
@@ -405,7 +423,6 @@ public final class SeedDatabaseAction extends AnAction {
   }
 
   private void openFileInEditor(final Project project, final Path path) {
-    LocalFileSystem.getInstance().refresh(true);
     final VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
     if (Objects.nonNull(virtualFile)) {
       FileEditorManager.getInstance(project).openFile(virtualFile, true);

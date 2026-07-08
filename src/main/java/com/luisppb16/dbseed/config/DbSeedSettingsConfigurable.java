@@ -12,6 +12,7 @@ import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.util.NotificationHelper;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -123,22 +124,21 @@ public class DbSeedSettingsConfigurable implements Configurable {
                 },
                 "Checking Ollama Server...",
                 false,
-                null);
+                myProject);
 
         if (Objects.nonNull(pingError.get())) {
           Throwable cause =
               Objects.nonNull(pingError.get().getCause())
                   ? pingError.get().getCause()
                   : pingError.get();
-          throw new ConfigurationException(
+          NotificationHelper.notifyWarning(
+              myProject,
+              "Ollama server not reachable",
               "Settings saved, but no Ollama server found at "
                   + url.trim()
-                  + ".\n"
-                  + "AI generation may not work until Ollama is available.\n\n"
-                  + "Error: "
+                  + ". AI generation may not work until Ollama is available. Error: "
                   + Objects.requireNonNullElse(
-                      cause.getMessage(), cause.getClass().getSimpleName()),
-              "Ollama Server Not Reachable");
+                      cause.getMessage(), cause.getClass().getSimpleName()));
         }
       }
     }

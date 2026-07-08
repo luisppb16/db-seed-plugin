@@ -226,8 +226,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       // Invalid number typed, spinner will retain last valid value.
     }
 
-    circularReferencesPanel.apply();
-
     final List<String> warnings = validateExclusions();
     if (!warnings.isEmpty()) {
       final int result =
@@ -241,6 +239,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         return;
       }
     }
+
+    // Persist only once the user has confirmed the dialog.
+    circularReferencesPanel.apply();
 
     super.doOKAction();
   }
@@ -331,8 +332,6 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
 
   @Override
   protected @NotNull JComponent createCenterPanel() {
-    synchronizeInitialStates();
-
     // Create modern tabbed interface
     final JBTabbedPane tabbedPane = new JBTabbedPane();
 
@@ -379,6 +378,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
         AllIcons.General.Settings,
         wrapInScrollPane(createMoreSettingsPanel()),
         "Additional configuration options");
+
+    // Cross-disable conflicting checkboxes now that every tab has been built.
+    synchronizeInitialStates();
 
     // Apply modern styling
     tabbedPane.setBorder(JBUI.Borders.empty());

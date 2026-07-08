@@ -7,16 +7,17 @@
 
 package com.luisppb16.dbseed.util;
 
+import com.intellij.ide.AppLifecycleListener;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.db.DataGenerator;
 import lombok.extern.slf4j.Slf4j;
 
 /** Listener that cleans up plugin resources when the IDE is closing. */
 @Slf4j
-public class PluginLifecycleListener implements Runnable {
+public class PluginLifecycleListener implements AppLifecycleListener {
 
   @Override
-  public void run() {
+  public void appWillBeClosed(final boolean isRestart) {
     log.info("DBSeed4SQL plugin shutting down — releasing resources.");
     try {
       DriverLoader.deregisterAll();

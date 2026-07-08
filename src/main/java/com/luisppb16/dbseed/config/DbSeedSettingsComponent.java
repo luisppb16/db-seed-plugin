@@ -16,6 +16,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.TextFieldWithBrowseButton;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.CollectionListModel;
@@ -35,7 +36,6 @@ import com.intellij.util.ui.UIUtil;
 import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.util.ArrayList;
 import java.util.List;
@@ -137,7 +137,7 @@ public class DbSeedSettingsComponent {
     myMainPanel = new JPanel(new BorderLayout());
     myMainPanel.add(tabbedPane, BorderLayout.CENTER);
     myMainPanel.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
-    myMainPanel.setPreferredSize(new Dimension(600, 600));
+    myMainPanel.setPreferredSize(JBUI.size(600, 600));
   }
 
   private JComponent createGeneralTab() {
@@ -163,24 +163,19 @@ public class DbSeedSettingsComponent {
     originalProfiles.clear();
     myProfilesModel.removeAll();
 
+    // Read-only view of the project state: mutations must only happen in applyProfileSettings().
     if (myProject != null) {
       final DbSeedProjectState projectState = DbSeedProjectState.getInstance(myProject);
       if (projectState != null) {
-        final List<ConnectionProfile> validProfiles =
-            new ArrayList<>(
-                projectState.getProfiles().stream()
-                    .filter(Objects::nonNull)
-                    .filter(ConnectionProfile::hasValidName)
-                    .peek(p -> p.setName(p.getName().trim()))
-                    .toList());
-        validProfiles.forEach(
-            p -> {
-              originalProfiles.add(p.getName());
-              myProfilesModel.add(p.getName());
-            });
-        if (validProfiles.size() != projectState.getProfiles().size()) {
-          projectState.setProfiles(validProfiles);
-        }
+        projectState.getProfiles().stream()
+            .filter(Objects::nonNull)
+            .filter(ConnectionProfile::hasValidName)
+            .map(p -> p.getName().trim())
+            .forEach(
+                name -> {
+                  originalProfiles.add(name);
+                  myProfilesModel.add(name);
+                });
       }
     }
 
@@ -336,8 +331,8 @@ public class DbSeedSettingsComponent {
     urlPanel.add(buttonPanel, BorderLayout.EAST);
 
     final JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
-    contextScrollPane.setPreferredSize(new Dimension(0, 80));
-    contextScrollPane.setMinimumSize(new Dimension(0, 60));
+    contextScrollPane.setPreferredSize(JBUI.size(0, 80));
+    contextScrollPane.setMinimumSize(JBUI.size(0, 60));
 
     final JBLabel wordCountDesc =
         new JBLabel(
@@ -532,7 +527,7 @@ public class DbSeedSettingsComponent {
                   : LocalFileSystem.getInstance().findFileByPath(currentPath);
           FileChooser.chooseFile(
               folderDescriptor,
-              null,
+              myProject,
               currentFile,
               file -> {
                 if (Objects.nonNull(file)) {
@@ -668,5 +663,6 @@ public class DbSeedSettingsComponent {
 
   public void dispose() {
     disposed = true;
+    Disposer.dispose(myLoadingIcon);
   }
 }

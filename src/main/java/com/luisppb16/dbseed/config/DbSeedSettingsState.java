@@ -11,10 +11,8 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
-import com.luisppb16.dbseed.model.RepetitionRule;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import lombok.Getter;
@@ -85,8 +83,6 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private int aiWordCount = 1;
   private int aiRequestTimeoutSeconds = 120;
 
-  private Map<String, List<RepetitionRule>> repetitionRules = new HashMap<>();
-
   private Map<String, Map<String, Integer>> circularReferences = new HashMap<>();
 
   private Map<String, Map<String, String>> circularReferenceTerminationModes = new HashMap<>();
@@ -135,10 +131,6 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.aiRequestTimeoutSeconds =
         state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
 
-    this.repetitionRules =
-        Objects.nonNull(state.repetitionRules)
-            ? new HashMap<>(state.repetitionRules)
-            : new HashMap<>();
     this.circularReferences =
         Objects.nonNull(state.circularReferences)
             ? deepCopy(state.circularReferences)
@@ -147,14 +139,6 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         Objects.nonNull(state.circularReferenceTerminationModes)
             ? deepCopy(state.circularReferenceTerminationModes)
             : new HashMap<>();
-  }
-
-  public Map<String, List<RepetitionRule>> getRepetitionRules() {
-    return Collections.unmodifiableMap(repetitionRules);
-  }
-
-  public void setRepetitionRules(final Map<String, List<RepetitionRule>> repetitionRules) {
-    this.repetitionRules = new HashMap<>(repetitionRules);
   }
 
   public Map<String, Map<String, Integer>> getCircularReferences() {

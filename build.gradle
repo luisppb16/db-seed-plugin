@@ -7,7 +7,7 @@
 
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.14.0'
+    id 'org.jetbrains.intellij.platform' version '2.17.0'
     id 'jacoco'
 }
 
@@ -23,7 +23,7 @@ sourceSets {
 }
 
 group = 'com.LuisPPB16'
-version = '1.3.6.1'
+version = '1.3.7.0'
 
 java {
     toolchain {
@@ -36,6 +36,12 @@ java {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 21
+}
+
+tasks.named('processResources') {
+    filesMatching('dbseed/plugin-version.properties') {
+        expand(version: project.version)
+    }
 }
 
 intellijPlatform {
@@ -61,7 +67,6 @@ repositories {
 dependencies {
     intellijPlatform {
         intellijIdeaCommunity '2025.1'
-        bundledPlugin 'com.intellij.java'
     }
 
     constraints {
@@ -108,10 +113,28 @@ test {
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }
+
+    // The IntelliJ test runtime loads plugin classes through PathClassLoader,
+    // which yields no CodeSource location; JaCoCo skips those unless enabled here.
+    jacoco {
+        includeNoLocationClasses = true
+        excludes = ['jdk.internal.*']
+    }
 }
 
 tasks.named('jacocoTestReport', JacocoReport) {
     dependsOn tasks.named('test')
+    // Tests run against classes instrumented by the IntelliJ Platform plugin;
+    // point the report at those same classes so JaCoCo class checksums match.
+    // Swing/presentation layers are excluded from the metric: they need a
+    // platform fixture to exercise and are intentionally not unit-tested.
+    classDirectories.setFrom(
+            files(tasks.named('instrumentCode')).asFileTree.matching {
+                exclude 'com/luisppb16/dbseed/ui/**'
+                exclude 'com/luisppb16/dbseed/action/**'
+                exclude 'com/luisppb16/dbseed/config/DbSeedSettingsComponent*'
+                exclude 'com/luisppb16/dbseed/config/DbSeedSettingsConfigurable*'
+            })
     reports {
         xml.getRequired().set(true)
         html.getRequired().set(true)

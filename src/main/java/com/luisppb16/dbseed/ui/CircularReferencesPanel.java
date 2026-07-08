@@ -268,11 +268,13 @@ public class CircularReferencesPanel extends JPanel {
         DbSeedSettingsState.getInstance().getCircularReferences();
     final Map<String, Map<String, String>> persistedTerminationModes =
         DbSeedSettingsState.getInstance().getCircularReferenceTerminationModes();
+    // Deep-copy so later edits in this panel never mutate the settings state directly.
     if (persistedConfig != null) {
-      config.putAll(persistedConfig);
+      persistedConfig.forEach((table, fks) -> config.put(table, new HashMap<>(fks)));
     }
     if (persistedTerminationModes != null) {
-      terminationModes.putAll(persistedTerminationModes);
+      persistedTerminationModes.forEach(
+          (table, fks) -> terminationModes.put(table, new HashMap<>(fks)));
     }
     // Rebuild the UI to reflect the reset state
     removeAll();

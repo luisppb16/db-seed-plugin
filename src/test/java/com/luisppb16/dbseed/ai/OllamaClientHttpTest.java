@@ -94,10 +94,10 @@ class OllamaClientHttpTest {
   }
 
   /**
-   * Emits an NDJSON stream: one JSON object per line, as Ollama does when {@code stream:true}.
-   * Each value in {@code chunks} becomes a {@code {"response":"...","done":false}} line, followed
-   * by a final {@code {"response":"","done":true}} terminator. A newline inside a chunk completes
-   * a value line on the client side.
+   * Emits an NDJSON stream: one JSON object per line, as Ollama does when {@code stream:true}. Each
+   * value in {@code chunks} becomes a {@code {"response":"...","done":false}} line, followed by a
+   * final {@code {"response":"","done":true}} terminator. A newline inside a chunk completes a
+   * value line on the client side.
    */
   private static void respondNdjson(final HttpExchange exchange, final String... chunks)
       throws IOException {
@@ -236,9 +236,10 @@ class OllamaClientHttpTest {
 
     /** Installs a handler that streams the given value-lines as NDJSON token chunks. */
     private void respondNdjsonWith(final String valuesLine) {
-      final String[] chunks = java.util.Arrays.stream(valuesLine.split("\n", -1))
-          .map(c -> c + "\n")
-          .toArray(String[]::new);
+      final String[] chunks =
+          java.util.Arrays.stream(valuesLine.split("\n", -1))
+              .map(c -> c + "\n")
+              .toArray(String[]::new);
       HANDLER.set(exchange -> respondNdjson(exchange, chunks));
     }
 
@@ -298,8 +299,7 @@ class OllamaClientHttpTest {
 
     @Test
     void requestBody_containsModelAndEnablesStreaming() throws Exception {
-      final AtomicReference<String> capturedBody =
-          captureBodyNdjsonHandler("valor1\n");
+      final AtomicReference<String> capturedBody = captureBodyNdjsonHandler("valor1\n");
 
       newClient()
           .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
@@ -351,14 +351,7 @@ class OllamaClientHttpTest {
     @Test
     void ok_splitAcrossMultipleChunks_assemblesLine() throws Exception {
       // Tokens arriving one character at a time should still assemble into complete value lines.
-      HANDLER.set(
-          exchange ->
-              respondNdjson(
-                  exchange,
-                  "va",
-                  "lor",
-                  "1\n",
-                  "valor2\n"));
+      HANDLER.set(exchange -> respondNdjson(exchange, "va", "lor", "1\n", "valor2\n"));
 
       final List<String> values =
           newClient()

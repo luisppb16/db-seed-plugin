@@ -205,11 +205,6 @@ public class OllamaClient {
     this.requestTimeoutSeconds = Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds);
   }
 
-  /** Returns the configured request timeout in seconds. */
-  public int requestTimeoutSeconds() {
-    return requestTimeoutSeconds;
-  }
-
   static String normalizeUrl(final String url) {
     String normalized = url;
     if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
@@ -448,6 +443,18 @@ public class OllamaClient {
     return SYSTEM_ROLE + "\nApplication context: " + applicationContext;
   }
 
+  private static void cancelWatchdog(final AtomicReference<ScheduledFuture<?>> watchdog) {
+    final ScheduledFuture<?> scheduled = watchdog.get();
+    if (Objects.nonNull(scheduled)) {
+      scheduled.cancel(false);
+    }
+  }
+
+  /** Returns the configured request timeout in seconds. */
+  public int requestTimeoutSeconds() {
+    return requestTimeoutSeconds;
+  }
+
   /**
    * Pings the Ollama server to check connectivity.
    *
@@ -598,9 +605,9 @@ public class OllamaClient {
    * tokens" failure mode: with the buffered request the client blocks until the full {@code
    * num_predict} budget is produced or the request timeout fires, so a model that stalls mid-way
    * (common on slow CPU/GPU hardware when the batch was sized against an optimistic throughput
-   * assumption) holds the thread for up to the whole timeout — and {@code RowGenerator} then retries
-   * up to {@code AI_MAX_RETRIES} times, each waiting the full timeout, compounding into minutes of
-   * apparent hang.
+   * assumption) holds the thread for up to the whole timeout — and {@code RowGenerator} then
+   * retries up to {@code AI_MAX_RETRIES} times, each waiting the full timeout, compounding into
+   * minutes of apparent hang.
    *
    * <p>Here, each token chunk updates an inactivity timestamp; a watchdog scheduled at {@link
    * #STREAMING_WATCHDOG_POLL_MILLIS} aborts the request if no token arrives within {@code
@@ -620,7 +627,9 @@ public class OllamaClient {
   private CompletableFuture<List<String>> streamGenerateValues(
       final HttpRequest request, @NotNull final String columnName) {
     final long inactivityTimeoutMillis =
-        Math.max(STREAMING_WATCHDOG_POLL_MILLIS * 2, (long) (requestTimeoutSeconds * 1000L * STREAMING_INACTIVITY_FRACTION));
+        Math.max(
+            STREAMING_WATCHDOG_POLL_MILLIS * 2,
+            (long) (requestTimeoutSeconds * 1000L * STREAMING_INACTIVITY_FRACTION));
 
     final CompletableFuture<List<String>> result = new CompletableFuture<>();
     final List<String> values = new ArrayList<>();
@@ -629,7 +638,8 @@ public class OllamaClient {
     // before the first token (prompt evaluation can take a while before generation starts).
     final AtomicReference<Long> lastTokenNanos = new AtomicReference<>(System.nanoTime());
     final AtomicReference<ScheduledFuture<?>> watchdog = new AtomicReference<>();
-    final AtomicReference<CompletableFuture<HttpResponse<InputStream>>> pending = new AtomicReference<>();
+    final AtomicReference<CompletableFuture<HttpResponse<InputStream>>> pending =
+        new AtomicReference<>();
 
     // Watchdog: abort the request if no token has arrived within the inactivity window.
     final Runnable watchdogTask =
@@ -663,7 +673,8 @@ public class OllamaClient {
 
     pending.set(HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()));
 
-    pending.get()
+    pending
+        .get()
         .handle(
             (response, ex) -> {
               if (Objects.nonNull(ex)) {
@@ -757,19 +768,11 @@ public class OllamaClient {
     return result;
   }
 
-  private static void cancelWatchdog(final AtomicReference<ScheduledFuture<?>> watchdog) {
-    final ScheduledFuture<?> scheduled = watchdog.get();
-    if (Objects.nonNull(scheduled)) {
-      scheduled.cancel(false);
-    }
-  }
-
   /**
-   * Processes one NDJSON line from the Ollama stream. Each line is a JSON object carrying a
-   * token chunk in its {@code response} field. The chunk may contain partial value lines and
-   * newline characters; complete value lines (terminated by {@code \n}) are sanitized and added
-   * to {@code values} as soon as they appear, keeping memory usage bounded regardless of {@code
-   * num_predict}.
+   * Processes one NDJSON line from the Ollama stream. Each line is a JSON object carrying a token
+   * chunk in its {@code response} field. The chunk may contain partial value lines and newline
+   * characters; complete value lines (terminated by {@code \n}) are sanitized and added to {@code
+   * values} as soon as they appear, keeping memory usage bounded regardless of {@code num_predict}.
    */
   private void processStreamLine(
       final String ndjsonLine,
@@ -778,9 +781,10 @@ public class OllamaClient {
       final List<String> values) {
     try {
       final JsonObject json = JsonParser.parseString(ndjsonLine).getAsJsonObject();
-      final String chunk = json.has("response") && !json.get("response").isJsonNull()
-          ? json.get("response").getAsString()
-          : "";
+      final String chunk =
+          json.has("response") && !json.get("response").isJsonNull()
+              ? json.get("response").getAsString()
+              : "";
       lineBuffer.append(chunk);
       int newlineIndex;
       while ((newlineIndex = lineBuffer.indexOf("\n")) >= 0) {

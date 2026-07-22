@@ -86,8 +86,8 @@ public final class RowGenerator {
   private static final int AI_RECYCLE_THRESHOLD = 5;
 
   /**
-   * Minimum AI batch size. The dynamic batch sizing below guarantees at least one value per
-   * request even for very large or array-like columns.
+   * Minimum AI batch size. The dynamic batch sizing below guarantees at least one value per request
+   * even for very large or array-like columns.
    */
   private static final int AI_MIN_BATCH_SIZE = 1;
 
@@ -194,6 +194,19 @@ public final class RowGenerator {
             .toList();
 
     this.multiColumnConstraints = ConstraintParser.parseMultiColumnConstraints(table.checks());
+  }
+
+  /**
+   * Detects whether an AI request failure was caused by the streaming inactivity watchdog (the
+   * model stalled mid-generation). Used to trigger batch-splitting on retry: a stall means the
+   * {@code num_predict} budget for the requested count exceeded what the model could produce within
+   * the inactivity window, so halving the count is the right corrective action.
+   */
+  private static boolean isStreamStall(final Throwable ex) {
+    if (Objects.isNull(ex) || Objects.isNull(ex.getMessage())) {
+      return false;
+    }
+    return ex.getMessage().contains("stalled") || ex.getMessage().contains("no tokens received");
   }
 
   public List<Row> generate() {
@@ -308,8 +321,12 @@ public final class RowGenerator {
                       final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
                       if (generatedRow.isPresent()) {
                         rows.add(generatedRow.get());
-                        generatedCount.incrementAndGet();
+                        final int count = generatedCount.incrementAndGet();
                         tracker.advance();
+                        if (count == rule.count() || count % Math.max(1, rule.count() / 10) == 0) {
+                          tracker.setText2(
+                              "Row " + count + "/" + rowsPerTable + " for " + table.name());
+                        }
                         break;
                       }
                       attempts++;
@@ -362,6 +379,7 @@ public final class RowGenerator {
 
   private void fillRemainingRows() {
     final long maxAttempts = (long) rowsPerTable * MAX_GENERATE_ATTEMPTS;
+    final int textUpdateInterval = Math.max(1, rowsPerTable / 20);
     LongStream.range(0, maxAttempts)
         .takeWhile(i -> generatedCount.get() < rowsPerTable)
         .forEach(
@@ -372,7 +390,7 @@ public final class RowGenerator {
                         rows.add(row);
                         final int count = generatedCount.incrementAndGet();
                         tracker.advance(); // 1 work unit per row generated
-                        if (count % 50 == 0) {
+                        if (count % textUpdateInterval == 0 || count == rowsPerTable) {
                           tracker.setText2(
                               "Row " + count + "/" + rowsPerTable + " for " + table.name());
                         }
@@ -591,7 +609,8 @@ public final class RowGenerator {
                 while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
                   if (tracker.isCanceled()) return;
 
-                  final int remaining = Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
+                  final int remaining =
+                      Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
                   try {
                     final List<String> batchValues =
                         OllamaClient.awaitCancellable(
@@ -641,7 +660,8 @@ public final class RowGenerator {
               }
 
               applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
-              tracker.advance(batchCount);
+              final int generatedInBatch = Math.min(allValues.size(), batchCount);
+              tracker.advance(generatedInBatch);
             });
   }
 
@@ -667,19 +687,6 @@ public final class RowGenerator {
                 / tokensPerValue);
 
     return Math.max(AI_MIN_BATCH_SIZE, Math.min(tokenBudgetBatch, timeBudgetBatch));
-  }
-
-  /**
-   * Detects whether an AI request failure was caused by the streaming inactivity watchdog (the
-   * model stalled mid-generation). Used to trigger batch-splitting on retry: a stall means the
-   * {@code num_predict} budget for the requested count exceeded what the model could produce
-   * within the inactivity window, so halving the count is the right corrective action.
-   */
-  private static boolean isStreamStall(final Throwable ex) {
-    if (Objects.isNull(ex) || Objects.isNull(ex.getMessage())) {
-      return false;
-    }
-    return ex.getMessage().contains("stalled") || ex.getMessage().contains("no tokens received");
   }
 
   /**

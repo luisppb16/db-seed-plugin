@@ -385,18 +385,22 @@ public class DataGenerator {
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
     if (aiGenerators.isEmpty()) {
-      tracker.advance(expectedAiWork);
       return;
     }
 
     final long totalAiColumns =
         aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
     final AtomicInteger completedColumns = new AtomicInteger(0);
-    final long completedBefore = tracker.getCompleted();
     final List<CompletableFuture<Void>> futures = new ArrayList<>();
 
     tracker.setText("Phase 2/4 (AI): Col 0/" + totalAiColumns);
-    tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
+    tracker.setText2(
+        totalAiColumns
+            + " AI columns across "
+            + aiGenerators.size()
+            + " tables — "
+            + expectedAiWork
+            + " values to generate");
 
     futures.addAll(
         aiGenerators.stream()
@@ -431,12 +435,6 @@ public class DataGenerator {
           CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)), tracker::isCanceled);
     } catch (final Exception ex) {
       log.warn("Some AI column generations failed or were canceled: {}", ex.getMessage());
-    } finally {
-      final long completedAfter = tracker.getCompleted();
-      final long gap = expectedAiWork - (completedAfter - completedBefore);
-      if (gap > 0) {
-        tracker.advance(gap);
-      }
     }
 
     tracker.setText2("AI generation complete");

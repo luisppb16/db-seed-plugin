@@ -107,7 +107,12 @@ final class IntegrationTestSupport {
         null,
         2,
         Map.of(),
-        "");
+        "",
+        false,
+        null,
+        null,
+        0,
+        0);
   }
 
   static WorkflowResult runWorkflow(
@@ -157,6 +162,11 @@ final class IntegrationTestSupport {
                 .numericScale(options.numericScale())
                 .aiColumns(options.aiColumns())
                 .applicationContext(options.applicationContext())
+                .useAiGeneration(options.useAiGeneration())
+                .ollamaUrl(options.ollamaUrl())
+                .ollamaModel(options.ollamaModel())
+                .aiRequestTimeoutSeconds(options.aiRequestTimeoutSeconds())
+                .aiWordCount(options.aiWordCount())
                 .build());
 
     final String sql =
@@ -330,7 +340,12 @@ final class IntegrationTestSupport {
       String softDeleteValue,
       int numericScale,
       Map<String, Set<String>> aiColumns,
-      String applicationContext) {}
+      String applicationContext,
+      boolean useAiGeneration,
+      String ollamaUrl,
+      String ollamaModel,
+      int aiRequestTimeoutSeconds,
+      int aiWordCount) {}
 
   record WorkflowResult(
       List<Table> tables,

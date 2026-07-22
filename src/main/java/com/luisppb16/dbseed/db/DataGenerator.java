@@ -9,7 +9,6 @@ package com.luisppb16.dbseed.db;
 
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.ai.OllamaClient;
-import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.generator.ConstraintParser;
 import com.luisppb16.dbseed.db.generator.DictionaryLoader;
 import com.luisppb16.dbseed.db.generator.ForeignKeyResolver;
@@ -33,7 +32,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
@@ -138,10 +136,9 @@ public class DataGenerator {
         params.excludedColumns().entrySet().stream()
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
-    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    final boolean useAi = settings.isUseAiGeneration();
-    final String ollamaUrl = settings.getOllamaUrl();
-    final String ollamaModel = settings.getOllamaModel();
+    final boolean useAi = params.useAiGeneration();
+    final String ollamaUrl = params.ollamaUrl();
+    final String ollamaModel = params.ollamaModel();
     final boolean urlConfigured = Objects.nonNull(ollamaUrl) && !ollamaUrl.isBlank();
     final boolean modelConfigured = Objects.nonNull(ollamaModel) && !ollamaModel.isBlank();
     if (useAi && urlConfigured && !modelConfigured) {
@@ -151,12 +148,12 @@ public class DataGenerator {
     }
     final OllamaClient ollamaClient =
         useAi && urlConfigured && modelConfigured
-            ? new OllamaClient(ollamaUrl, ollamaModel, settings.getAiRequestTimeoutSeconds())
+            ? new OllamaClient(ollamaUrl, ollamaModel, params.aiRequestTimeoutSeconds())
             : null;
 
     final Map<String, Set<String>> aiColumns =
         Objects.requireNonNullElse(params.aiColumns(), Map.of());
-    final int aiWordCount = settings.getAiWordCount();
+    final int aiWordCount = params.aiWordCount();
 
     // ── Calculate TOTAL real work units up-front ──────────────────────────────
     // 1 unit per row to generate (rows phase)
@@ -185,7 +182,7 @@ public class DataGenerator {
     CompletableFuture<Void> warmUpFuture = null;
     if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
       tracker.setText("Warming up AI model...");
-      tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
+      tracker.setText2("Loading " + ollamaModel + " into memory");
       warmUpFuture =
           ollamaClient
               .warmModel(Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT))
@@ -390,8 +387,6 @@ public class DataGenerator {
 
     final long totalAiColumns =
         aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
-    final AtomicInteger completedColumns = new AtomicInteger(0);
-    final List<CompletableFuture<Void>> futures = new ArrayList<>();
 
     tracker.setText("Phase 2/4 (AI): Col 0/" + totalAiColumns);
     tracker.setText2(
@@ -402,39 +397,27 @@ public class DataGenerator {
             + expectedAiWork
             + " values to generate");
 
-    futures.addAll(
+    final List<Map.Entry<RowGenerator, Column>> columnTasks =
         aiGenerators.stream()
             .flatMap(gen -> gen.getValidAiColumns().stream().map(col -> Map.entry(gen, col)))
-            .map(
-                entry ->
-                    CompletableFuture.runAsync(
-                        () -> {
-                          if (tracker.isCanceled()) return;
+            .toList();
 
-                          try {
-                            entry.getKey().generateAiValuesForColumn(entry.getValue());
-                          } catch (final Exception ex) {
-                            log.warn(
-                                "AI generation failed for column {}: {}",
-                                entry.getValue().name(),
-                                ex.getMessage());
-                          } finally {
-                            final int completed = completedColumns.incrementAndGet();
-                            tracker.setText(
-                                "Phase 2/4 (AI): Col "
-                                    .concat(String.valueOf(completed))
-                                    .concat("/")
-                                    .concat(String.valueOf(totalAiColumns)));
-                          }
-                        },
-                        AI_COLUMN_EXECUTOR))
-            .toList());
+    int completedColumns = 0;
+    for (final Map.Entry<RowGenerator, Column> entry : columnTasks) {
+      if (tracker.isCanceled()) break;
 
-    try {
-      OllamaClient.awaitCancellable(
-          CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)), tracker::isCanceled);
-    } catch (final Exception ex) {
-      log.warn("Some AI column generations failed or were canceled: {}", ex.getMessage());
+      try {
+        entry.getKey().generateAiValuesForColumn(entry.getValue(), null);
+      } catch (final Exception ex) {
+        log.warn(
+            "AI generation failed for column {}: {}", entry.getValue().name(), ex.getMessage());
+      }
+      completedColumns++;
+      tracker.setText(
+          "Phase 2/4 (AI): Col "
+              .concat(String.valueOf(completedColumns))
+              .concat("/")
+              .concat(String.valueOf(totalAiColumns)));
     }
 
     tracker.setText2("AI generation complete");
@@ -520,7 +503,12 @@ public class DataGenerator {
       String applicationContext,
       ProgressIndicator indicator,
       Map<String, Map<String, Integer>> circularReferences,
-      Map<String, Map<String, String>> circularReferenceTerminationModes) {
+      Map<String, Map<String, String>> circularReferenceTerminationModes,
+      boolean useAiGeneration,
+      String ollamaUrl,
+      String ollamaModel,
+      int aiRequestTimeoutSeconds,
+      int aiWordCount) {
 
     public static Builder builder() {
       return new Builder();
@@ -545,6 +533,11 @@ public class DataGenerator {
       private ProgressIndicator indicator;
       private Map<String, Map<String, Integer>> circularReferences;
       private Map<String, Map<String, String>> circularReferenceTerminationModes;
+      private boolean useAiGeneration;
+      private String ollamaUrl;
+      private String ollamaModel;
+      private int aiRequestTimeoutSeconds;
+      private int aiWordCount;
 
       private Builder() {}
 
@@ -640,6 +633,31 @@ public class DataGenerator {
         return this;
       }
 
+      public Builder useAiGeneration(final boolean useAiGeneration) {
+        this.useAiGeneration = useAiGeneration;
+        return this;
+      }
+
+      public Builder ollamaUrl(final String ollamaUrl) {
+        this.ollamaUrl = ollamaUrl;
+        return this;
+      }
+
+      public Builder ollamaModel(final String ollamaModel) {
+        this.ollamaModel = ollamaModel;
+        return this;
+      }
+
+      public Builder aiRequestTimeoutSeconds(final int aiRequestTimeoutSeconds) {
+        this.aiRequestTimeoutSeconds = aiRequestTimeoutSeconds;
+        return this;
+      }
+
+      public Builder aiWordCount(final int aiWordCount) {
+        this.aiWordCount = aiWordCount;
+        return this;
+      }
+
       public GenerationParameters build() {
         return new GenerationParameters(
             tables,
@@ -659,7 +677,12 @@ public class DataGenerator {
             applicationContext,
             indicator,
             circularReferences,
-            circularReferenceTerminationModes);
+            circularReferenceTerminationModes,
+            useAiGeneration,
+            ollamaUrl,
+            ollamaModel,
+            aiRequestTimeoutSeconds,
+            aiWordCount);
       }
     }
   }

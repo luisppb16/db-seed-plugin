@@ -88,7 +88,12 @@ class DataGeneratorTest {
         .softDeleteUseSchemaDefault(false)
         .softDeleteValue(null)
         .numericScale(2)
-        .aiColumns(Map.of());
+        .aiColumns(Map.of())
+        .useAiGeneration(false)
+        .ollamaUrl(null)
+        .ollamaModel(null)
+        .aiRequestTimeoutSeconds(0)
+        .aiWordCount(0);
   }
 
   // ── Basic ──
@@ -525,12 +530,6 @@ class DataGeneratorTest {
 
   @Test
   void aiGeneration_populatesSelectedColumnsViaOllamaClient() {
-    DbSeedSettingsState state = new DbSeedSettingsState();
-    state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
-    state.setAiRequestTimeoutSeconds(30);
-    state.setAiWordCount(1);
-
     Table products =
         new Table(
             "products",
@@ -584,14 +583,18 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
-      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+      final String ollamaUrl = "http://127.0.0.1:" + server.getAddress().getPort();
 
       GenerationParameters params =
           baseParams()
               .tables(List.of(products, users))
               .rowsPerTable(1)
               .aiColumns(Map.of("products", Set.of("description"), "users", Set.of("bio")))
+              .useAiGeneration(true)
+              .ollamaUrl(ollamaUrl)
+              .ollamaModel("test-model")
+              .aiRequestTimeoutSeconds(30)
+              .aiWordCount(1)
               .build();
 
       final GenerationResult result = DataGenerator.generate(params);

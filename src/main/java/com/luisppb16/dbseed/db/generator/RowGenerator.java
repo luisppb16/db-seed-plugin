@@ -82,29 +82,9 @@ public final class RowGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
   private static final int AI_MAX_RETRIES = 3;
-  private static final double AI_OVER_REQUEST_FACTOR = 1.1;
-  private static final int AI_RECYCLE_THRESHOLD = 5;
 
-  /**
-   * Minimum AI batch size. The dynamic batch sizing below guarantees at least one value per request
-   * even for very large or array-like columns.
-   */
-  private static final int AI_MIN_BATCH_SIZE = 1;
-
-  /**
-   * Assumed effective token throughput for budgeting batches against the configured request
-   * timeout. Conservative (lower than raw eval throughput) to account for prompt evaluation,
-   * network overhead, and JSON parsing on slow hardware. With streaming + inactivity-timeout the
-   * batch size is no longer the primary defense against stalls (the watchdog aborts a stall fast),
-   * but keeping batches modest still bounds the per-request wall time and the retry cost.
-   */
-  private static final int AI_ASSUMED_THROUGHPUT_TOKENS_PER_SECOND = 30;
-
-  /**
-   * Fraction of the request timeout that a single AI batch should target. Kept below 1.0 to leave
-   * headroom for retries and to avoid approaching the inactivity window on slow hardware.
-   */
-  private static final double AI_TARGET_TIMEOUT_FRACTION = 0.5;
+  /** Number of rows sent to Ollama in a single AI request. */
+  private static final int AI_BATCH_SIZE = 50;
 
   private final Table table;
   private final int rowsPerTable;
@@ -196,19 +176,6 @@ public final class RowGenerator {
     this.multiColumnConstraints = ConstraintParser.parseMultiColumnConstraints(table.checks());
   }
 
-  /**
-   * Detects whether an AI request failure was caused by the streaming inactivity watchdog (the
-   * model stalled mid-generation). Used to trigger batch-splitting on retry: a stall means the
-   * {@code num_predict} budget for the requested count exceeded what the model could produce within
-   * the inactivity window, so halving the count is the right corrective action.
-   */
-  private static boolean isStreamStall(final Throwable ex) {
-    if (Objects.isNull(ex) || Objects.isNull(ex.getMessage())) {
-      return false;
-    }
-    return ex.getMessage().contains("stalled") || ex.getMessage().contains("no tokens received");
-  }
-
   public List<Row> generate() {
     if (table.columns().isEmpty()) {
       return List.of();
@@ -256,11 +223,14 @@ public final class RowGenerator {
   /**
    * Generates AI values for a single column across all rows. Called externally by DataGenerator
    * from the flat AI executor pool.
+   *
+   * @param onBatchCompleted optional callback invoked after each batch finishes (may be {@code
+   *     null}); used by the caller to report per-batch progress to the user.
    */
-  public void generateAiValuesForColumn(final Column col) {
+  public void generateAiValuesForColumn(final Column col, final Runnable onBatchCompleted) {
     if (Objects.isNull(ollamaClient) || rows.isEmpty()) return;
     final int totalRows = rows.size();
-    generateAiValuesForColumnInternal(col, aiWordCount, totalRows);
+    generateAiValuesForColumnInternal(col, aiWordCount, totalRows, onBatchCompleted);
   }
 
   private void processRepetitionRules() {
@@ -523,7 +493,7 @@ public final class RowGenerator {
   }
 
   private void generateAiValuesForColumnInternal(
-      final Column col, final int wordCount, final int totalRows) {
+      final Column col, final int wordCount, final int totalRows, final Runnable onBatchCompleted) {
     final String colName = col.name();
     final String sqlType = getSqlTypeName(col);
     final boolean isArray = isArrayType(col);
@@ -533,7 +503,7 @@ public final class RowGenerator {
     // For non-UNIQUE columns, only dedup intra-batch (cleared per iteration).
     final Set<String> seenAiValues = new HashSet<>();
 
-    final int aiBatchSize = computeAiBatchSize(col, wordCount);
+    final int aiBatchSize = AI_BATCH_SIZE;
     final int totalBatches = (totalRows + aiBatchSize - 1) / aiBatchSize;
 
     IntStream.range(0, totalBatches)
@@ -563,90 +533,35 @@ public final class RowGenerator {
                       .concat(String.valueOf(totalRows))
                       .concat(")"));
 
-              // Over-request to absorb dedup losses; UNIQUE columns need a larger buffer.
-              final double overRequestFactor = columnUnique ? 1.2 : AI_OVER_REQUEST_FACTOR;
-              final int requestCount = (int) Math.ceil(batchCount * overRequestFactor);
-
               final List<String> allValues = new ArrayList<>();
               int retries = 0;
 
-              try {
-                final List<String> batchValues =
-                    OllamaClient.awaitCancellable(
-                        ollamaClient.generateBatchValues(
-                            applicationContext,
-                            table.name(),
-                            colName,
-                            sqlType,
-                            wordCount,
-                            requestCount),
-                        tracker::isCanceled);
-                batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
-              } catch (final Exception ex) {
-                log.warn(
-                    "Batch AI generation failed for {}.{}: {}",
-                    table.name(),
-                    colName,
-                    ex.getMessage());
-                retries++;
-              }
+              while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+                if (tracker.isCanceled()) return;
 
-              // Improvement #2: recycle existing values if deficit is small and column is not
-              // UNIQUE
-              final int deficit = batchCount - allValues.size();
-              if (deficit > 0
-                  && deficit <= AI_RECYCLE_THRESHOLD
-                  && !columnUnique
-                  && !allValues.isEmpty()) {
-                IntStream.range(0, deficit)
-                    .forEach(i -> allValues.add(allValues.get(i % allValues.size())));
-              } else {
-                // Full retry loop only when deficit is large or column requires uniqueness.
-                // On a streaming inactivity-stall, halve the requested count before retrying so
-                // the next request targets a smaller num_predict budget and is more likely to
-                // complete within the inactivity window.
-                int stallSplitFactor = 1;
-                while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
-                  if (tracker.isCanceled()) return;
-
-                  final int remaining =
-                      Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
-                  try {
-                    final List<String> batchValues =
-                        OllamaClient.awaitCancellable(
-                            ollamaClient.generateBatchValues(
-                                applicationContext,
-                                table.name(),
-                                colName,
-                                sqlType,
-                                wordCount,
-                                remaining),
-                            tracker::isCanceled);
-
-                    if (batchValues.isEmpty()) {
-                      retries++;
-                      continue;
-                    }
-                    boolean addedAny =
-                        batchValues.stream()
-                            .filter(v -> seenAiValues.add(v))
-                            .peek(allValues::add)
-                            .findAny()
-                            .isPresent();
-                    if (!addedAny) {
-                      retries++;
-                    }
-                  } catch (final Exception ex) {
-                    log.warn(
-                        "Batch AI retry failed for {}.{}: {}",
-                        table.name(),
-                        colName,
-                        ex.getMessage());
+                final int remaining = batchCount - allValues.size();
+                try {
+                  final List<String> batchValues =
+                      OllamaClient.awaitCancellable(
+                          ollamaClient.generateBatchValues(
+                              applicationContext,
+                              table.name(),
+                              colName,
+                              sqlType,
+                              wordCount,
+                              remaining),
+                          tracker::isCanceled);
+                  batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
+                  if (batchValues.isEmpty()) {
                     retries++;
-                    if (isStreamStall(ex)) {
-                      stallSplitFactor = Math.min(stallSplitFactor * 2, batchCount);
-                    }
                   }
+                } catch (final Exception ex) {
+                  log.warn(
+                      "Batch AI retry failed for {}.{}: {}",
+                      table.name(),
+                      colName,
+                      ex.getMessage());
+                  retries++;
                 }
               }
 
@@ -662,31 +577,10 @@ public final class RowGenerator {
               applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
               final int generatedInBatch = Math.min(allValues.size(), batchCount);
               tracker.advance(generatedInBatch);
+              if (Objects.nonNull(onBatchCompleted)) {
+                onBatchCompleted.run();
+              }
             });
-  }
-
-  /**
-   * Computes how many rows can be generated in a single AI request without exceeding either the
-   * token budget or a reasonable fraction of the configured request timeout. Larger batches mean
-   * fewer HTTP round-trips, but batches that exceed the timeout cause expensive cancellations and
-   * retries.
-   */
-  private int computeAiBatchSize(final Column col, final int wordCount) {
-    final boolean isArray = isArrayType(col);
-    final int tokensPerValue = OllamaClient.perValuePredictTokens(isArray, wordCount);
-    final double overRequestFactor = isColumnUnique(col) ? 1.2 : AI_OVER_REQUEST_FACTOR;
-
-    final int tokenBudgetBatch =
-        (int) (OllamaClient.maxNumPredict() / (tokensPerValue * overRequestFactor));
-
-    final int timeoutSeconds =
-        Objects.nonNull(ollamaClient) ? ollamaClient.requestTimeoutSeconds() : 120;
-    final int timeBudgetBatch =
-        (int)
-            ((timeoutSeconds * AI_TARGET_TIMEOUT_FRACTION * AI_ASSUMED_THROUGHPUT_TOKENS_PER_SECOND)
-                / tokensPerValue);
-
-    return Math.max(AI_MIN_BATCH_SIZE, Math.min(tokenBudgetBatch, timeBudgetBatch));
   }
 
   /**

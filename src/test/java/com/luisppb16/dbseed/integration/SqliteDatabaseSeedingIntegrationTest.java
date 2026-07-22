@@ -142,7 +142,12 @@ class SqliteDatabaseSeedingIntegrationTest {
             "1",
             2,
             Map.of(),
-            "");
+            "",
+            false,
+            null,
+            null,
+            0,
+            0);
 
     final Path sqlitePath = IntegrationTestSupport.newTempSqlitePath("dbseed-soft-delete-csv");
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
@@ -272,7 +277,12 @@ class SqliteDatabaseSeedingIntegrationTest {
               null,
               2,
               Map.of("articles", Set.of("content")),
-              settings.getAiApplicationContext());
+              settings.getAiApplicationContext(),
+              settings.isUseAiGeneration(),
+              settings.getOllamaUrl(),
+              settings.getOllamaModel(),
+              settings.getAiRequestTimeoutSeconds(),
+              settings.getAiWordCount());
 
       final IntegrationTestSupport.WorkflowResult outcome =
           IntegrationTestSupport.runWorkflow(
@@ -323,7 +333,12 @@ class SqliteDatabaseSeedingIntegrationTest {
               null,
               2,
               Map.of("notes", Set.of("content")),
-              settings.getAiApplicationContext());
+              settings.getAiApplicationContext(),
+              settings.isUseAiGeneration(),
+              settings.getOllamaUrl(),
+              settings.getOllamaModel(),
+              settings.getAiRequestTimeoutSeconds(),
+              settings.getAiWordCount());
 
       IntegrationTestSupport.runWorkflow(
           connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
@@ -444,7 +459,12 @@ class SqliteDatabaseSeedingIntegrationTest {
               null,
               2,
               Map.of(),
-              "");
+              "",
+              false,
+              null,
+              null,
+              0,
+              0);
 
       IntegrationTestSupport.runWorkflow(
           connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
@@ -491,7 +511,12 @@ class SqliteDatabaseSeedingIntegrationTest {
               null,
               2,
               Map.of(),
-              "");
+              "",
+              false,
+              null,
+              null,
+              0,
+              0);
 
       IntegrationTestSupport.runWorkflow(
           connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);
@@ -533,7 +558,12 @@ class SqliteDatabaseSeedingIntegrationTest {
               "NULL",
               2,
               Map.of(),
-              "");
+              "",
+              false,
+              null,
+              null,
+              0,
+              0);
 
       IntegrationTestSupport.runWorkflow(
           connection, null, IntegrationTestSupport.SQLITE_DRIVER, options);

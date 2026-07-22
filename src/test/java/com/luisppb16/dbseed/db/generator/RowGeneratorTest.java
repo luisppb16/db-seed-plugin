@@ -97,7 +97,7 @@ class RowGeneratorTest {
               "",
               new ProgressTracker(null, 0));
       gen.generate();
-      gen.generateAiValuesForColumn(varcharCol("name"));
+      gen.generateAiValuesForColumn(varcharCol("name"), null);
       return requestCount.get();
     } finally {
       server.stop(0);
@@ -543,16 +543,15 @@ class RowGeneratorTest {
   }
 
   @Test
-  void aiBatchSize_dynamic_fitsManyRowsInOneRequest() throws Exception {
-    // wordCount=1 → batch size ≈ 496, so 200 rows fit in a single request.
-    assertThat(countAiRequests(1, 200)).isEqualTo(1);
+  void aiBatchSize_fitsManyRowsInOneRequest() throws Exception {
+    // batch size = 50, so 50 rows fit in a single request.
+    assertThat(countAiRequests(1, 50)).isEqualTo(1);
   }
 
   @Test
-  void aiBatchSize_dynamic_scalesWithWordCount() throws Exception {
-    // wordCount=1 → batch size ≈ 496, so 400 rows fit in one request.
-    // wordCount=10 → batch size ≈ 248, so 400 rows need two requests.
-    assertThat(countAiRequests(1, 400)).isEqualTo(1);
-    assertThat(countAiRequests(10, 400)).isEqualTo(2);
+  void aiBatchSize_scalesWithRowCount() throws Exception {
+    // batch size = 50, so 100 rows need two requests, 50 need one.
+    assertThat(countAiRequests(1, 50)).isEqualTo(1);
+    assertThat(countAiRequests(10, 100)).isEqualTo(2);
   }
 }

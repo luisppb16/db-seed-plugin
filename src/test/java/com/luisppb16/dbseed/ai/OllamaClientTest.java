@@ -8,7 +8,10 @@
 package com.luisppb16.dbseed.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -126,9 +129,19 @@ class OllamaClientTest {
     }
 
     @Test
-    void valueEqualsColumnName_afterPrefixStrip_returnsEmpty() {
-      // "name" starts with column prefix "name" → prefix stripped → empty string
-      assertThat(OllamaClient.sanitizeAiOutput("name", "name")).isEmpty();
+    void valueEqualsColumnName_returnsNull() {
+      // The value equals the column name (an echo/placeholder), so it is discarded.
+      assertThat(OllamaClient.sanitizeAiOutput("name", "name")).isNull();
+    }
+
+    @Test
+    void codeFenceLine_returnsEmpty() {
+      assertThat(OllamaClient.sanitizeAiOutput("```", "col")).isEmpty();
+    }
+
+    @Test
+    void codeFenceWithLanguage_returnsEmpty() {
+      assertThat(OllamaClient.sanitizeAiOutput("```json", "col")).isEmpty();
     }
   }
 
@@ -190,6 +203,11 @@ class OllamaClientTest {
     }
 
     @Test
+    void spanishAquiEstan_isPreamble() {
+      assertThat(OllamaClient.isAiPreamble("Aquí están los valores")).isTrue();
+    }
+
+    @Test
     void validData_isNotPreamble() {
       assertThat(OllamaClient.isAiPreamble("John Doe")).isFalse();
     }
@@ -216,6 +234,11 @@ class OllamaClientTest {
     @Test
     void asAnAi_isRefusal() {
       assertThat(OllamaClient.isAiRefusal("As an AI language model")).isTrue();
+    }
+
+    @Test
+    void spanishNoPuedo_isRefusal() {
+      assertThat(OllamaClient.isAiRefusal("No puedo generar eso")).isTrue();
     }
 
     @Test
@@ -248,10 +271,9 @@ class OllamaClientTest {
     }
 
     @Test
-    void partialPrefixMatch_stripsButMayCorrupt() {
-      // Known issue: "named" starts with "name" (case-insensitive) so prefix is stripped
-      // even though it's a different word. This is a documented edge case.
-      assertThat(OllamaClient.stripColumnPrefix("named: John", "name")).isNotEqualTo("named: John");
+    void partialPrefixMatch_notCorrupted() {
+      // "named" starts with "name" but no separator follows, so the value is preserved intact.
+      assertThat(OllamaClient.stripColumnPrefix("named: John", "name")).isEqualTo("named: John");
     }
   }
 
@@ -291,6 +313,90 @@ class OllamaClientTest {
     @Test
     void arrayKeyword_isArrayType() {
       assertThat(OllamaClient.isArrayType("ARRAY")).isTrue();
+    }
+  }
+
+  @Nested
+  class StripCodeFences {
+
+    @Test
+    void bareFence_collapsedToEmpty() {
+      assertThat(OllamaClient.stripCodeFences("```")).isEmpty();
+    }
+
+    @Test
+    void fenceWithLanguage_collapsedToEmpty() {
+      assertThat(OllamaClient.stripCodeFences("```json")).isEmpty();
+    }
+
+    @Test
+    void closingFenceStripped_fromEnd() {
+      assertThat(OllamaClient.stripCodeFences("valor1```")).isEqualTo("valor1");
+    }
+
+    @Test
+    void fenceGluedToContent_stripsFenceOnly() {
+      // "```valor1" has a digit after the fence, so it is treated as content, not a language tag.
+      assertThat(OllamaClient.stripCodeFences("```valor1")).isEqualTo("valor1");
+    }
+
+    @Test
+    void noFence_unmodified() {
+      assertThat(OllamaClient.stripCodeFences("valor1")).isEqualTo("valor1");
+    }
+  }
+
+  @Nested
+  class AwaitCancellable {
+
+    @Test
+    void alreadyCanceled_supplierCancelsFutureAndThrows() {
+      // A never-completing future would otherwise block up to the HTTP request timeout; with a
+      // canceled supplier, awaitCancellable must cancel the future and throw immediately.
+      final CompletableFuture<String> never = new CompletableFuture<>();
+
+      assertThatThrownBy(() -> OllamaClient.awaitCancellable(never, () -> true))
+          .isInstanceOf(CancellationException.class);
+      assertThat(never).isCancelled();
+    }
+
+    @Test
+    void completedFuture_returnsValueWithoutBlocking() {
+      final CompletableFuture<String> done = CompletableFuture.completedFuture("valor");
+
+      assertThat(OllamaClient.awaitCancellable(done, () -> false)).isEqualTo("valor");
+    }
+  }
+
+  @Nested
+  class PerValuePredictTokens {
+
+    @Test
+    void scalarSingleWord_isBatchFactor() {
+      assertThat(OllamaClient.perValuePredictTokens(false, 1)).isEqualTo(15);
+    }
+
+    @Test
+    void scalarLowWordCount_flooredAtBatchFactor() {
+      // wordCount=2 → max(15, 2*3) = 15
+      assertThat(OllamaClient.perValuePredictTokens(false, 2)).isEqualTo(15);
+    }
+
+    @Test
+    void scalarHighWordCount_scalesWithWordCount() {
+      // wordCount=10 → max(15, 10*3) = 30
+      assertThat(OllamaClient.perValuePredictTokens(false, 10)).isEqualTo(30);
+    }
+
+    @Test
+    void scalarZeroWordCount_clampedToOne() {
+      assertThat(OllamaClient.perValuePredictTokens(false, 0)).isEqualTo(15);
+    }
+
+    @Test
+    void arrayMultipliesByElementCount() {
+      // array, wordCount=1 → elementCount(3) * 15 = 45
+      assertThat(OllamaClient.perValuePredictTokens(true, 1)).isEqualTo(45);
     }
   }
 }

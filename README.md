@@ -1,15 +1,13 @@
 # 🗃️ DBSeed4SQL Plugin (IntelliJ IDEA).
 
-**db-seed-plugin** is a plugin for **IntelliJ IDEA** that generates synthetic data to populate database schemas.
-It automatically introspects a schema, analyzes dependencies between tables, and produces a consistent SQL script,
-respecting primary keys,
-foreign keys, uniqueness constraints, and complex cycles. It is ideal for developers who need realistic and repeatable
-seeds for testing,
-demos, QA, or development environments.
+**db-seed-plugin** is a plugin for **IntelliJ IDEA** that generates synthetic data to populate database schemas. It
+automatically introspects a schema, analyzes dependencies between tables, and produces a consistent SQL script,
+respecting primary keys, foreign keys, uniqueness constraints, and complex cycles. It is ideal for developers who need
+realistic and repeatable seeds for testing, demos, QA, or development environments.
 
 This project is developed in **Java 21** with **Gradle 9.6.1**, applying a modern programming style: `record`, `switch`
-with `yield`,
-pattern matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (
+with `yield`, pattern matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of
+**Lombok** (
 `@Builder`, `@Slf4j`,
 `@UtilityClass`), and Javadoc documentation in Spanish. The architecture is organized into clear layers:
 
@@ -18,8 +16,7 @@ pattern matching, functional programming with Streams, `Optional` to avoid nulls
   `ConnectionConfigPersistence`).
 - **db**: main engine with introspection (`SchemaIntrospector`), topological sorting (`TopologicalSorter`), data
   generation (
-  `DataGenerator`),
-  and SQL construction (`SqlGenerator`).
+  `DataGenerator`), and SQL construction (`SqlGenerator`).
 - **model**: immutable models (`Table`, `Column`, `ForeignKey`, `RepetitionRule`).
 - **registry**: driver and runtime registries used by the plugin.
 - **schema**: DSL for manually defining schemas (`SchemaDsl`, `SqlType`).
@@ -36,8 +33,8 @@ To align with current JetBrains Marketplace approval criteria:
   dependency.
 - JDBC driver download is **explicitly confirmed by the user** before any external artifact is fetched.
 - The plugin works locally by default; external network use is opt-in and user-triggered.
-- AI generation calls only a user-configured Ollama endpoint and uses user-provided context plus schema metadata (
-  table/column names).
+- AI generation calls only a user-configured Ollama endpoint and uses user-provided context plus schema metadata
+  (table/column names).
 - Generated SQL, dictionaries, and settings remain local to the IDE/project unless the user exports or shares them
   manually.
 
@@ -132,10 +129,8 @@ This is especially useful when you work with several local databases, test envir
 ### 📚 Configurable Dictionaries for Data Generation
 
 The plugin offers enhanced control over string data generation by allowing users to select which dictionaries to use.
-Previously, data
-generation relied solely on Faker's default lorem ipsum. With this feature, you can combine Faker's default output with
-internal English and
-Spanish dictionaries.
+Previously, data generation relied solely on Faker's default lorem ipsum. With this feature, you can combine Faker's
+default output with internal English and Spanish dictionaries.
 
 In the plugin settings, you will find three checkboxes:
 
@@ -150,8 +145,8 @@ This allows for more realistic and contextually relevant text generation, especi
 ### 🤖 AI-Powered Data Generation (Ollama)
 
 The plugin integrates with [Ollama](https://ollama.com/) to generate context-aware, realistic seed data using local
-LLMs. Instead of relying
-solely on random/faker values, you can leverage AI to produce meaningful content for string columns.
+LLMs. Instead of relying solely on random/faker values, you can leverage AI to produce meaningful content for string
+columns.
 
 - **AI Columns Selection**: A dedicated tab in the generation dialog lets you choose which string columns receive
   AI-generated content.
@@ -161,8 +156,7 @@ solely on random/faker values, you can leverage AI to produce meaningful content
 - **Request Timeout Control**: Configure the Ollama request timeout from settings.
 - **Cancellable Processing**: The generation task can be canceled from the IDE progress UI.
 - **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide domain context, and test
-  connectivity from
-  **Settings → DBSeed4SQL**.
+  connectivity from **Settings → DBSeed4SQL**.
 
 ---
 
@@ -324,5 +318,4 @@ the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version 
 ---
 
 👨‍💻 Project created by **Luis Pepe** ([@LuisPPB16](https://github.com/luisppb16)), a Java developer specializing in
-backend,
-microservices, and development tooling.
+backend, microservices, and development tooling.

@@ -9,6 +9,7 @@ package com.luisppb16.dbseed.db.generator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.model.Column;
@@ -16,12 +17,21 @@ import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.sql.Types;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import net.datafaker.Faker;
 import org.junit.jupiter.api.Test;
 
@@ -38,6 +48,75 @@ class RowGeneratorTest {
   private static Column varcharCol(final String name) {
     return new Column(name, Types.VARCHAR, null, false, false, false, 100, 0, null, null, Set.of());
   }
+
+  /**
+   * Runs AI generation for a single varchar column against an embedded HTTP server and returns the
+   * number of requests made. The server always replies with 500 distinct valid values so the retry
+   * loop never triggers, making the request count equal to the number of batches.
+   */
+  private static int countAiRequests(final int wordCount, final int totalRows) throws Exception {
+    final HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    final AtomicInteger requestCount = new AtomicInteger();
+    final String values =
+        IntStream.range(0, 500).mapToObj(i -> "val" + i).collect(Collectors.joining("\\n"));
+    server.createContext(
+        "/",
+        exchange -> {
+          requestCount.incrementAndGet();
+          respond(exchange, 200, "{\"response\":\"" + values + "\"}");
+        });
+    server.start();
+    try {
+      final OllamaClient client =
+          new OllamaClient("http://127.0.0.1:" + server.getAddress().getPort(), "test-model", 999);
+      final Table table =
+          new Table(
+              "t",
+              List.of(intPk("id"), varcharCol("name")),
+              List.of("id"),
+              List.of(),
+              List.of(),
+              List.of());
+      final RowGenerator gen =
+          new RowGenerator(
+              table,
+              totalRows,
+              Set.of(),
+              List.of(),
+              new Faker(),
+              new HashSet<>(),
+              List.of(),
+              false,
+              Set.of(),
+              false,
+              null,
+              2,
+              Set.of("name"),
+              wordCount,
+              client,
+              "",
+              new ProgressTracker(null, 0));
+      gen.generate();
+      gen.generateAiValuesForColumn(varcharCol("name"));
+      return requestCount.get();
+    } finally {
+      server.stop(0);
+    }
+  }
+
+  private static void respond(final HttpExchange exchange, final int status, final String body)
+      throws IOException {
+    exchange.getRequestBody().readAllBytes();
+    final byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+    exchange.getResponseHeaders().set("Content-Type", "application/json");
+    exchange.sendResponseHeaders(status, bytes.length);
+    try (OutputStream os = exchange.getResponseBody()) {
+      os.write(bytes);
+    }
+    exchange.close();
+  }
+
+  // ── Basic ──
 
   private RowGenerator generator(final Table table, final int rowCount) {
     return new RowGenerator(
@@ -82,8 +161,6 @@ class RowGeneratorTest {
         new ProgressTracker(null, 0));
   }
 
-  // ── Basic ──
-
   @Test
   void correctRowCount() {
     final Table t =
@@ -97,6 +174,8 @@ class RowGeneratorTest {
     final List<Row> rows = generator(t, 10).generate();
     assertThat(rows).hasSize(10);
   }
+
+  // ── PK uniqueness ──
 
   @Test
   void emptyColumnsTable() {
@@ -121,7 +200,7 @@ class RowGeneratorTest {
     }
   }
 
-  // ── PK uniqueness ──
+  // ── Unique keys ──
 
   @Test
   void integerPk_unique() {
@@ -134,6 +213,8 @@ class RowGeneratorTest {
     }
     assertThat(pkValues).hasSize(rows.size());
   }
+
+  // ── Excluded columns ──
 
   @Test
   void compositePk_unique() {
@@ -153,7 +234,7 @@ class RowGeneratorTest {
     assertThat(combos).hasSize(rows.size());
   }
 
-  // ── Unique keys ──
+  // ── FK columns ──
 
   @Test
   void noDuplicateUniqueCombinations() {
@@ -173,7 +254,7 @@ class RowGeneratorTest {
     assertThat(seen).hasSize(rows.size());
   }
 
-  // ── Excluded columns ──
+  // ── Soft delete ──
 
   @Test
   void excludedColumn_valueIsNull() {
@@ -190,8 +271,6 @@ class RowGeneratorTest {
       assertThat(r.values().get("excluded_col")).isNull();
     }
   }
-
-  // ── FK columns ──
 
   @Test
   void fkColumn_nonPk_getsNull() {
@@ -211,7 +290,7 @@ class RowGeneratorTest {
     }
   }
 
-  // ── Soft delete ──
+  // ── Repetition rules ──
 
   @Test
   void softDelete_schemaDefault() {
@@ -283,8 +362,6 @@ class RowGeneratorTest {
     }
   }
 
-  // ── Repetition rules ──
-
   @Test
   void repetitionRules_fixedValuesApplied() {
     final Table t =
@@ -322,6 +399,8 @@ class RowGeneratorTest {
     assertThat(fixedCount).isGreaterThanOrEqualTo(3);
   }
 
+  // ── getConstraints ──
+
   @Test
   void repetitionRules_totalRowsCorrect() {
     final Table t =
@@ -355,6 +434,8 @@ class RowGeneratorTest {
     final List<Row> rows = gen.generate();
     assertThat(rows).hasSize(10);
   }
+
+  // ── AI columns ──
 
   @Test
   void repetitionRules_regexPatternAppliedOnStringColumns() {
@@ -407,7 +488,7 @@ class RowGeneratorTest {
     assertThat(matchingHexColors).isGreaterThanOrEqualTo(3);
   }
 
-  // ── getConstraints ──
+  // ── Adaptive AI batch sizing ──
 
   @Test
   void getConstraints_returnsMap() {
@@ -424,5 +505,54 @@ class RowGeneratorTest {
     assertThat(gen.getConstraints()).containsKey("val");
     assertThat(gen.getConstraints().get("val").min()).isEqualTo(1.0);
     assertThat(gen.getConstraints().get("val").max()).isEqualTo(10.0);
+  }
+
+  @Test
+  void getValidAiColumns_excludesFkColumns() {
+    final ForeignKey fk = new ForeignKey(null, "parent", Map.of("parent_id", "id"), false);
+    final Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name"), varcharCol("parent_id")),
+            List.of("id"),
+            List.of(fk),
+            List.of(),
+            List.of());
+    final RowGenerator gen =
+        new RowGenerator(
+            t,
+            5,
+            Set.of(),
+            List.of(),
+            new Faker(),
+            new HashSet<>(),
+            List.of(),
+            false,
+            Set.of(),
+            false,
+            null,
+            2,
+            Set.of("name", "parent_id"),
+            1,
+            new OllamaClient("http://localhost:11434", "test-model", 10),
+            null,
+            new ProgressTracker(null, 0));
+    gen.generate();
+    final List<Column> columns = gen.getValidAiColumns();
+    assertThat(columns).extracting(Column::name).contains("name").doesNotContain("parent_id");
+  }
+
+  @Test
+  void aiBatchSize_dynamic_fitsManyRowsInOneRequest() throws Exception {
+    // wordCount=1 → batch size ≈ 496, so 200 rows fit in a single request.
+    assertThat(countAiRequests(1, 200)).isEqualTo(1);
+  }
+
+  @Test
+  void aiBatchSize_dynamic_scalesWithWordCount() throws Exception {
+    // wordCount=1 → batch size ≈ 496, so 400 rows fit in one request.
+    // wordCount=10 → batch size ≈ 248, so 400 rows need two requests.
+    assertThat(countAiRequests(1, 400)).isEqualTo(1);
+    assertThat(countAiRequests(10, 400)).isEqualTo(2);
   }
 }

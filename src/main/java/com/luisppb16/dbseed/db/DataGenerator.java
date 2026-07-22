@@ -111,7 +111,7 @@ public class DataGenerator {
    */
   private static final ExecutorService AI_COLUMN_EXECUTOR =
       Executors.newFixedThreadPool(
-          Math.clamp(Runtime.getRuntime().availableProcessors(), 2, 4),
+          Math.clamp(Runtime.getRuntime().availableProcessors() * 2, 4, 12),
           r -> {
             final Thread thread = new Thread(r, "ai-col-gen");
             thread.setDaemon(true);
@@ -139,14 +139,19 @@ public class DataGenerator {
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    final boolean useAi = settings.isUseAiGeneration();
+    final String ollamaUrl = settings.getOllamaUrl();
+    final String ollamaModel = settings.getOllamaModel();
+    final boolean urlConfigured = Objects.nonNull(ollamaUrl) && !ollamaUrl.isBlank();
+    final boolean modelConfigured = Objects.nonNull(ollamaModel) && !ollamaModel.isBlank();
+    if (useAi && urlConfigured && !modelConfigured) {
+      log.warn(
+          "AI generation is enabled but no Ollama model is selected; skipping AI generation."
+              + " Configure a model in Settings -> DBSeed4SQL.");
+    }
     final OllamaClient ollamaClient =
-        settings.isUseAiGeneration()
-                && Objects.nonNull(settings.getOllamaUrl())
-                && !settings.getOllamaUrl().isBlank()
-            ? new OllamaClient(
-                settings.getOllamaUrl(),
-                settings.getOllamaModel(),
-                settings.getAiRequestTimeoutSeconds())
+        useAi && urlConfigured && modelConfigured
+            ? new OllamaClient(ollamaUrl, ollamaModel, settings.getAiRequestTimeoutSeconds())
             : null;
 
     final Map<String, Set<String>> aiColumns =
@@ -175,16 +180,21 @@ public class DataGenerator {
 
     final ProgressTracker tracker = new ProgressTracker(params.indicator(), totalWork);
 
-    // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
-    // This eliminates cold-start latency on the first real generation call.
+    // Pre-warm the AI model asynchronously so it loads in VRAM while rows are generated.
+    // This overlaps the cold-start with the row-generation phase instead of blocking it.
+    CompletableFuture<Void> warmUpFuture = null;
     if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
-      try {
-        tracker.setText("Warming up AI model...");
-        tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
-        ollamaClient.warmModel().join();
-      } catch (final Exception e) {
-        log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
-      }
+      tracker.setText("Warming up AI model...");
+      tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
+      warmUpFuture =
+          ollamaClient
+              .warmModel(Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT))
+              .whenComplete(
+                  (result, error) -> {
+                    if (error != null) {
+                      log.warn("Model warm-up failed, proceeding anyway: {}", error.getMessage());
+                    }
+                  });
     }
 
     final List<RowGenerator> generators =
@@ -209,7 +219,17 @@ public class DataGenerator {
             Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
             tracker);
 
-    // Phase 2: Run AI generation with bounded parallelism across AI columns
+    // Phase 2: Run AI generation with bounded parallelism across AI columns.
+    // Wait for the async warm-up to finish first; by now it has had the entire row-generation
+    // phase to load the model, so this usually returns immediately.
+    if (Objects.nonNull(warmUpFuture)) {
+      try {
+        OllamaClient.awaitCancellable(warmUpFuture, tracker::isCanceled);
+      } catch (final Exception e) {
+        log.warn("Model warm-up did not complete, proceeding anyway: {}", e.getMessage());
+      }
+    }
+
     generateAiValues(generators, aiWork, tracker);
 
     tracker.setText("Phase 3/4: Validating constraints...");
@@ -407,9 +427,10 @@ public class DataGenerator {
             .toList());
 
     try {
-      CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+      OllamaClient.awaitCancellable(
+          CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)), tracker::isCanceled);
     } catch (final Exception ex) {
-      log.warn("Some AI column generations failed: {}", ex.getMessage());
+      log.warn("Some AI column generations failed or were canceled: {}", ex.getMessage());
     } finally {
       final long completedAfter = tracker.getCompleted();
       final long gap = expectedAiWork - (completedAfter - completedBefore);

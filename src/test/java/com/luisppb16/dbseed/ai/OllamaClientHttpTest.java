@@ -11,6 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -83,12 +85,64 @@ class OllamaClientHttpTest {
       throws IOException {
     exchange.getRequestBody().readAllBytes();
     final byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-    exchange.getResponseHeaders().set("Content-Type", "application/json");
+    exchange.getResponseHeaders().set("Content-Type", "application/x-ndjson");
     exchange.sendResponseHeaders(status, bytes.length);
     try (OutputStream os = exchange.getResponseBody()) {
       os.write(bytes);
     }
     exchange.close();
+  }
+
+  /**
+   * Emits an NDJSON stream: one JSON object per line, as Ollama does when {@code stream:true}.
+   * Each value in {@code chunks} becomes a {@code {"response":"...","done":false}} line, followed
+   * by a final {@code {"response":"","done":true}} terminator. A newline inside a chunk completes
+   * a value line on the client side.
+   */
+  private static void respondNdjson(final HttpExchange exchange, final String... chunks)
+      throws IOException {
+    exchange.getRequestBody().readAllBytes();
+    exchange.getResponseHeaders().set("Content-Type", "application/x-ndjson");
+    exchange.sendResponseHeaders(200, 0);
+    try (OutputStream os = exchange.getResponseBody()) {
+      for (final String chunk : chunks) {
+        final JsonObject obj = new JsonObject();
+        obj.addProperty("response", chunk);
+        obj.addProperty("done", false);
+        os.write((obj.toString() + "\n").getBytes(StandardCharsets.UTF_8));
+        os.flush();
+      }
+      final JsonObject done = new JsonObject();
+      done.addProperty("response", "");
+      done.addProperty("done", true);
+      os.write((done.toString() + "\n").getBytes(StandardCharsets.UTF_8));
+      os.flush();
+    }
+    exchange.close();
+  }
+
+  /** Installs a handler that captures the request body and replies with {@code response}. */
+  private static AtomicReference<String> captureBodyHandler(final String response) {
+    final AtomicReference<String> capturedBody = new AtomicReference<>();
+    HANDLER.set(
+        exchange -> {
+          capturedBody.set(
+              new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+          respond(exchange, 200, response);
+        });
+    return capturedBody;
+  }
+
+  /** Installs a handler that captures the request body and replies with an NDJSON stream. */
+  private static AtomicReference<String> captureBodyNdjsonHandler(final String... chunks) {
+    final AtomicReference<String> capturedBody = new AtomicReference<>();
+    HANDLER.set(
+        exchange -> {
+          capturedBody.set(
+              new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+          respondNdjson(exchange, chunks);
+        });
+    return capturedBody;
   }
 
   @BeforeEach
@@ -114,7 +168,9 @@ class OllamaClientHttpTest {
       assertThatThrownBy(() -> newClient().ping().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("Ollama returned status code: 500");
+          .rootCause()
+          .hasMessageContaining("Ollama returned status code: 500")
+          .hasMessageContaining("boom");
     }
 
     @Test
@@ -170,16 +226,25 @@ class OllamaClientHttpTest {
       assertThatThrownBy(() -> newClient().listModels().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("Ollama returned status code: 500");
+          .rootCause()
+          .hasMessageContaining("Ollama returned status code: 500");
     }
   }
 
   @Nested
   class GenerateBatchValues {
 
+    /** Installs a handler that streams the given value-lines as NDJSON token chunks. */
+    private void respondNdjsonWith(final String valuesLine) {
+      final String[] chunks = java.util.Arrays.stream(valuesLine.split("\n", -1))
+          .map(c -> c + "\n")
+          .toArray(String[]::new);
+      HANDLER.set(exchange -> respondNdjson(exchange, chunks));
+    }
+
     @Test
     void ok_returnsAllValues() throws Exception {
-      respondWith(200, "{\"response\":\"valor1\\nvalor2\\nvalor3\"}");
+      respondNdjsonWith("valor1\nvalor2\nvalor3");
 
       final List<String> values =
           newClient()
@@ -191,7 +256,7 @@ class OllamaClientHttpTest {
 
     @Test
     void duplicatedLines_returnsDistinctValues() throws Exception {
-      respondWith(200, "{\"response\":\"valor1\\nvalor1\\nvalor2\"}");
+      respondNdjsonWith("valor1\nvalor1\nvalor2");
 
       final List<String> values =
           newClient()
@@ -203,7 +268,7 @@ class OllamaClientHttpTest {
 
     @Test
     void emptyResponse_failsWithOllamaException() {
-      respondWith(200, "{\"response\":\"\"}");
+      HANDLER.set(exchange -> respondNdjson(exchange, ""));
 
       assertThatThrownBy(
               () ->
@@ -226,27 +291,81 @@ class OllamaClientHttpTest {
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("Ollama error: 500");
+          .rootCause()
+          .hasMessageContaining("Ollama returned status code: 500")
+          .hasMessageContaining("model not found");
     }
 
     @Test
-    void requestBody_containsModelAndDisablesStreaming() throws Exception {
-      final AtomicReference<String> capturedPath = new AtomicReference<>();
-      final AtomicReference<String> capturedBody = new AtomicReference<>();
-      HANDLER.set(
-          exchange -> {
-            capturedPath.set(exchange.getRequestURI().getPath());
-            capturedBody.set(
-                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            respond(exchange, 200, "{\"response\":\"valor1\"}");
-          });
+    void requestBody_containsModelAndEnablesStreaming() throws Exception {
+      final AtomicReference<String> capturedBody =
+          captureBodyNdjsonHandler("valor1\n");
 
       newClient()
           .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
           .get(AWAIT_SECONDS, TimeUnit.SECONDS);
 
-      assertThat(capturedPath.get()).isEqualTo("/api/generate");
-      assertThat(capturedBody.get()).contains("\"model\"").contains("\"stream\":false");
+      assertThat(capturedBody.get()).contains("\"model\"").contains("\"stream\":true");
+    }
+
+    @Test
+    void requestBody_contextGoesToSystemNotPrompt() throws Exception {
+      final AtomicReference<String> capturedBody = captureBodyNdjsonHandler("valor1\n");
+
+      newClient()
+          .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+          .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      final JsonObject body = JsonParser.parseString(capturedBody.get()).getAsJsonObject();
+      assertThat(body.get("system").getAsString()).contains("Application context: online store");
+      assertThat(body.get("prompt").getAsString()).doesNotContain("Application context");
+    }
+
+    @Test
+    void requestBody_blankContext_systemHasNoContextLine() throws Exception {
+      final AtomicReference<String> capturedBody = captureBodyNdjsonHandler("valor1\n");
+
+      newClient()
+          .generateBatchValues("", "users", "city", "varchar", 1, 3)
+          .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      final JsonObject body = JsonParser.parseString(capturedBody.get()).getAsJsonObject();
+      assertThat(body.get("system").getAsString()).doesNotContain("Application context");
+      assertThat(body.get("prompt").getAsString()).doesNotContain("Application context");
+    }
+
+    @Test
+    void requestBody_promptIsConcise() throws Exception {
+      final AtomicReference<String> capturedBody = captureBodyNdjsonHandler("valor1\n");
+
+      newClient()
+          .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+          .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      final JsonObject body = JsonParser.parseString(capturedBody.get()).getAsJsonObject();
+      final String prompt = body.get("prompt").getAsString();
+      assertThat(prompt).contains("Generate").contains("One per line");
+      assertThat(prompt).doesNotContain("Application context");
+    }
+
+    @Test
+    void ok_splitAcrossMultipleChunks_assemblesLine() throws Exception {
+      // Tokens arriving one character at a time should still assemble into complete value lines.
+      HANDLER.set(
+          exchange ->
+              respondNdjson(
+                  exchange,
+                  "va",
+                  "lor",
+                  "1\n",
+                  "valor2\n"));
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2");
     }
   }
 
@@ -257,7 +376,7 @@ class OllamaClientHttpTest {
     void ok_completesWithoutException() {
       respondWith(200, "{\"response\":\"\"}");
 
-      assertThatCode(() -> newClient().warmModel().get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatCode(() -> newClient().warmModel(null).get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .doesNotThrowAnyException();
     }
 
@@ -265,8 +384,18 @@ class OllamaClientHttpTest {
     void serverError_stillCompletesWithoutException() {
       respondWith(500, "{\"error\":\"boom\"}");
 
-      assertThatCode(() -> newClient().warmModel().get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatCode(() -> newClient().warmModel(null).get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .doesNotThrowAnyException();
+    }
+
+    @Test
+    void warmModelWithContext_systemContainsContext() throws Exception {
+      final AtomicReference<String> capturedBody = captureBodyHandler("{\"response\":\"\"}");
+
+      newClient().warmModel("online store").get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      final JsonObject body = JsonParser.parseString(capturedBody.get()).getAsJsonObject();
+      assertThat(body.get("system").getAsString()).contains("Application context: online store");
     }
   }
 }

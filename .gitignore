@@ -46,3 +46,4 @@ gradle/wrapper/gradle-wrapper.jar
 .classpath
 /src/main/resources/db
 /bin
+/graphify-out

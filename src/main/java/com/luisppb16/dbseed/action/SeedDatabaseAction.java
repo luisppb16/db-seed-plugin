@@ -302,20 +302,6 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                 pkDialog.getSoftDeleteValue(),
                 pkDialog.getNumericScale());
 
-        final boolean useAiGeneration = settings.isUseAiGeneration();
-        final String ollamaUrl = settings.getOllamaUrl();
-        final String ollamaModel = settings.getOllamaModel();
-        final int aiRequestTimeoutSeconds = settings.getAiRequestTimeoutSeconds();
-        final int aiWordCount = settings.getAiWordCount();
-        final String outputDir = settings.getDefaultOutputDirectory();
-        final String basePath = project.getBasePath();
-        if (Objects.isNull(basePath)) {
-          log.error("Could not determine project base path.");
-          Messages.showErrorDialog(
-              project, "Could not determine project base path.", "DBSeed Error");
-          return;
-        }
-
         ProgressManager.getInstance()
             .run(
                 new Task.Backgroundable(project, APP_NAME.getValue(), true) {
@@ -361,13 +347,10 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                                   .circularReferences(pkDialog.getCircularReferences())
                                   .circularReferenceTerminationModes(
                                       pkDialog.getCircularReferenceTerminationModes())
-                                  .useAiGeneration(useAiGeneration)
-                                  .ollamaUrl(ollamaUrl)
-                                  .ollamaModel(ollamaModel)
-                                  .aiRequestTimeoutSeconds(aiRequestTimeoutSeconds)
-                                  .aiWordCount(aiWordCount)
                                   .applicationContext(
-                                      useAiGeneration ? settings.getAiApplicationContext() : null)
+                                      settings.isUseAiGeneration()
+                                          ? settings.getAiApplicationContext()
+                                          : null)
                                   .indicator(indicator)
                                   .build());
                       log.info(
@@ -386,7 +369,7 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                       indicator.setText("Done!");
                       log.info("SQL script built successfully.");
 
-                      final Path filePath = writeSqlFile(basePath, outputDir, sql);
+                      final Path filePath = writeSqlFile(project, sql);
                       if (filePath != null) {
                         ApplicationManager.getApplication()
                             .invokeLater(() -> openFileInEditor(project, filePath));
@@ -414,9 +397,17 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
     }
   }
 
-  private Path writeSqlFile(final String basePath, final String outputDir, final String sql) {
+  private Path writeSqlFile(final Project project, final String sql) {
+    final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    final String outputDir = settings.getDefaultOutputDirectory();
     final String timestamp = FILE_TIMESTAMP.format(LocalDateTime.now());
     final String fileName = String.format("V%s__seed.sql", timestamp);
+
+    final String basePath = project.getBasePath();
+    if (Objects.isNull(basePath)) {
+      log.error("Could not determine project base path.");
+      return null;
+    }
 
     final Path path = Paths.get(basePath, outputDir, fileName);
 

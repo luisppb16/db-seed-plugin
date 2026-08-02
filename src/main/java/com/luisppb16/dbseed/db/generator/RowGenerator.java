@@ -81,10 +81,10 @@ import net.datafaker.Faker;
 public final class RowGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
-  private static final int AI_MAX_RETRIES = 3;
-
-  /** Number of rows sent to Ollama in a single AI request. */
   private static final int AI_BATCH_SIZE = 50;
+  private static final int AI_MAX_RETRIES = 5;
+  private static final double AI_OVER_REQUEST_FACTOR = 1.2;
+  private static final int AI_RECYCLE_THRESHOLD = 5;
 
   private final Table table;
   private final int rowsPerTable;
@@ -216,21 +216,17 @@ public final class RowGenerator {
         .filter(Objects::nonNull)
         .filter(col -> !excludedColumns.contains(col.name()))
         .filter(col -> !behaviorColumns.contains(col.name()))
-        .filter(col -> !isFkColumn.test(col))
         .toList();
   }
 
   /**
    * Generates AI values for a single column across all rows. Called externally by DataGenerator
    * from the flat AI executor pool.
-   *
-   * @param onBatchCompleted optional callback invoked after each batch finishes (may be {@code
-   *     null}); used by the caller to report per-batch progress to the user.
    */
-  public void generateAiValuesForColumn(final Column col, final Runnable onBatchCompleted) {
+  public void generateAiValuesForColumn(final Column col) {
     if (Objects.isNull(ollamaClient) || rows.isEmpty()) return;
     final int totalRows = rows.size();
-    generateAiValuesForColumnInternal(col, aiWordCount, totalRows, onBatchCompleted);
+    generateAiValuesForColumnInternal(col, aiWordCount, totalRows);
   }
 
   private void processRepetitionRules() {
@@ -291,12 +287,8 @@ public final class RowGenerator {
                       final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
                       if (generatedRow.isPresent()) {
                         rows.add(generatedRow.get());
-                        final int count = generatedCount.incrementAndGet();
+                        generatedCount.incrementAndGet();
                         tracker.advance();
-                        if (count == rule.count() || count % Math.max(1, rule.count() / 10) == 0) {
-                          tracker.setText2(
-                              "Row " + count + "/" + rowsPerTable + " for " + table.name());
-                        }
                         break;
                       }
                       attempts++;
@@ -349,7 +341,6 @@ public final class RowGenerator {
 
   private void fillRemainingRows() {
     final long maxAttempts = (long) rowsPerTable * MAX_GENERATE_ATTEMPTS;
-    final int textUpdateInterval = Math.max(1, rowsPerTable / 20);
     LongStream.range(0, maxAttempts)
         .takeWhile(i -> generatedCount.get() < rowsPerTable)
         .forEach(
@@ -360,7 +351,7 @@ public final class RowGenerator {
                         rows.add(row);
                         final int count = generatedCount.incrementAndGet();
                         tracker.advance(); // 1 work unit per row generated
-                        if (count % textUpdateInterval == 0 || count == rowsPerTable) {
+                        if (count % 50 == 0) {
                           tracker.setText2(
                               "Row " + count + "/" + rowsPerTable + " for " + table.name());
                         }
@@ -493,7 +484,7 @@ public final class RowGenerator {
   }
 
   private void generateAiValuesForColumnInternal(
-      final Column col, final int wordCount, final int totalRows, final Runnable onBatchCompleted) {
+      final Column col, final int wordCount, final int totalRows) {
     final String colName = col.name();
     final String sqlType = getSqlTypeName(col);
     final boolean isArray = isArrayType(col);
@@ -503,8 +494,7 @@ public final class RowGenerator {
     // For non-UNIQUE columns, only dedup intra-batch (cleared per iteration).
     final Set<String> seenAiValues = new HashSet<>();
 
-    final int aiBatchSize = AI_BATCH_SIZE;
-    final int totalBatches = (totalRows + aiBatchSize - 1) / aiBatchSize;
+    final int totalBatches = (totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE;
 
     IntStream.range(0, totalBatches)
         .forEach(
@@ -516,8 +506,8 @@ public final class RowGenerator {
                 seenAiValues.clear();
               }
 
-              final int batchStart = b * aiBatchSize;
-              final int batchEnd = Math.min(batchStart + aiBatchSize, totalRows);
+              final int batchStart = b * AI_BATCH_SIZE;
+              final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
               final int batchCount = batchEnd - batchStart;
 
               tracker.setText2(
@@ -533,35 +523,81 @@ public final class RowGenerator {
                       .concat(String.valueOf(totalRows))
                       .concat(")"));
 
+              // Improvement #2: over-request to absorb dedup losses
+              final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
+
               final List<String> allValues = new ArrayList<>();
               int retries = 0;
 
-              while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
-                if (tracker.isCanceled()) return;
+              try {
+                final List<String> batchValues =
+                    ollamaClient
+                        .generateBatchValues(
+                            applicationContext,
+                            table.name(),
+                            colName,
+                            sqlType,
+                            wordCount,
+                            requestCount)
+                        .join();
+                batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
+              } catch (final Exception ex) {
+                log.warn(
+                    "Batch AI generation failed for {}.{}: {}",
+                    table.name(),
+                    colName,
+                    ex.getMessage());
+                retries++;
+              }
 
-                final int remaining = batchCount - allValues.size();
-                try {
-                  final List<String> batchValues =
-                      OllamaClient.awaitCancellable(
-                          ollamaClient.generateBatchValues(
-                              applicationContext,
-                              table.name(),
-                              colName,
-                              sqlType,
-                              wordCount,
-                              remaining),
-                          tracker::isCanceled);
-                  batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
-                  if (batchValues.isEmpty()) {
+              // Improvement #2: recycle existing values if deficit is small and column is not
+              // UNIQUE
+              final int deficit = batchCount - allValues.size();
+              if (deficit > 0
+                  && deficit <= AI_RECYCLE_THRESHOLD
+                  && !columnUnique
+                  && !allValues.isEmpty()) {
+                IntStream.range(0, deficit)
+                    .forEach(i -> allValues.add(allValues.get(i % allValues.size())));
+              } else {
+                // Full retry loop only when deficit is large or column requires uniqueness
+                while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+                  if (tracker.isCanceled()) return;
+
+                  final int remaining = batchCount - allValues.size();
+                  try {
+                    final List<String> batchValues =
+                        ollamaClient
+                            .generateBatchValues(
+                                applicationContext,
+                                table.name(),
+                                colName,
+                                sqlType,
+                                wordCount,
+                                remaining)
+                            .join();
+
+                    if (batchValues.isEmpty()) {
+                      retries++;
+                      continue;
+                    }
+                    boolean addedAny =
+                        batchValues.stream()
+                            .filter(v -> seenAiValues.add(v))
+                            .peek(allValues::add)
+                            .findAny()
+                            .isPresent();
+                    if (!addedAny) {
+                      retries++;
+                    }
+                  } catch (final Exception ex) {
+                    log.warn(
+                        "Batch AI retry failed for {}.{}: {}",
+                        table.name(),
+                        colName,
+                        ex.getMessage());
                     retries++;
                   }
-                } catch (final Exception ex) {
-                  log.warn(
-                      "Batch AI retry failed for {}.{}: {}",
-                      table.name(),
-                      colName,
-                      ex.getMessage());
-                  retries++;
                 }
               }
 
@@ -575,11 +611,7 @@ public final class RowGenerator {
               }
 
               applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
-              final int generatedInBatch = Math.min(allValues.size(), batchCount);
-              tracker.advance(generatedInBatch);
-              if (Objects.nonNull(onBatchCompleted)) {
-                onBatchCompleted.run();
-              }
+              tracker.advance(batchCount);
             });
   }
 

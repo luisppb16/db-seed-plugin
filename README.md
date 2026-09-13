@@ -163,6 +163,10 @@ solely on random/faker values, you can leverage AI to produce meaningful content
 - **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide domain context, and test
   connectivity from
   **Settings → DBSeed4SQL**.
+- **Model Required**: With AI generation enabled, an Ollama model must be selected before settings can be saved, and
+  the seed dialog blocks the run when no model is configured.
+- **Visible Fallback**: If the AI generation fails (server down, model not found, …), rows are filled with DataFaker
+  and a notification explains the cause — the fallback is never silent.
 
 ---
 

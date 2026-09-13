@@ -98,6 +98,13 @@ public class OllamaClient {
   private static final int WORD_COUNT_PREDICT_MULTIPLIER = 3;
   private static final int MIN_WORD_COUNT = 1;
 
+  /**
+   * Minimum token budget for batch requests. {@code num_predict} is a cap, not a target, so a
+   * generous floor costs nothing when the model stops early; it only prevents truncation on small
+   * batches where a verbose preamble would otherwise consume the whole budget.
+   */
+  private static final int NUM_PREDICT_FLOOR = 512;
+
   /** Keep the model loaded in VRAM for 10 minutes between requests to avoid cold-start penalty. */
   private static final String DEFAULT_KEEP_ALIVE = "10m";
 
@@ -162,6 +169,7 @@ public class OllamaClient {
     if (Objects.isNull(value)) return null;
     String cleaned = value.lines().findFirst().orElse("").trim();
 
+    cleaned = stripCodeFences(cleaned);
     cleaned = stripSurroundingQuotes(cleaned);
     cleaned = NUMBERED_PREFIX.matcher(cleaned).replaceFirst("").trim();
 
@@ -181,6 +189,26 @@ public class OllamaClient {
     }
 
     return cleaned;
+  }
+
+  /**
+   * Removes Markdown code fences that some models wrap around list output. A bare opening/closing
+   * fence line ({@code ```} or {@code ```json}) carries no value and is collapsed to empty so the
+   * caller can discard it; fences glued to actual content are stripped from the edges.
+   */
+  static String stripCodeFences(final String text) {
+    String result = text;
+    if (result.startsWith("```")) {
+      final String afterFence = result.substring(3).trim();
+      if (afterFence.isEmpty() || afterFence.matches("[a-zA-Z]{1,12}")) {
+        return "";
+      }
+      result = afterFence;
+    }
+    if (result.endsWith("```")) {
+      result = result.substring(0, result.length() - 3).trim();
+    }
+    return result;
   }
 
   static String stripSurroundingQuotes(final String text) {
@@ -204,7 +232,18 @@ public class OllamaClient {
         || lower.startsWith("the following")
         || lower.contains("unique and realistic")
         || lower.contains("values for the")
-        || lower.contains("values for column");
+        || lower.contains("values for column")
+        || lower.startsWith("aquí están")
+        || lower.startsWith("aquí tienes")
+        || lower.startsWith("aqui están")
+        || lower.startsWith("aqui tienes")
+        || lower.startsWith("por supuesto")
+        || lower.startsWith("claro,")
+        || lower.startsWith("claro.")
+        || lower.startsWith("los siguientes")
+        || lower.startsWith("las siguientes")
+        || lower.startsWith("estos son")
+        || lower.startsWith("estas son");
   }
 
   static boolean isAiRefusal(final String text) {
@@ -216,18 +255,25 @@ public class OllamaClient {
         || lower.startsWith("sorry,")
         || lower.startsWith("as an ai")
         || lower.startsWith("i'm not able")
-        || lower.startsWith("i am not able");
+        || lower.startsWith("i am not able")
+        || lower.startsWith("no puedo")
+        || lower.startsWith("lo siento")
+        || lower.startsWith("como ia")
+        || lower.startsWith("como modelo")
+        || lower.startsWith("como inteligencia artificial");
   }
 
   static String stripColumnPrefix(final String text, final String columnName) {
     final String lower = text.toLowerCase(Locale.ROOT);
     final String colLower = columnName.toLowerCase(Locale.ROOT);
     if (lower.startsWith(colLower)) {
-      String rest = text.substring(columnName.length()).trim();
-      if (rest.startsWith("=") || rest.startsWith(":")) {
-        rest = rest.substring(1).trim();
+      final String rest = text.substring(columnName.length()).trim();
+      if (rest.startsWith(":") || rest.startsWith("=")) {
+        return stripSurroundingQuotes(rest.substring(1).trim());
       }
-      return stripSurroundingQuotes(rest);
+      // No separator follows the column name, so the prefix match is a partial word
+      // (e.g. column "name" vs value "named: John") — keep the original value intact.
+      return text;
     }
     return text;
   }
@@ -248,6 +294,40 @@ public class OllamaClient {
   }
 
   /**
+   * Builds an actionable error message for a non-2xx Ollama response. Extracts the {@code error}
+   * field from the JSON body when present (e.g. {@code model 'x' not found}); otherwise falls back
+   * to a trimmed snippet of the raw body.
+   */
+  private static String extractErrorMessage(final int statusCode, final String responseBody) {
+    if (Objects.isNull(responseBody) || responseBody.isBlank()) {
+      return "Ollama returned status code: " + statusCode;
+    }
+    try {
+      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
+      if (json.has("error") && !json.get("error").isJsonNull()) {
+        return "Ollama returned status code: "
+            + statusCode
+            + " — "
+            + json.get("error").getAsString();
+      }
+    } catch (final Exception ignored) {
+      // Fall through and surface the raw body when it is not valid JSON.
+    }
+    final String trimmed = responseBody.trim();
+    final String snippet = trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed;
+    return "Ollama returned status code: " + statusCode + " — " + snippet;
+  }
+
+  /** Trims and caps a raw model output at 200 characters for error messages. */
+  private static String snippetOf(final String raw) {
+    final String trimmed = raw.strip();
+    if (trimmed.isEmpty()) {
+      return "<empty>";
+    }
+    return trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed;
+  }
+
+  /**
    * Pings the Ollama server to check connectivity.
    *
    * @return A CompletableFuture that completes when the ping is successful.
@@ -262,12 +342,12 @@ public class OllamaClient {
               .build();
 
       return HTTP_CLIENT
-          .sendAsync(request, HttpResponse.BodyHandlers.discarding())
+          .sendAsync(request, HttpResponse.BodyHandlers.ofString())
           .thenAccept(
               response -> {
                 if (response.statusCode() != 200) {
                   throw new OllamaException(
-                      "Ollama returned status code: " + response.statusCode());
+                      extractErrorMessage(response.statusCode(), response.body()));
                 }
               });
     } catch (Exception e) {
@@ -295,7 +375,7 @@ public class OllamaClient {
               response -> {
                 if (response.statusCode() != 200) {
                   throw new OllamaException(
-                      "Ollama returned status code: " + response.statusCode());
+                      extractErrorMessage(response.statusCode(), response.body()));
                 }
                 return response.body();
               })
@@ -361,10 +441,13 @@ public class OllamaClient {
                       effectiveWordCount);
         }
         numPredict =
-            count
-                * elementCount
-                * Math.max(
-                    BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+            Math.max(
+                count
+                    * elementCount
+                    * Math.max(
+                        BATCH_NUM_PREDICT_FACTOR,
+                        effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
+                NUM_PREDICT_FLOOR);
       } else {
         if (effectiveWordCount == 1) {
           prompt =
@@ -377,9 +460,12 @@ public class OllamaClient {
                   .formatted(
                       contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
           numPredict =
-              count
-                  * Math.max(
-                      BATCH_NUM_PREDICT_FACTOR, effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER);
+              Math.max(
+                  count
+                      * Math.max(
+                          BATCH_NUM_PREDICT_FACTOR,
+                          effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
+                  NUM_PREDICT_FLOOR);
         }
       }
 
@@ -398,8 +484,11 @@ public class OllamaClient {
           .thenApply(
               response -> {
                 if (response.statusCode() != 200) {
-                  log.warn("Ollama error {}: {}", response.statusCode(), response.body());
-                  throw new OllamaException("Ollama error: " + response.statusCode());
+                  log.warn(
+                      "Ollama error: {}",
+                      extractErrorMessage(response.statusCode(), response.body()));
+                  throw new OllamaException(
+                      extractErrorMessage(response.statusCode(), response.body()));
                 }
                 return response.body();
               })
@@ -411,25 +500,26 @@ public class OllamaClient {
 
   private List<String> parseBatchResponse(final String responseBody, final String columnName)
       throws OllamaException {
+    final String raw;
     try {
-      final String raw = extractRawResponse(responseBody);
-      final List<String> values =
-          raw.lines()
-              .map(line -> sanitizeAiOutput(line, columnName))
-              .filter(Objects::nonNull)
-              .filter(s -> !s.isBlank())
-              .distinct()
-              .toList();
-      if (values.isEmpty()) {
-        throw new OllamaException(
-            "AI response contained no valid values for column '" + columnName + "'");
-      }
-      return values;
-    } catch (OllamaException e) {
-      throw e;
-    } catch (Exception e) {
+      raw = extractRawResponse(responseBody);
+    } catch (final Exception e) {
       throw new OllamaException("Failed to parse Ollama batch response: " + e.getMessage(), e);
     }
+
+    final List<String> values =
+        raw.lines()
+            .map(line -> sanitizeAiOutput(line, columnName))
+            .filter(Objects::nonNull)
+            .filter(s -> !s.isBlank())
+            .distinct()
+            .toList();
+    if (values.isEmpty()) {
+      throw new OllamaException(
+          "AI response contained no valid values for column '%s'. Model output: %s"
+              .formatted(columnName, snippetOf(raw)));
+    }
+    return values;
   }
 
   private String extractRawResponse(final String responseBody) throws IOException {
@@ -461,6 +551,9 @@ public class OllamaClient {
     body.addProperty("prompt", prompt);
     body.addProperty("system", SYSTEM_ROLE);
     body.addProperty("stream", false);
+    // Reasoning models spend the token budget on hidden thinking, leaving "response"
+    // empty; seed generation never needs chain-of-thought, so it stays off.
+    body.addProperty("think", false);
     body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
     body.add("options", options);
 
@@ -496,18 +589,18 @@ public class OllamaClient {
               .build();
 
       return HTTP_CLIENT
-          .sendAsync(request, HttpResponse.BodyHandlers.discarding())
+          .sendAsync(request, HttpResponse.BodyHandlers.ofString())
           .thenAccept(
               response -> {
                 if (response.statusCode() == 200) {
                   log.info("Model '{}' warmed up successfully", modelName);
                 } else {
-                  log.warn("Model warm-up returned status {}", response.statusCode());
+                  throw new OllamaException(
+                      extractErrorMessage(response.statusCode(), response.body()));
                 }
               });
-    } catch (Exception e) {
-      log.warn("Failed to warm model: {}", e.getMessage());
-      return CompletableFuture.completedFuture(null);
+    } catch (final Exception e) {
+      return CompletableFuture.failedFuture(e);
     }
   }
 

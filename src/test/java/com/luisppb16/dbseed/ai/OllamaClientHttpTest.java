@@ -114,7 +114,7 @@ class OllamaClientHttpTest {
       assertThatThrownBy(() -> newClient().ping().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("Ollama returned status code: 500");
+          .hasRootCauseMessage("Ollama returned status code: 500 — boom");
     }
 
     @Test
@@ -170,7 +170,7 @@ class OllamaClientHttpTest {
       assertThatThrownBy(() -> newClient().listModels().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("Ollama returned status code: 500");
+          .hasRootCauseMessage("Ollama returned status code: 500 — {}");
     }
   }
 
@@ -212,7 +212,24 @@ class OllamaClientHttpTest {
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("AI response contained no valid values for column 'city'");
+          .hasRootCauseMessage(
+              "AI response contained no valid values for column 'city'. Model output: <empty>");
+    }
+
+    @Test
+    void onlyPreambleResponse_errorIncludesModelOutputSnippet() {
+      respondWith(200, "{\"response\":\"Aquí están los valores:\"}");
+
+      assertThatThrownBy(
+              () ->
+                  newClient()
+                      .generateBatchValues("online store", "users", "tags", "text[]", 1, 3)
+                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class)
+          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasRootCauseMessage(
+              "AI response contained no valid values for column 'tags'. Model output:"
+                  + " Aquí están los valores:");
     }
 
     @Test
@@ -226,7 +243,34 @@ class OllamaClientHttpTest {
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(OllamaClient.OllamaException.class)
-          .hasRootCauseMessage("Ollama error: 500");
+          .hasRootCauseMessage("Ollama returned status code: 500 — model not found");
+    }
+
+    @Test
+    void modelNotFound_includesServerErrorMessage() {
+      respondWith(404, "{\"error\":\"model \\\"test-model\\\" not found, try pulling it first\"}");
+
+      assertThatThrownBy(
+              () ->
+                  newClient()
+                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class)
+          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasRootCauseMessage(
+              "Ollama returned status code: 404 — model \"test-model\" not found, try pulling it first");
+    }
+
+    @Test
+    void codeFencedResponse_valuesStillExtracted() throws Exception {
+      respondWith(200, "{\"response\":\"```json\\nvalor1\\nvalor2\\n```\"}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2");
     }
 
     @Test
@@ -246,7 +290,10 @@ class OllamaClientHttpTest {
           .get(AWAIT_SECONDS, TimeUnit.SECONDS);
 
       assertThat(capturedPath.get()).isEqualTo("/api/generate");
-      assertThat(capturedBody.get()).contains("\"model\"").contains("\"stream\":false");
+      assertThat(capturedBody.get())
+          .contains("\"model\"")
+          .contains("\"stream\":false")
+          .contains("\"think\":false");
     }
   }
 
@@ -262,11 +309,13 @@ class OllamaClientHttpTest {
     }
 
     @Test
-    void serverError_stillCompletesWithoutException() {
+    void serverError_failsWithOllamaException() {
       respondWith(500, "{\"error\":\"boom\"}");
 
-      assertThatCode(() -> newClient().warmModel().get(AWAIT_SECONDS, TimeUnit.SECONDS))
-          .doesNotThrowAnyException();
+      assertThatThrownBy(() -> newClient().warmModel().get(AWAIT_SECONDS, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class)
+          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasRootCauseMessage("Ollama returned status code: 500 — boom");
     }
   }
 }

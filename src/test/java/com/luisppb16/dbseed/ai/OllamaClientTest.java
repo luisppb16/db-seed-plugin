@@ -126,9 +126,61 @@ class OllamaClientTest {
     }
 
     @Test
-    void valueEqualsColumnName_afterPrefixStrip_returnsEmpty() {
-      // "name" starts with column prefix "name" → prefix stripped → empty string
-      assertThat(OllamaClient.sanitizeAiOutput("name", "name")).isEmpty();
+    void valueEqualsColumnName_returnsNull() {
+      // "name" matches the column prefix, no separator follows, and the remaining value
+      // equals the column name — an echoed column name is dropped entirely.
+      assertThat(OllamaClient.sanitizeAiOutput("name", "name")).isNull();
+    }
+
+    @Test
+    void codeFenceLines_collapsedToEmpty() {
+      assertThat(OllamaClient.sanitizeAiOutput("```", "col")).isEmpty();
+      assertThat(OllamaClient.sanitizeAiOutput("```json", "col")).isEmpty();
+    }
+
+    @Test
+    void spanishPreamble_returnsNull() {
+      assertThat(OllamaClient.sanitizeAiOutput("Aquí están los valores:", "col")).isNull();
+      assertThat(OllamaClient.sanitizeAiOutput("Por supuesto:", "col")).isNull();
+      assertThat(OllamaClient.sanitizeAiOutput("Claro, aquí tienes:", "col")).isNull();
+      assertThat(OllamaClient.sanitizeAiOutput("Los siguientes valores:", "col")).isNull();
+    }
+
+    @Test
+    void spanishRefusal_returnsNull() {
+      assertThat(OllamaClient.sanitizeAiOutput("No puedo generar eso", "col")).isNull();
+      assertThat(OllamaClient.sanitizeAiOutput("Lo siento, no puedo", "col")).isNull();
+      assertThat(OllamaClient.sanitizeAiOutput("Como modelo de lenguaje...", "col")).isNull();
+    }
+  }
+
+  @Nested
+  class StripCodeFences {
+
+    @Test
+    void bareFence_collapsedToEmpty() {
+      assertThat(OllamaClient.stripCodeFences("```")).isEmpty();
+    }
+
+    @Test
+    void fenceWithLanguage_collapsedToEmpty() {
+      assertThat(OllamaClient.stripCodeFences("```json")).isEmpty();
+    }
+
+    @Test
+    void closingFenceStripped_fromEnd() {
+      assertThat(OllamaClient.stripCodeFences("valor1```")).isEqualTo("valor1");
+    }
+
+    @Test
+    void fenceGluedToContent_stripsFenceOnly() {
+      // "```valor1" has a digit after the fence, so it is treated as content, not a language tag.
+      assertThat(OllamaClient.stripCodeFences("```valor1")).isEqualTo("valor1");
+    }
+
+    @Test
+    void noFence_unmodified() {
+      assertThat(OllamaClient.stripCodeFences("valor1")).isEqualTo("valor1");
     }
   }
 
@@ -248,10 +300,9 @@ class OllamaClientTest {
     }
 
     @Test
-    void partialPrefixMatch_stripsButMayCorrupt() {
-      // Known issue: "named" starts with "name" (case-insensitive) so prefix is stripped
-      // even though it's a different word. This is a documented edge case.
-      assertThat(OllamaClient.stripColumnPrefix("named: John", "name")).isNotEqualTo("named: John");
+    void partialPrefixMatch_valuePreservedIntact() {
+      // "named" starts with "name" but no separator follows, so the value is preserved intact.
+      assertThat(OllamaClient.stripColumnPrefix("named: John", "name")).isEqualTo("named: John");
     }
   }
 

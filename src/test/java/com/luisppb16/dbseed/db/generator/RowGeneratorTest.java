@@ -9,6 +9,7 @@ package com.luisppb16.dbseed.db.generator;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.luisppb16.dbseed.ai.OllamaClient;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.model.Column;
@@ -16,12 +17,18 @@ import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.sql.Types;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
+import lombok.Getter;
 import net.datafaker.Faker;
 import org.junit.jupiter.api.Test;
 
@@ -424,5 +431,132 @@ class RowGeneratorTest {
     assertThat(gen.getConstraints()).containsKey("val");
     assertThat(gen.getConstraints().get("val").min()).isEqualTo(1.0);
     assertThat(gen.getConstraints().get("val").max()).isEqualTo(10.0);
+  }
+
+  // ── AI generation ──
+
+  @Test
+  void getValidAiColumns_excludesFkColumns() {
+    final ForeignKey fk = new ForeignKey(null, "parent", Map.of("parent_id", "id"), false);
+    final Table t =
+        new Table(
+            "t",
+            List.of(intPk("id"), varcharCol("name"), varcharCol("parent_id")),
+            List.of("id"),
+            List.of(fk),
+            List.of(),
+            List.of());
+    final RowGenerator gen = aiGenerator(t, 5, "http://localhost:11434");
+    gen.generate();
+    final List<Column> columns = gen.getValidAiColumns();
+    assertThat(columns).extracting(Column::name).contains("name").doesNotContain("parent_id");
+  }
+
+  @Test
+  void aiValues_appliedToRowsAndCounted() throws Exception {
+    final FakeOllamaServer server =
+        new FakeOllamaServer(200, "{\"response\":\"val1\\nval2\\nval3\"}");
+    try {
+      final Table t =
+          new Table(
+              "t",
+              List.of(intPk("id"), varcharCol("name")),
+              List.of("id"),
+              List.of(),
+              List.of(),
+              List.of());
+      final RowGenerator gen = aiGenerator(t, 3, "http://127.0.0.1:" + server.getPort());
+      final List<Row> rows = gen.generate();
+      gen.generateAiValuesForColumn(varcharCol("name"));
+
+      assertThat(rows.stream().map(r -> r.values().get("name")))
+          .containsExactly("val1", "val2", "val3");
+      assertThat(gen.getAiAppliedCounts()).containsEntry("name", 3);
+      assertThat(gen.getAiColumnErrors()).isEmpty();
+    } finally {
+      server.close();
+    }
+  }
+
+  @Test
+  void aiFailure_rowsKeepDataFakerAndErrorRecorded() throws Exception {
+    final FakeOllamaServer server =
+        new FakeOllamaServer(
+            404, "{\"error\":\"model \\\"test-model\\\" not found, try pulling it first\"}");
+    try {
+      final Table t =
+          new Table(
+              "t",
+              List.of(intPk("id"), varcharCol("name")),
+              List.of("id"),
+              List.of(),
+              List.of(),
+              List.of());
+      final RowGenerator gen = aiGenerator(t, 3, "http://127.0.0.1:" + server.getPort());
+      final List<Row> rows = gen.generate();
+      final List<Object> dataFakerValues = rows.stream().map(r -> r.values().get("name")).toList();
+
+      gen.generateAiValuesForColumn(varcharCol("name"));
+
+      assertThat(gen.getAiAppliedCounts()).doesNotContainKey("name");
+      assertThat(gen.getAiColumnErrors()).containsKey("name");
+      assertThat(gen.getAiColumnErrors().get("name")).contains("not found");
+      assertThat(rows.stream().map(r -> r.values().get("name")))
+          .containsExactlyElementsOf(dataFakerValues);
+    } finally {
+      server.close();
+    }
+  }
+
+  private RowGenerator aiGenerator(final Table table, final int rowCount, final String ollamaUrl) {
+    return new RowGenerator(
+        table,
+        rowCount,
+        Set.of(),
+        List.of(),
+        new Faker(),
+        new HashSet<>(),
+        List.of(),
+        false,
+        Set.of(),
+        false,
+        null,
+        2,
+        Set.of("name"),
+        1,
+        new OllamaClient(ollamaUrl, "test-model", 10),
+        "",
+        new ProgressTracker(null, 0));
+  }
+
+  /** Minimal one-response Ollama stub bound to an ephemeral local port. */
+  @Getter
+  private static final class FakeOllamaServer implements AutoCloseable {
+
+    private final HttpServer server;
+    private final int port;
+
+    FakeOllamaServer(final int status, final String body) throws IOException {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      port = server.getAddress().getPort();
+      server.createContext(
+          "/",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            final byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, bytes.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+              os.write(bytes);
+            }
+            exchange.close();
+          });
+      server.start();
+    }
+
+    @Override
+    public void close() {
+      server.stop(0);
+    }
   }
 }

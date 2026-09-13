@@ -30,7 +30,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -39,6 +41,7 @@ import java.util.stream.IntStream;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 import net.datafaker.Faker;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Advanced data generation orchestration engine for the DBSeed plugin ecosystem.
@@ -139,10 +142,13 @@ public class DataGenerator {
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
+    final boolean modelConfigured =
+        Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isBlank();
     final OllamaClient ollamaClient =
         settings.isUseAiGeneration()
                 && Objects.nonNull(settings.getOllamaUrl())
                 && !settings.getOllamaUrl().isBlank()
+                && modelConfigured
             ? new OllamaClient(
                 settings.getOllamaUrl(),
                 settings.getOllamaModel(),
@@ -176,14 +182,18 @@ public class DataGenerator {
     final ProgressTracker tracker = new ProgressTracker(params.indicator(), totalWork);
 
     // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
-    // This eliminates cold-start latency on the first real generation call.
+    // This eliminates cold-start latency on the first real generation call. A failed warm-up
+    // means the server/model is unreachable, so the AI phase is skipped entirely instead of
+    // hammering the endpoint with retries per column against a known-broken target.
+    String warmUpError = null;
     if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
       try {
         tracker.setText("Warming up AI model...");
         tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
         ollamaClient.warmModel().join();
       } catch (final Exception e) {
-        log.warn("Model warm-up failed, proceeding anyway: {}", e.getMessage());
+        warmUpError = errorMessageOf(e);
+        log.warn("Model warm-up failed, skipping AI phase: {}", warmUpError);
       }
     }
 
@@ -210,7 +220,9 @@ public class DataGenerator {
             tracker);
 
     // Phase 2: Run AI generation with bounded parallelism across AI columns
-    generateAiValues(generators, aiWork, tracker);
+    final AiGenerationReport aiReport =
+        generateAiValues(
+            generators, aiWork, params.rowsPerTable(), modelConfigured, warmUpError, tracker);
 
     tracker.setText("Phase 3/4: Validating constraints...");
     tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
@@ -230,7 +242,7 @@ public class DataGenerator {
 
     tracker.setText2(updates.size() + " deferred updates created");
 
-    return new GenerationResult(data, updates);
+    return new GenerationResult(data, updates, aiReport);
   }
 
   private static List<Table> applyPkUuidOverrides(
@@ -357,16 +369,21 @@ public class DataGenerator {
   }
 
   /** Phase 2: Runs AI value generation with bounded parallelism across all selected AI columns. */
-  private static void generateAiValues(
+  private static AiGenerationReport generateAiValues(
       final List<RowGenerator> generators,
       final long expectedAiWork,
+      final int rowsPerTable,
+      final boolean modelConfigured,
+      final String warmUpError,
       final ProgressTracker tracker) {
     final List<RowGenerator> aiGenerators =
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
-    if (aiGenerators.isEmpty()) {
+    // A failed warm-up (or nothing to run) skips the phase entirely — applied stays 0 and the
+    // report carries the cause so the user is told instead of silently getting DataFaker data.
+    if (Objects.nonNull(warmUpError) || aiGenerators.isEmpty()) {
       tracker.advance(expectedAiWork);
-      return;
+      return buildAiReport(generators, modelConfigured, warmUpError, rowsPerTable);
     }
 
     final long totalAiColumns =
@@ -419,6 +436,49 @@ public class DataGenerator {
     }
 
     tracker.setText2("AI generation complete");
+    return buildAiReport(generators, modelConfigured, warmUpError, rowsPerTable);
+  }
+
+  /**
+   * Builds the per-column AI outcome report from what each {@link RowGenerator} actually applied
+   * and recorded. Only columns that were runnable are reported; skipped phases surface through
+   * {@code modelConfigured} and {@code warmUpError} instead.
+   */
+  private static AiGenerationReport buildAiReport(
+      final List<RowGenerator> generators,
+      final boolean modelConfigured,
+      final String warmUpError,
+      final int rowsPerTable) {
+    final List<AiColumnStat> stats =
+        generators.stream()
+            .filter(RowGenerator::hasAiColumns)
+            .flatMap(
+                gen ->
+                    gen.getValidAiColumns().stream()
+                        .map(
+                            col ->
+                                new AiColumnStat(
+                                    gen.getTable().name(),
+                                    col.name(),
+                                    rowsPerTable,
+                                    gen.getAiAppliedCounts().getOrDefault(col.name(), 0),
+                                    gen.getAiColumnErrors().containsKey(col.name())
+                                        ? gen.getAiColumnErrors().get(col.name())
+                                        : warmUpError)))
+            .toList();
+    return new AiGenerationReport(modelConfigured, warmUpError, stats);
+  }
+
+  /** Unwraps future-completion wrappers so the report shows the real cause message. */
+  private static String errorMessageOf(final Exception ex) {
+    Throwable cause = ex;
+    while (cause instanceof CompletionException || cause instanceof ExecutionException) {
+      cause = cause.getCause();
+    }
+    if (Objects.isNull(cause)) {
+      return ex.getClass().getSimpleName();
+    }
+    return Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName());
   }
 
   private static void validateNumericConstraints(
@@ -645,5 +705,50 @@ public class DataGenerator {
     }
   }
 
-  public record GenerationResult(Map<Table, List<Row>> rows, List<PendingUpdate> updates) {}
+  /** Outcome for a single AI-selected column: how many AI values landed and why not all. */
+  public record AiColumnStat(
+      String tableName,
+      String columnName,
+      int requestedRows,
+      int appliedAiValues,
+      @Nullable String lastError) {
+
+    /** Returns true when not a single AI value was applied for this column. */
+    public boolean isTotalFailure() {
+      return appliedAiValues == 0;
+    }
+
+    /** Returns true when some rows of this column fell back to DataFaker. */
+    public boolean hasDeficit() {
+      return appliedAiValues < requestedRows;
+    }
+  }
+
+  /**
+   * Summary of the AI generation phase. {@code modelConfigured} reports the settings guard and
+   * {@code warmUpError} the pre-flight model load; both let the caller surface a skipped phase
+   * instead of silently falling back to DataFaker.
+   */
+  public record AiGenerationReport(
+      boolean modelConfigured, @Nullable String warmUpError, List<AiColumnStat> columns) {
+
+    /** Returns true when at least one requested AI column has rows filled with DataFaker. */
+    public boolean hasFailures() {
+      return columns.stream().anyMatch(AiColumnStat::hasDeficit);
+    }
+
+    /** Returns true when every requested AI column received zero AI values. */
+    public boolean isTotalFailure() {
+      return !columns.isEmpty() && columns.stream().allMatch(AiColumnStat::isTotalFailure);
+    }
+  }
+
+  public record GenerationResult(
+      Map<Table, List<Row>> rows, List<PendingUpdate> updates, AiGenerationReport aiReport) {
+
+    /** Compatibility constructor for callers that do not consume the AI report. */
+    public GenerationResult(final Map<Table, List<Row>> rows, final List<PendingUpdate> updates) {
+      this(rows, updates, new AiGenerationReport(true, null, List.of()));
+    }
+  }
 }

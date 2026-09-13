@@ -37,6 +37,7 @@ import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
+import com.luisppb16.dbseed.util.NotificationHelper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -112,6 +113,77 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
   private static final long INSERT_THRESHOLD = 10000L;
   private static final DateTimeFormatter FILE_TIMESTAMP =
       DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
+
+  /** Returns true when at least one AI column was selected in at least one table. */
+  private static boolean hasAnyAiColumn(final Map<String, Set<String>> aiColumns) {
+    return Objects.nonNull(aiColumns)
+        && aiColumns.values().stream().anyMatch(columns -> !columns.isEmpty());
+  }
+
+  /**
+   * Surfaces the AI generation outcome to the user. The generation always completes with DataFaker
+   * data as fallback, but a total failure is reported as an error and partial failures as a warning
+   * with the per-column summary — never silently.
+   */
+  private static void notifyAiReport(
+      final Project project,
+      final DataGenerator.AiGenerationReport report,
+      final Map<String, Set<String>> aiColumns) {
+    if (!hasAnyAiColumn(aiColumns)) {
+      return;
+    }
+
+    if (!report.modelConfigured()) {
+      NotificationHelper.notifyWarning(
+          project,
+          "AI generation skipped",
+          "No Ollama model is selected (Settings → DBSeed4SQL)."
+              + " All rows were filled with DataFaker data.");
+      return;
+    }
+
+    if (Objects.nonNull(report.warmUpError())) {
+      NotificationHelper.notifyError(
+          project,
+          "AI generation failed: "
+              + report.warmUpError()
+              + ". The SQL file was generated with DataFaker data instead.");
+      return;
+    }
+
+    if (report.isTotalFailure()) {
+      final String cause =
+          report.columns().stream()
+              .map(DataGenerator.AiColumnStat::lastError)
+              .filter(Objects::nonNull)
+              .findFirst()
+              .orElse("unknown Ollama error");
+      NotificationHelper.notifyError(
+          project,
+          "AI generation failed for all selected columns: "
+              + cause
+              + ". The SQL file was generated with DataFaker data instead.");
+      return;
+    }
+
+    if (report.hasFailures()) {
+      final String summary =
+          report.columns().stream()
+              .filter(DataGenerator.AiColumnStat::hasDeficit)
+              .map(
+                  col ->
+                      "• %s.%s: %d/%d AI values%s"
+                          .formatted(
+                              col.tableName(),
+                              col.columnName(),
+                              col.appliedAiValues(),
+                              col.requestedRows(),
+                              Objects.nonNull(col.lastError()) ? " (" + col.lastError() + ")" : ""))
+              .collect(Collectors.joining("\n"));
+      NotificationHelper.notifyWarning(
+          project, "AI generation partially failed", "Rows filled with DataFaker:\n" + summary);
+    }
+  }
 
   @Override
   public @NotNull ActionUpdateThread getActionUpdateThread() {
@@ -295,6 +367,17 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
           }
         }
 
+        if (settings.isUseAiGeneration()
+            && hasAnyAiColumn(aiColumns)
+            && (Objects.isNull(settings.getOllamaModel()) || settings.getOllamaModel().isBlank())) {
+          Messages.showErrorDialog(
+              project,
+              "AI generation is enabled but no Ollama model is selected.\n"
+                  + "Please select a model in Settings → DBSeed4SQL, or disable AI generation.",
+              "Missing Ollama Model");
+          return;
+        }
+
         final GenerationConfig finalConfig =
             config.withSoftDeleteSettings(
                 pkDialog.getSoftDeleteColumns(),
@@ -357,7 +440,11 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                           "Data generation completed for {} rows per table.",
                           finalConfig.rowsPerTable());
 
+                      // A voluntary cancellation must not surface as an AI failure: canceled
+                      // columns report 0 applied values without any error cause.
                       if (indicator.isCanceled()) return;
+
+                      notifyAiReport(project, gen.aiReport(), aiColumns);
 
                       indicator.setText("Building SQL...");
                       indicator.setText2(

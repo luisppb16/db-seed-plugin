@@ -84,6 +84,13 @@ public class DbSeedSettingsConfigurable implements Configurable {
             "Please enter a valid Ollama URL when AI generation is enabled.",
             "Invalid Ollama Configuration");
       }
+      String model = mySettingsComponent.getOllamaModel();
+      if (Objects.isNull(model) || model.trim().isEmpty()) {
+        throw new ConfigurationException(
+            "Please select an Ollama model when AI generation is enabled,"
+                + " or disable AI generation.",
+            "Invalid Ollama Configuration");
+      }
     }
 
     // Save all settings first, regardless of Ollama availability

@@ -32,6 +32,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
@@ -86,7 +89,7 @@ public final class RowGenerator {
   private static final double AI_OVER_REQUEST_FACTOR = 1.2;
   private static final int AI_RECYCLE_THRESHOLD = 5;
 
-  private final Table table;
+  @Getter private final Table table;
   private final int rowsPerTable;
   private final Set<String> excludedColumns;
   private final List<RepetitionRule> repetitionRules;
@@ -107,6 +110,8 @@ public final class RowGenerator {
   private final Set<String> seenPrimaryKeys = new HashSet<>();
   private final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
   private final AtomicInteger generatedCount = new AtomicInteger(0);
+  @Getter private final Map<String, Integer> aiAppliedCounts = new ConcurrentHashMap<>();
+  @Getter private final Map<String, String> aiColumnErrors = new ConcurrentHashMap<>();
 
   public RowGenerator(
       final Table table,
@@ -174,6 +179,18 @@ public final class RowGenerator {
             .toList();
 
     this.multiColumnConstraints = ConstraintParser.parseMultiColumnConstraints(table.checks());
+  }
+
+  /** Unwraps future-completion wrappers so the notification shows the real cause message. */
+  private static String errorMessageOf(final Exception ex) {
+    Throwable cause = ex;
+    while (cause instanceof CompletionException || cause instanceof ExecutionException) {
+      cause = cause.getCause();
+    }
+    if (Objects.isNull(cause)) {
+      return ex.getClass().getSimpleName();
+    }
+    return Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName());
   }
 
   public List<Row> generate() {
@@ -546,7 +563,8 @@ public final class RowGenerator {
                     "Batch AI generation failed for {}.{}: {}",
                     table.name(),
                     colName,
-                    ex.getMessage());
+                    errorMessageOf(ex));
+                aiColumnErrors.put(colName, errorMessageOf(ex));
                 retries++;
               }
 
@@ -595,7 +613,8 @@ public final class RowGenerator {
                         "Batch AI retry failed for {}.{}: {}",
                         table.name(),
                         colName,
-                        ex.getMessage());
+                        errorMessageOf(ex));
+                    aiColumnErrors.put(colName, errorMessageOf(ex));
                     retries++;
                   }
                 }
@@ -656,6 +675,7 @@ public final class RowGenerator {
                 }
                 synchronized (row) {
                   row.values().put(colName, finalValue);
+                  aiAppliedCounts.merge(colName, 1, Integer::sum);
                 }
               }
             });

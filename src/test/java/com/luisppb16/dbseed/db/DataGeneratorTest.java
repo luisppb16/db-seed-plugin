@@ -609,6 +609,252 @@ class DataGeneratorTest {
     }
   }
 
+  @Test
+  void aiGeneration_modelNotConfigured_skipsAiPhaseAndReports() {
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaUrl("http://127.0.0.1:1");
+    state.setOllamaModel("");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+    settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(t))
+            .rowsPerTable(1)
+            .aiColumns(Map.of("products", Set.of("description")))
+            .build();
+
+    final GenerationResult result = DataGenerator.generate(params);
+
+    assertThat(result.aiReport().modelConfigured()).isFalse();
+    assertThat(result.aiReport().columns()).isEmpty();
+    assertThat(result.rows().get(t).getFirst().values().get("description")).isNotNull();
+  }
+
+  @Test
+  void aiGeneration_totalFailure_reportsTotalFailureAndKeepsDataFaker() throws IOException {
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            final byte[] responseBytes =
+                "{\"error\":\"model \\\"test-model\\\" not found, try pulling it first\"}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(404, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(t))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description")))
+              .build();
+
+      final GenerationResult result = DataGenerator.generate(params);
+
+      assertThat(result.aiReport().isTotalFailure()).isTrue();
+      assertThat(result.aiReport().hasFailures()).isTrue();
+      assertThat(result.aiReport().columns().getFirst().lastError()).contains("not found");
+      // Fallback, not abort: rows keep their DataFaker values.
+      assertThat(result.rows().get(t).getFirst().values().get("description")).isNotNull();
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aiGeneration_partialFailure_reportsPartialAndKeepsSuccessfulColumn() throws IOException {
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+
+    Table products =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    Table users =
+        new Table(
+            "users",
+            List.of(intPk("id"), varcharCol("bio")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            final String body =
+                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            final boolean warmUpRequest = body.contains("\"prompt\":\"\"");
+            final int status;
+            final String responseBody;
+            if (warmUpRequest) {
+              status = 200;
+              responseBody = "{\"response\":\"\"}";
+            } else if (body.contains("bio")) {
+              status = 500;
+              responseBody = "{\"error\":\"bio column overloaded\"}";
+            } else {
+              status = 200;
+              responseBody = "{\"response\":\"__AI_VALUE__\"}";
+            }
+            final byte[] responseBytes = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(products, users))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description"), "users", Set.of("bio")))
+              .build();
+
+      final GenerationResult result = DataGenerator.generate(params);
+
+      assertThat(result.aiReport().hasFailures()).isTrue();
+      assertThat(result.aiReport().isTotalFailure()).isFalse();
+      assertThat(result.rows().get(products).getFirst().values())
+          .containsEntry("description", "__AI_VALUE__");
+      assertThat(result.aiReport().columns())
+          .anySatisfy(
+              stat -> {
+                assertThat(stat.columnName()).isEqualTo("bio");
+                assertThat(stat.appliedAiValues()).isZero();
+                assertThat(stat.lastError()).contains("overloaded");
+              });
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aiGeneration_partialDeficit_reportsDeficitAndKeepsDataFakerForMissingRows()
+      throws IOException {
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            // Always one single value: with 10 rows the dedup + recycle logic cannot fill
+            // the batch, so some rows fall back to DataFaker (partial deficit).
+            final byte[] responseBytes =
+                "{\"response\":\"__AI_VALUE__\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(t))
+              .rowsPerTable(10)
+              .aiColumns(Map.of("products", Set.of("description")))
+              .build();
+
+      final GenerationResult result = DataGenerator.generate(params);
+
+      assertThat(result.aiReport().hasFailures()).isTrue();
+      assertThat(result.aiReport().isTotalFailure()).isFalse();
+      assertThat(result.aiReport().columns().getFirst().appliedAiValues()).isEqualTo(1);
+      assertThat(result.aiReport().columns().getFirst().requestedRows()).isEqualTo(10);
+      assertThat(result.aiReport().columns().getFirst().lastError()).isNull();
+      assertThat(result.rows().get(t).getFirst().values().get("description"))
+          .isEqualTo("__AI_VALUE__");
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
   // ── Empty tables ──
 
   @Test

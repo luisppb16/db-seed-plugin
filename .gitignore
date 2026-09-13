@@ -47,3 +47,5 @@ gradle/wrapper/gradle-wrapper.jar
 /src/main/resources/db
 /bin
 /graphify-out
+CLAUDE.md
+.claude/settings.json

@@ -16,6 +16,7 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.db.GenerationProgressListener;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,6 +34,9 @@ import org.jetbrains.annotations.NotNull;
  * {@code indicator.isCanceled()}), keeping the dialog open until the task unwinds.
  */
 public final class GenerationProgressDialog extends DialogWrapper {
+
+  /** Horizontal scale applied to the panel's natural width. */
+  private static final int WIDTH_FACTOR = 2;
 
   private final AtomicReference<ProgressIndicator> indicatorRef;
   private final GenerationProgressModel model;
@@ -202,6 +206,8 @@ public final class GenerationProgressDialog extends DialogWrapper {
     barsPanel.add(aiValuesRow);
 
     centerPanel.add(barsPanel, BorderLayout.CENTER);
+    final Dimension natural = centerPanel.getPreferredSize();
+    centerPanel.setPreferredSize(new Dimension(natural.width * WIDTH_FACTOR, natural.height));
     return centerPanel;
   }
 

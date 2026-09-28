@@ -7,23 +7,12 @@
 
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.18.1'
+    id 'org.jetbrains.intellij.platform' version '2.19.0'
     id 'jacoco'
 }
 
-sourceSets {
-    main {
-        java {
-            srcDirs = ['src/main/java']
-        }
-        resources {
-            srcDirs = ['src/main/resources']
-        }
-    }
-}
-
 group = 'com.LuisPPB16'
-version = '1.3.7.2'
+version = '1.3.7.3'
 
 java {
     toolchain {
@@ -39,6 +28,8 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked']
 }
 
+// Read the script-level `version` once: `project` is not reachable at execution time
+// without a deprecation warning, so the value must be captured here.
 def projectVersion = version
 
 tasks.named('processResources') {
@@ -153,12 +144,10 @@ tasks.named('jacocoTestReport', JacocoReport) {
     }
 }
 
-tasks.named('buildSearchableOptions') {
-    enabled = false
-}
-
-tasks.named('jarSearchableOptions') {
-    enabled = false
+// Compiling the plugin sources runs the test suite too, so a plain compile never
+// ships a change that breaks the tests.
+tasks.named('compileJava') {
+    finalizedBy 'test'
 }
 
 // The codebase does not maintain full Javadoc (no @param/@return/comment on every member);

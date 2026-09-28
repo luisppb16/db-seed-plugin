@@ -152,6 +152,33 @@ class OllamaClientTest {
       assertThat(OllamaClient.sanitizeAiOutput("Lo siento, no puedo", "col")).isNull();
       assertThat(OllamaClient.sanitizeAiOutput("Como modelo de lenguaje...", "col")).isNull();
     }
+
+    @Test
+    void reasoningRestatingTheInstruction_returnsNull() {
+      assertThat(
+              OllamaClient.sanitizeAiOutput(
+                  "The user wants 12 unique values for a \"content\" column in an articles table.",
+                  "content"))
+          .isNull();
+      assertThat(
+              OllamaClient.sanitizeAiOutput(
+                  "The user wants 12 unique array values for a \"tags\" column, 3 elements each.",
+                  "tags"))
+          .isNull();
+      assertThat(
+              OllamaClient.sanitizeAiOutput(
+                  "Necesito generar títulos únicos para la columna title.", "title"))
+          .isNull();
+    }
+
+    @Test
+    void valueStartingWithOrdinaryWords_notDropped() {
+      // Guard against an over-eager reasoning filter: only instruction-restating text is dropped.
+      assertThat(OllamaClient.sanitizeAiOutput("Let me know your thoughts", "content"))
+          .isEqualTo("Let me know your thoughts");
+      assertThat(OllamaClient.sanitizeAiOutput("Under the same sky", "title"))
+          .isEqualTo("Under the same sky");
+    }
   }
 
   @Nested

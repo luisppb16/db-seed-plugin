@@ -393,108 +393,112 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                 project, indicatorRef, settings.isUseAiGeneration() && hasAnyAiColumn(aiColumns));
         progressDialog.show();
 
-        ProgressManager.getInstance()
-            .run(
-                new Task.Backgroundable(project, APP_NAME.getValue(), true) {
-                  @Override
-                  public void run(@NotNull final ProgressIndicator indicator) {
-                    indicatorRef.set(indicator);
-                    try {
-                      indicator.setIndeterminate(false);
-                      indicator.setFraction(0.0);
-                      indicator.setText("Preparing generation...");
+        final Task.Backgroundable generationTask =
+            new Task.Backgroundable(project, APP_NAME.getValue(), true) {
+              @Override
+              public void run(@NotNull final ProgressIndicator indicator) {
+                indicatorRef.set(indicator);
+                try {
+                  indicator.setIndeterminate(false);
+                  indicator.setFraction(0.0);
+                  indicator.setText("Preparing generation...");
 
-                      final List<Table> filteredTables =
-                          ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
+                  final List<Table> filteredTables =
+                      ordered.stream().filter(t -> !excludedTables.contains(t.name())).toList();
 
-                      indicator.setText("Sorting tables...");
-                      indicator.setText2(
-                          "Resolving dependency order for " + filteredTables.size() + " tables");
+                  indicator.setText("Sorting tables...");
+                  indicator.setText2(
+                      "Resolving dependency order for " + filteredTables.size() + " tables");
 
-                      final boolean mustForceDeferred =
-                          TopologicalSorter.requiresDeferredDueToNonNullableCycles(
-                              sort, tableByName);
-                      final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
-                      log.debug("Effective deferred: {}", effectiveDeferred);
+                  final boolean mustForceDeferred =
+                      TopologicalSorter.requiresDeferredDueToNonNullableCycles(sort, tableByName);
+                  final boolean effectiveDeferred = finalConfig.deferred() || mustForceDeferred;
+                  log.debug("Effective deferred: {}", effectiveDeferred);
 
-                      // DataGenerator drives the indicator fraction via ProgressTracker
-                      final DataGenerator.GenerationResult gen =
-                          DataGenerator.generate(
-                              DataGenerator.GenerationParameters.builder()
-                                  .tables(filteredTables)
-                                  .rowsPerTable(finalConfig.rowsPerTable())
-                                  .deferred(effectiveDeferred)
-                                  .pkUuidOverrides(pkUuidOverrides)
-                                  .excludedColumns(excludedColumns)
-                                  .repetitionRules(repetitionRules)
-                                  .useLatinDictionary(settings.isUseLatinDictionary())
-                                  .useEnglishDictionary(settings.isUseEnglishDictionary())
-                                  .useSpanishDictionary(settings.isUseSpanishDictionary())
-                                  .softDeleteColumns(finalConfig.softDeleteColumns())
-                                  .softDeleteUseSchemaDefault(
-                                      finalConfig.softDeleteUseSchemaDefault())
-                                  .softDeleteValue(finalConfig.softDeleteValue())
-                                  .numericScale(finalConfig.numericScale())
-                                  .aiColumns(aiColumns)
-                                  .circularReferences(pkDialog.getCircularReferences())
-                                  .circularReferenceTerminationModes(
-                                      pkDialog.getCircularReferenceTerminationModes())
-                                  .applicationContext(
-                                      settings.isUseAiGeneration()
-                                          ? settings.getAiApplicationContext()
-                                          : null)
-                                  .indicator(indicator)
-                                  .progressListener(progressDialog.progressListener())
-                                  .build());
-                      log.info(
-                          "Data generation completed for "
-                              + finalConfig.rowsPerTable()
-                              + " rows per table.");
+                  // DataGenerator drives the indicator fraction via ProgressTracker
+                  final DataGenerator.GenerationResult gen =
+                      DataGenerator.generate(
+                          DataGenerator.GenerationParameters.builder()
+                              .tables(filteredTables)
+                              .rowsPerTable(finalConfig.rowsPerTable())
+                              .deferred(effectiveDeferred)
+                              .pkUuidOverrides(pkUuidOverrides)
+                              .excludedColumns(excludedColumns)
+                              .repetitionRules(repetitionRules)
+                              .useLatinDictionary(settings.isUseLatinDictionary())
+                              .useEnglishDictionary(settings.isUseEnglishDictionary())
+                              .useSpanishDictionary(settings.isUseSpanishDictionary())
+                              .softDeleteColumns(finalConfig.softDeleteColumns())
+                              .softDeleteUseSchemaDefault(finalConfig.softDeleteUseSchemaDefault())
+                              .softDeleteValue(finalConfig.softDeleteValue())
+                              .numericScale(finalConfig.numericScale())
+                              .aiColumns(aiColumns)
+                              .circularReferences(pkDialog.getCircularReferences())
+                              .circularReferenceTerminationModes(
+                                  pkDialog.getCircularReferenceTerminationModes())
+                              .applicationContext(
+                                  settings.isUseAiGeneration()
+                                      ? settings.getAiApplicationContext()
+                                      : null)
+                              .indicator(indicator)
+                              .progressListener(progressDialog.progressListener())
+                              .build());
+                  log.info(
+                      "Data generation completed for "
+                          + finalConfig.rowsPerTable()
+                          + " rows per table.");
 
-                      // A voluntary cancellation must not surface as an AI failure: canceled
-                      // columns report 0 applied values without any error cause.
-                      if (indicator.isCanceled()) return;
+                  // A voluntary cancellation must not surface as an AI failure: canceled
+                  // columns report 0 applied values without any error cause.
+                  if (indicator.isCanceled()) return;
 
-                      notifyAiReport(project, gen.aiReport(), aiColumns);
+                  notifyAiReport(project, gen.aiReport(), aiColumns);
 
-                      // The tracker still holds the SQL phase's per-table units: SqlGenerator
-                      // advances them so the overall bar keeps moving until the script is built.
-                      final ProgressTracker progress = Objects.requireNonNull(gen.progress());
-                      progress.setText("Building SQL...");
-                      progress.setText2(
-                          "Generating INSERT statements for " + gen.rows().size() + " tables");
-                      final String sql =
-                          SqlGenerator.generate(
-                              gen.rows(), gen.updates(), effectiveDeferred, chosenDriver, progress);
-                      indicator.setFraction(1.0);
-                      indicator.setText("Done!");
-                      progressDialog.progressListener().onGeneral(1.0, "Done!", null);
-                      log.info("SQL script built successfully.");
+                  // The tracker still holds the SQL phase's per-table units: SqlGenerator
+                  // advances them so the overall bar keeps moving until the script is built.
+                  final ProgressTracker progress = Objects.requireNonNull(gen.progress());
+                  progress.setText("Building SQL...");
+                  progress.setText2(
+                      "Generating INSERT statements for " + gen.rows().size() + " tables");
+                  final String sql =
+                      SqlGenerator.generate(
+                          gen.rows(), gen.updates(), effectiveDeferred, chosenDriver, progress);
+                  indicator.setFraction(1.0);
+                  indicator.setText("Done!");
+                  progressDialog.progressListener().onGeneral(1.0, "Done!", null);
+                  log.info("SQL script built successfully.");
 
-                      final Path filePath = writeSqlFile(project, sql);
-                      if (filePath != null) {
-                        ApplicationManager.getApplication()
-                            .invokeLater(() -> openFileInEditor(project, filePath));
-                      } else {
-                        ApplicationManager.getApplication()
-                            .invokeLater(
-                                () ->
-                                    Messages.showErrorDialog(
-                                        project,
-                                        "Could not write the generated SQL file. See the IDE log for details.",
-                                        "DBSeed Error"),
-                                ModalityState.defaultModalityState());
-                      }
-                    } catch (final Exception ex) {
-                      handleException(project, "Error during SQL generation: ", ex);
-                    }
+                  final Path filePath = writeSqlFile(project, sql);
+                  if (filePath != null) {
+                    ApplicationManager.getApplication()
+                        .invokeLater(() -> openFileInEditor(project, filePath));
+                  } else {
+                    ApplicationManager.getApplication()
+                        .invokeLater(
+                            () ->
+                                Messages.showErrorDialog(
+                                    project,
+                                    "Could not write the generated SQL file. See the IDE log for details.",
+                                    "DBSeed Error"),
+                            ModalityState.defaultModalityState());
                   }
+                } catch (final Exception ex) {
+                  handleException(project, "Error during SQL generation: ", ex);
+                }
+              }
 
-                  @Override
-                  public void onFinished() {
-                    progressDialog.closeSafely();
-                  }
-                });
+              @Override
+              public void onFinished() {
+                progressDialog.closeSafely();
+              }
+            };
+
+        // Start the generation on the next EDT cycle instead of straight after show(): otherwise
+        // a fast rows phase can finish (and its coalesced flush paint the table bar at 100%)
+        // before the dialog is on screen, so the bar looks full the moment the window opens.
+        ApplicationManager.getApplication()
+            .invokeLater(
+                () -> ProgressManager.getInstance().run(generationTask), ModalityState.any());
       }
       case PkUuidSelectionDialog.BACK_EXIT_CODE -> {
         log.debug("User navigated back from PK UUID selection.");

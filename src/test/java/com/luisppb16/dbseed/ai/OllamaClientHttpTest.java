@@ -44,6 +44,11 @@ class OllamaClientHttpTest {
   private static final int REQUEST_TIMEOUT_SECONDS = 10;
   private static final long AWAIT_SECONDS = 5;
 
+  /** Etiquetas de chain-of-thought tal como las emiten los modelos de razonamiento. */
+  private static final String THINK_OPEN = "<" + "think" + ">";
+
+  private static final String THINK_CLOSE = "<" + "/" + "think" + ">";
+
   /** Per-test delegate handler; the server itself lives for the whole test class. */
   private static final AtomicReference<HttpHandler> HANDLER = new AtomicReference<>();
 
@@ -308,6 +313,75 @@ class OllamaClientHttpTest {
               .get(AWAIT_SECONDS, TimeUnit.SECONDS);
 
       assertThat(values).containsExactly("valor1", "valor2");
+    }
+
+    @Test
+    void inlineThinkingBeforeValues_neverBecomesAValue() throws Exception {
+      // The reasoning spans several newlines of its own, which must not be handed out as values.
+      respondWithNdjson(
+          THINK_OPEN + "\nThe user wants 3 unique city names.\nLet me think about it. ",
+          THINK_CLOSE + "\n",
+          "valor1\n",
+          "valor2\n",
+          "valor3");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2", "valor3");
+    }
+
+    @Test
+    void leakedClosingTag_keepsValueAfterIt() throws Exception {
+      // Reported shape: the runtime swallows the opening tag and the reasoning travels glued to the
+      // first real value, which must survive the whole block being dropped.
+      respondWithNdjson(
+          "The user wants 12 article titles.\nJust start with the first value."
+              + THINK_CLOSE
+              + "Understanding Machine Learning\n",
+          "Quantum Computing Basics\n");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "title", "varchar", 10, 2)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values)
+          .containsExactly("Understanding Machine Learning", "Quantum Computing Basics");
+    }
+
+    @Test
+    void taglessReasoningLine_dropped() throws Exception {
+      respondWithNdjson(
+          "The user wants 3 unique array values for a \"tags\" column, 3 elements each.\n",
+          "{python,cli,linux}\n");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 3, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{python,cli,linux}");
+    }
+
+    @Test
+    void thinkingTruncatedAtStreamEnd_failsWithoutLeakingIt() {
+      respondWithNdjson(
+          THINK_OPEN + "The user wants twelve city names but the token budget ran out");
+
+      assertThatThrownBy(
+              () ->
+                  newClient()
+                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class)
+          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasRootCauseMessage(
+              "AI response contained no valid values for column 'city'. Model output: "
+                  + THINK_OPEN
+                  + "The user wants twelve city names but the token budget ran out");
     }
 
     @Test

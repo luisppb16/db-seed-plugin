@@ -38,6 +38,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -165,6 +166,13 @@ public class OllamaClient {
           });
 
   private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)\\-]\\s*");
+
+  /**
+   * Matches a chain-of-thought delimiter emitted inline in the {@code response} field. Both the
+   * ASCII and the full-width spellings are accepted, together with the {@code think}/{@code
+   * thinking} variants, because the exact tag depends on the model.
+   */
+  private static final Pattern THINKING_TAG = Pattern.compile("[<＜]/?(?:think|thinking)[>＞]");
 
   private static final String SYSTEM_ROLE =
       "You are a database seed data generator. You output raw data values only. "
@@ -315,7 +323,20 @@ public class OllamaClient {
         || lower.startsWith("los siguientes")
         || lower.startsWith("las siguientes")
         || lower.startsWith("estos son")
-        || lower.startsWith("estas son");
+        || lower.startsWith("estas son")
+        // Chain-of-thought restating the instruction, leaked as a value when the model emits its
+        // reasoning untagged (see discardClosedThinking).
+        || lower.startsWith("the user ")
+        || lower.startsWith("el usuario ")
+        || lower.startsWith("the task is")
+        || lower.startsWith("thinking:")
+        || lower.contains("chain of thought")
+        || lower.contains("thinking process")
+        || lower.startsWith("we need to generate")
+        || lower.startsWith("we need to produce")
+        || lower.startsWith("i need to generate")
+        || lower.startsWith("i need to produce")
+        || lower.startsWith("necesito generar");
   }
 
   static boolean isAiRefusal(final String text) {
@@ -462,6 +483,33 @@ public class OllamaClient {
         throw new CancellationException();
       }
     }
+  }
+
+  /**
+   * Drops everything up to and including the last thinking closing tag found in the buffer, so a
+   * chain-of-thought block never becomes a value.
+   */
+  private static void discardClosedThinking(final StringBuilder buffer) {
+    final Matcher matcher = THINKING_TAG.matcher(buffer);
+    int end = -1;
+    while (matcher.find()) {
+      if (matcher.group().contains("/")) {
+        end = matcher.end();
+      }
+    }
+    if (end > 0) {
+      buffer.delete(0, end);
+    }
+  }
+
+  /** True while the buffer holds an opening thinking tag whose closing tag has not arrived yet. */
+  private static boolean isInsideThinking(final StringBuilder buffer) {
+    final Matcher matcher = THINKING_TAG.matcher(buffer);
+    boolean open = false;
+    while (matcher.find()) {
+      open = !matcher.group().contains("/");
+    }
+    return open;
   }
 
   /**
@@ -869,6 +917,9 @@ public class OllamaClient {
    * characters; complete value lines (terminated by {@code \n}) are sanitized and added to {@code
    * values} as soon as they appear, invoking the progress callback each time the count grows and
    * keeping memory usage bounded regardless of {@code num_predict}.
+   *
+   * <p>Reasoning models may emit their chain-of-thought inside {@code response} instead of real
+   * values, so any thinking block is discarded before a line is handed out.
    */
   private void processStreamLine(
       final String ndjsonLine,
@@ -885,6 +936,13 @@ public class OllamaClient {
               : "";
       rawOutput.append(chunk);
       lineBuffer.append(chunk);
+      // Drop a chain-of-thought block as soon as its closing tag shows up, and hold back complete
+      // lines while an opening tag is still unmatched: otherwise reasoning lines (which are long
+      // and contain newlines) reach the caller as the first values of the column.
+      discardClosedThinking(lineBuffer);
+      if (isInsideThinking(lineBuffer)) {
+        return;
+      }
       int newlineIndex;
       while ((newlineIndex = lineBuffer.indexOf("\n")) >= 0) {
         final String completeLine = lineBuffer.substring(0, newlineIndex);
@@ -903,6 +961,12 @@ public class OllamaClient {
       final List<String> values,
       @Nullable final Runnable onValueAdded) {
     if (lineBuffer.length() > 0) {
+      discardClosedThinking(lineBuffer);
+      if (isInsideThinking(lineBuffer)) {
+        // Truncated mid-thought (num_predict exhausted): the trailing text is reasoning.
+        lineBuffer.setLength(0);
+        return;
+      }
       addSanitizedValue(lineBuffer.toString(), columnName, values, onValueAdded);
       lineBuffer.setLength(0);
     }

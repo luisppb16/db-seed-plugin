@@ -159,6 +159,9 @@ solely on random/faker values, you can leverage AI to produce meaningful content
 - **Smart Defaults**: Columns named `description`, `title`, `bio`, `email`, etc. are pre-selected automatically.
 - **Batch Generation**: AI values are generated in batches with retries and deduplication, and streamed per value
   as they arrive.
+- **Reasoning-Safe Output**: Chain-of-thought text emitted by reasoning models (Qwen3/DeepSeek style) is dropped
+  from the response stream and reasoning-only lines are rejected, so the first rows of an AI column always hold
+  real requested values instead of the model's thinking.
 - **Configurable Word Count**: Control output length from a single word up to full paragraphs.
 - **Request Timeout Control**: Configure the Ollama request timeout from settings.
 - **Multi-Bar Progress Dialog**: A live dialog shows four progress bars — overall work units, tables completed, AI
@@ -272,6 +275,9 @@ Run the automated tests:
 ./gradlew test
 ```
 
+Compiling the plugin sources also runs the test suite (`compileJava` is finalized by `test`), so a plain
+compile never ships a change that breaks the tests.
+
 When `buildPlugin` completes, Gradle produces the installable plugin distribution under `build/distributions/`.
 
 ---
@@ -327,7 +333,7 @@ The file is automatically opened in an editor within IntelliJ, ready to be execu
 ### 📝 Changelog
 
 The release history is available in the plugin's change notes on
-the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version is **`1.3.7.2`**.
+the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version is **`1.3.7.3`**.
 
 ---
 

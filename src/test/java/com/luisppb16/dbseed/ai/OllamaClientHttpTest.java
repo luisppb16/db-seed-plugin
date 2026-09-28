@@ -19,8 +19,11 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -89,6 +92,40 @@ class OllamaClientHttpTest {
       os.write(bytes);
     }
     exchange.close();
+  }
+
+  /**
+   * Streams a chunked NDJSON body with one line per chunk, flushed per line — simulating how Ollama
+   * emits tokens incrementally. A trailing {@code {"response":"","done":true}} line is appended
+   * automatically.
+   */
+  private static void respondNdjson(final HttpExchange exchange, final String... chunks)
+      throws IOException {
+    exchange.getRequestBody().readAllBytes();
+    exchange.getResponseHeaders().set("Content-Type", "application/json");
+    // Length 0 means chunked transfer encoding: each flushed line travels as its own chunk.
+    exchange.sendResponseHeaders(200, 0);
+    try (OutputStream os = exchange.getResponseBody()) {
+      for (final String chunk : chunks) {
+        os.write((chunkLine(chunk) + "\n").getBytes(StandardCharsets.UTF_8));
+        os.flush();
+      }
+      os.write("{\"response\":\"\",\"done\":true}\n".getBytes(StandardCharsets.UTF_8));
+      os.flush();
+    }
+    exchange.close();
+  }
+
+  /** Builds one NDJSON line for a token chunk, with minimal JSON string escaping. */
+  private static String chunkLine(final String chunk) {
+    return "{\"response\":\""
+        + chunk.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+        + "\",\"done\":false}";
+  }
+
+  /** Delegates the stub to {@link #respondNdjson} with the given chunks. */
+  private static void respondWithNdjson(final String... chunks) {
+    HANDLER.set(exchange -> respondNdjson(exchange, chunks));
   }
 
   @BeforeEach
@@ -179,7 +216,7 @@ class OllamaClientHttpTest {
 
     @Test
     void ok_returnsAllValues() throws Exception {
-      respondWith(200, "{\"response\":\"valor1\\nvalor2\\nvalor3\"}");
+      respondWithNdjson("valor1\n", "valor2\n", "valor3");
 
       final List<String> values =
           newClient()
@@ -191,7 +228,7 @@ class OllamaClientHttpTest {
 
     @Test
     void duplicatedLines_returnsDistinctValues() throws Exception {
-      respondWith(200, "{\"response\":\"valor1\\nvalor1\\nvalor2\"}");
+      respondWithNdjson("valor1\n", "valor1\n", "valor2");
 
       final List<String> values =
           newClient()
@@ -263,7 +300,7 @@ class OllamaClientHttpTest {
 
     @Test
     void codeFencedResponse_valuesStillExtracted() throws Exception {
-      respondWith(200, "{\"response\":\"```json\\nvalor1\\nvalor2\\n```\"}");
+      respondWithNdjson("```json\n", "valor1\n", "valor2\n", "```");
 
       final List<String> values =
           newClient()
@@ -274,7 +311,7 @@ class OllamaClientHttpTest {
     }
 
     @Test
-    void requestBody_containsModelAndDisablesStreaming() throws Exception {
+    void requestBody_containsModelAndEnablesStreaming() throws Exception {
       final AtomicReference<String> capturedPath = new AtomicReference<>();
       final AtomicReference<String> capturedBody = new AtomicReference<>();
       HANDLER.set(
@@ -282,7 +319,7 @@ class OllamaClientHttpTest {
             capturedPath.set(exchange.getRequestURI().getPath());
             capturedBody.set(
                 new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            respond(exchange, 200, "{\"response\":\"valor1\"}");
+            respondNdjson(exchange, "valor1\n");
           });
 
       newClient()
@@ -292,8 +329,111 @@ class OllamaClientHttpTest {
       assertThat(capturedPath.get()).isEqualTo("/api/generate");
       assertThat(capturedBody.get())
           .contains("\"model\"")
-          .contains("\"stream\":false")
+          .contains("\"stream\":true")
           .contains("\"think\":false");
+    }
+
+    @Test
+    void ok_splitAcrossMultipleChunks_assemblesLine() throws Exception {
+      respondWithNdjson("va", "lor", "1\n", "va", "lor", "2");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2");
+    }
+
+    @Test
+    void ok_trailingLineWithoutNewline_flushed() throws Exception {
+      respondWithNdjson("valor1");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1");
+    }
+
+    @Test
+    void callback_firesOncePerAddedValue() throws Exception {
+      final AtomicInteger addedCalls = new AtomicInteger();
+      respondWithNdjson("valor1\n", "valor2\n", "valor3");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues(
+                  "online store", "users", "city", "varchar", 1, 3, addedCalls::incrementAndGet)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2", "valor3");
+      assertThat(addedCalls.get()).isEqualTo(3);
+    }
+
+    @Test
+    void stall_midStream_watchdogAborts_withStalledMessage() {
+      HANDLER.set(
+          exchange -> {
+            try {
+              exchange.getRequestBody().readAllBytes();
+              exchange.sendResponseHeaders(200, 0);
+              final OutputStream os = exchange.getResponseBody();
+              os.write((chunkLine("valor1\n") + "\n").getBytes(StandardCharsets.UTF_8));
+              os.flush();
+              // Stall: keep the exchange open, never send another token, never close.
+              Thread.sleep(4000);
+            } catch (final IOException | InterruptedException ignored) {
+              // The client aborted or the test finished; nothing to recover.
+            }
+          });
+
+      assertThatThrownBy(
+              () ->
+                  new OllamaClient(baseUrl, MODEL_NAME, REQUEST_TIMEOUT_SECONDS, 500L)
+                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+          .isInstanceOf(ExecutionException.class)
+          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasRootCauseMessage(
+              "AI generation stalled for column 'city' (no tokens received within 500ms)");
+    }
+
+    @Test
+    void cancel_midStream_cancellationException() throws Exception {
+      HANDLER.set(
+          exchange -> {
+            try {
+              exchange.getRequestBody().readAllBytes();
+              exchange.sendResponseHeaders(200, 0);
+              final OutputStream os = exchange.getResponseBody();
+              os.write((chunkLine("valor1\n") + "\n").getBytes(StandardCharsets.UTF_8));
+              os.flush();
+              // Stall with the exchange open so the test can cancel mid-stream.
+              Thread.sleep(2000);
+            } catch (final IOException | InterruptedException ignored) {
+              // The client aborted or the test finished; nothing to recover.
+            }
+          });
+
+      final AtomicInteger addedCalls = new AtomicInteger();
+      final CompletableFuture<List<String>> future =
+          newClient()
+              .generateBatchValues(
+                  "online store", "users", "city", "varchar", 1, 3, addedCalls::incrementAndGet);
+
+      // Wait until the first value arrives, then cancel mid-stream.
+      final long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(AWAIT_SECONDS);
+      while (addedCalls.get() == 0 && System.nanoTime() < deadlineNanos) {
+        Thread.sleep(20);
+      }
+
+      future.cancel(true);
+
+      assertThatThrownBy(() -> future.get(AWAIT_SECONDS, TimeUnit.SECONDS))
+          .isInstanceOf(CancellationException.class);
+      assertThat(addedCalls.get()).isEqualTo(1);
     }
   }
 

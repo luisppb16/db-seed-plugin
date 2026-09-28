@@ -96,8 +96,8 @@ import org.jetbrains.annotations.Nullable;
  * @see GenerationParameters
  * @see GenerationResult
  */
-@Slf4j
 @UtilityClass
+@Slf4j
 public class DataGenerator {
 
   private static final int MAX_GENERATE_ATTEMPTS = 100;
@@ -176,10 +176,15 @@ public class DataGenerator {
     final long validateWork = orderedTables.size();
     // 1 unit per table for FK resolution
     final long fkWork = orderedTables.size();
+    // 1 unit per table serialised to SQL (SQL phase, consumed by SqlGenerator)
+    final long sqlWork = orderedTables.size();
     // Grand total
-    final long totalWork = rowWork + aiWork + validateWork + fkWork;
+    final long totalWork = rowWork + aiWork + validateWork + fkWork + sqlWork;
 
     final ProgressTracker tracker = new ProgressTracker(params.indicator(), totalWork);
+    tracker.setProgressListener(params.progressListener());
+    final GenerationProgressListener progress = tracker.getProgressListener();
+    progress.onTablesPhaseStarted(orderedTables.size());
 
     // Pre-warm the AI model so it's loaded in VRAM before the first batch request.
     // This eliminates cold-start latency on the first real generation call. A failed warm-up
@@ -242,7 +247,11 @@ public class DataGenerator {
 
     tracker.setText2(updates.size() + " deferred updates created");
 
-    return new GenerationResult(data, updates, aiReport);
+    // The SQL phase's per-table units were reserved up-front; the deferred updates are only known
+    // now, so their units are added (usually zero) instead of double-reserving them.
+    tracker.adjustTotalWork(updates.size());
+
+    return new GenerationResult(data, updates, aiReport, tracker);
   }
 
   private static List<Table> applyPkUuidOverrides(
@@ -324,6 +333,7 @@ public class DataGenerator {
                 data.put(table, Collections.emptyList());
                 // count the rows-worth of work as done even for empty tables
                 tracker.advance(rowsPerTable);
+                tracker.getProgressListener().onTableCompleted(table.name(), i + 1, totalTables);
                 return;
               }
 
@@ -363,6 +373,7 @@ public class DataGenerator {
 
               final long elapsed = System.currentTimeMillis() - startTime;
               tracker.setText2(rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
+              tracker.getProgressListener().onTableCompleted(table.name(), i + 1, totalTables);
             });
 
     return generators;
@@ -379,25 +390,41 @@ public class DataGenerator {
     final List<RowGenerator> aiGenerators =
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
-    // A failed warm-up (or nothing to run) skips the phase entirely — applied stays 0 and the
-    // report carries the cause so the user is told instead of silently getting DataFaker data.
-    if (Objects.nonNull(warmUpError) || aiGenerators.isEmpty()) {
-      tracker.advance(expectedAiWork);
+    // Only columns surviving the exclusion/behaviour filters do any work, so the up-front estimate
+    // is
+    // an over-approximation: the real (table, column) pairs are resolved once and drive both the
+    // bar
+    // totals and the tasks. The tracker is recalibrated before the AI scope opens.
+    final List<Map.Entry<RowGenerator, Column>> aiTargets =
+        aiGenerators.stream()
+            .flatMap(gen -> gen.getValidAiColumns().stream().map(col -> Map.entry(gen, col)))
+            .toList();
+    final long realAiWork = aiTargets.size() * (long) rowsPerTable;
+    final long totalAiColumns = aiTargets.size();
+
+    // A failed warm-up (or nothing runnable) skips the phase entirely — applied stays 0, the AI
+    // budget is dropped from the total and the report carries the cause so the user is told instead
+    // of silently getting DataFaker data.
+    if (Objects.nonNull(warmUpError) || aiTargets.isEmpty()) {
+      tracker.adjustTotalWork(-expectedAiWork);
+      tracker.getProgressListener().onAiPhaseSkipped();
       return buildAiReport(generators, modelConfigured, warmUpError, rowsPerTable);
     }
 
-    final long totalAiColumns =
-        aiGenerators.stream().mapToLong(g -> g.getValidAiColumns().size()).sum();
+    tracker.adjustTotalWork(realAiWork - expectedAiWork);
     final AtomicInteger completedColumns = new AtomicInteger(0);
     final long completedBefore = tracker.getCompleted();
     final List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+    tracker.startAiPhase(realAiWork);
+    final GenerationProgressListener progress = tracker.getProgressListener();
+    progress.onAiPhaseStarted(realAiWork, (int) totalAiColumns);
 
     tracker.setText("Phase 2/4 (AI): Col 0/" + totalAiColumns);
     tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
 
     futures.addAll(
-        aiGenerators.stream()
-            .flatMap(gen -> gen.getValidAiColumns().stream().map(col -> Map.entry(gen, col)))
+        aiTargets.stream()
             .map(
                 entry ->
                     CompletableFuture.runAsync(
@@ -408,9 +435,10 @@ public class DataGenerator {
                             entry.getKey().generateAiValuesForColumn(entry.getValue());
                           } catch (final Exception ex) {
                             log.warn(
-                                "AI generation failed for column {}: {}",
-                                entry.getValue().name(),
-                                ex.getMessage());
+                                "AI generation failed for column "
+                                    + entry.getValue().name()
+                                    + ": "
+                                    + ex.getMessage());
                           } finally {
                             final int completed = completedColumns.incrementAndGet();
                             tracker.setText(
@@ -418,6 +446,13 @@ public class DataGenerator {
                                     .concat(String.valueOf(completed))
                                     .concat("/")
                                     .concat(String.valueOf(totalAiColumns)));
+                            tracker
+                                .getProgressListener()
+                                .onAiColumnCompleted(
+                                    entry.getKey().getTable().name(),
+                                    entry.getValue().name(),
+                                    completed,
+                                    (int) totalAiColumns);
                           }
                         },
                         AI_COLUMN_EXECUTOR))
@@ -429,10 +464,12 @@ public class DataGenerator {
       log.warn("Some AI column generations failed: {}", ex.getMessage());
     } finally {
       final long completedAfter = tracker.getCompleted();
-      final long gap = expectedAiWork - (completedAfter - completedBefore);
+      final long gap = realAiWork - (completedAfter - completedBefore);
       if (gap > 0) {
         tracker.advance(gap);
       }
+      // Ends the AI scope AFTER the gap reconcile so fallback-filled units still reach the AI bar.
+      tracker.endAiPhase();
     }
 
     tracker.setText2("AI generation complete");
@@ -561,7 +598,8 @@ public class DataGenerator {
       String applicationContext,
       ProgressIndicator indicator,
       Map<String, Map<String, Integer>> circularReferences,
-      Map<String, Map<String, String>> circularReferenceTerminationModes) {
+      Map<String, Map<String, String>> circularReferenceTerminationModes,
+      GenerationProgressListener progressListener) {
 
     public static Builder builder() {
       return new Builder();
@@ -586,6 +624,7 @@ public class DataGenerator {
       private ProgressIndicator indicator;
       private Map<String, Map<String, Integer>> circularReferences;
       private Map<String, Map<String, String>> circularReferenceTerminationModes;
+      private GenerationProgressListener progressListener;
 
       private Builder() {}
 
@@ -681,6 +720,11 @@ public class DataGenerator {
         return this;
       }
 
+      public Builder progressListener(final GenerationProgressListener progressListener) {
+        this.progressListener = progressListener;
+        return this;
+      }
+
       public GenerationParameters build() {
         return new GenerationParameters(
             tables,
@@ -700,7 +744,8 @@ public class DataGenerator {
             applicationContext,
             indicator,
             circularReferences,
-            circularReferenceTerminationModes);
+            circularReferenceTerminationModes,
+            progressListener);
       }
     }
   }
@@ -743,12 +788,28 @@ public class DataGenerator {
     }
   }
 
+  /**
+   * Outcome of a generation run. {@code progress} is the tracker behind the overall bar; it still
+   * holds the SQL phase's per-table units, so the caller can keep progressing the bar while it
+   * serialises the script with {@link SqlGenerator#generate}.
+   */
   public record GenerationResult(
-      Map<Table, List<Row>> rows, List<PendingUpdate> updates, AiGenerationReport aiReport) {
+      Map<Table, List<Row>> rows,
+      List<PendingUpdate> updates,
+      AiGenerationReport aiReport,
+      @Nullable ProgressTracker progress) {
 
     /** Compatibility constructor for callers that do not consume the AI report. */
     public GenerationResult(final Map<Table, List<Row>> rows, final List<PendingUpdate> updates) {
-      this(rows, updates, new AiGenerationReport(true, null, List.of()));
+      this(rows, updates, new AiGenerationReport(true, null, List.of()), null);
+    }
+
+    /** Compatibility constructor for callers that do not advance the SQL phase progress. */
+    public GenerationResult(
+        final Map<Table, List<Row>> rows,
+        final List<PendingUpdate> updates,
+        final AiGenerationReport aiReport) {
+      this(rows, updates, aiReport, null);
     }
   }
 }

@@ -24,15 +24,19 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +44,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
 
@@ -69,12 +75,16 @@ import lombok.extern.slf4j.Slf4j;
  * classpath. The system also implements intelligent caching to minimize network traffic and improve
  * performance on subsequent accesses.
  */
-@Slf4j
 @UtilityClass
+@Slf4j
 public class DriverLoader {
 
   private static final String PREF_LAST_DRIVER = "dbseed.last.driver";
   private static final String PREF_TRUST_DRIVER_DOWNLOADS = "dbseed.trust.driver.downloads";
+  private static final String SHA_256_SUFFIX = ".sha256";
+  private static final int CHECKSUM_MAX_CHARS = 1024;
+  private static final int DIGEST_BUFFER_SIZE = 64 * 1024;
+  private static final Pattern SHA_256_TOKEN = Pattern.compile("[0-9a-fA-F]{64}");
   private static final Set<String> LOADED_DRIVERS = ConcurrentHashMap.newKeySet();
 
   /**
@@ -138,7 +148,9 @@ public class DriverLoader {
     final Path jarPath =
         driverDir().resolve(info.mavenArtifactId() + "-" + info.version() + ".jar");
 
-    if (!Files.exists(jarPath)) {
+    if (Files.exists(jarPath)) {
+      verifyCachedDriver(jarPath, driverUrl(info));
+    } else {
       downloadDriver(project, info, jarPath);
     }
 
@@ -165,11 +177,7 @@ public class DriverLoader {
   private static void downloadDriver(
       final Project project, final DriverInfo info, final Path target)
       throws IOException, URISyntaxException {
-    final String groupPath = info.mavenGroupId().replace('.', '/');
-    final String jarFile = info.mavenArtifactId() + "-" + info.version() + ".jar";
-    final String url =
-        "https://repo1.maven.org/maven2/%s/%s/%s/%s"
-            .formatted(groupPath, info.mavenArtifactId(), info.version(), jarFile);
+    final String url = driverUrl(info);
 
     if (!confirmDriverDownload(project, info, url, target)) {
       throw new DownloadCanceledException("Driver download canceled by user.");
@@ -227,12 +235,24 @@ public class DriverLoader {
           out.write(buffer, 0, read);
         }
       }
+      final String expectedSha256 = fetchChecksum(url);
+      final String actualSha256 = sha256Hex(tempFile);
+      if (!actualSha256.equalsIgnoreCase(expectedSha256)) {
+        throw new IOException(
+            "SHA-256 mismatch for "
+                + target.getFileName()
+                + ": expected "
+                + expectedSha256
+                + " but the downloaded file hashes to "
+                + actualSha256);
+      }
       try {
         Files.move(
             tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       } catch (final AtomicMoveNotSupportedException e) {
         Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
       }
+      Files.writeString(checksumFile(target), expectedSha256, StandardCharsets.UTF_8);
     } catch (final Exception e) {
       try {
         Files.deleteIfExists(tempFile);
@@ -245,6 +265,95 @@ public class DriverLoader {
         log.warn("Could not delete partial download: {}", target);
       }
       throw e;
+    }
+  }
+
+  private static String driverUrl(final DriverInfo info) {
+    return "https://repo1.maven.org/maven2/%s/%s/%s/%s-%s.jar"
+        .formatted(
+            info.mavenGroupId().replace('.', '/'),
+            info.mavenArtifactId(),
+            info.version(),
+            info.mavenArtifactId(),
+            info.version());
+  }
+
+  private static void verifyCachedDriver(final Path jar, final String jarUrl) throws IOException {
+    final Path sidecar = checksumFile(jar);
+    if (Files.exists(sidecar)) {
+      final String expected = Files.readString(sidecar, StandardCharsets.UTF_8).trim();
+      final String actual = sha256Hex(jar);
+      if (!actual.equalsIgnoreCase(expected)) {
+        Files.deleteIfExists(jar);
+        Files.deleteIfExists(sidecar);
+        throw new IOException(
+            "Cached driver "
+                + jar.getFileName()
+                + " failed SHA-256 verification and was removed. Run the download again.");
+      }
+      return;
+    }
+    // Cache written before integrity checking existed: verify once against the repository.
+    try {
+      final String expected = fetchChecksum(jarUrl);
+      final String actual = sha256Hex(jar);
+      if (!actual.equalsIgnoreCase(expected)) {
+        Files.deleteIfExists(jar);
+        throw new IOException(
+            "Cached driver "
+                + jar.getFileName()
+                + " failed SHA-256 verification and was removed. Run the download again.");
+      }
+      Files.writeString(sidecar, expected, StandardCharsets.UTF_8);
+    } catch (final IOException e) {
+      // Offline: the jar was placed by a verified download, keep using it but warn.
+      log.warn("Could not verify cached driver " + jar.getFileName() + ": " + e.getMessage());
+    }
+  }
+
+  private static Path checksumFile(final Path jar) {
+    return jar.resolveSibling(jar.getFileName() + SHA_256_SUFFIX);
+  }
+
+  private static String fetchChecksum(final String jarUrl) throws IOException {
+    final String checksum = downloadText(jarUrl + SHA_256_SUFFIX);
+    final String token = firstSha256Token(checksum);
+    if (token.isEmpty()) {
+      throw new IOException("No SHA-256 checksum found at " + jarUrl + SHA_256_SUFFIX);
+    }
+    return token;
+  }
+
+  private static String downloadText(final String url) throws IOException {
+    try (final InputStream in = new URI(url).toURL().openStream()) {
+      return new String(in.readNBytes(CHECKSUM_MAX_CHARS), StandardCharsets.UTF_8);
+    } catch (final URISyntaxException e) {
+      throw new IOException("Invalid URL: " + url, e);
+    }
+  }
+
+  private static String firstSha256Token(final String text) {
+    final Matcher matcher = SHA_256_TOKEN.matcher(text);
+    return matcher.find() ? matcher.group() : "";
+  }
+
+  private static String sha256Hex(final Path file) throws IOException {
+    final MessageDigest digest = messageDigest();
+    try (final InputStream in = Files.newInputStream(file)) {
+      final byte[] buffer = new byte[DIGEST_BUFFER_SIZE];
+      int read;
+      while ((read = in.read(buffer)) >= 0) {
+        digest.update(buffer, 0, read);
+      }
+    }
+    return HexFormat.of().formatHex(digest.digest());
+  }
+
+  private static MessageDigest messageDigest() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (final NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is required by the JDK but unavailable", e);
     }
   }
 

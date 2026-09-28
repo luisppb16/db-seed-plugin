@@ -357,10 +357,13 @@ public final class ForeignKeyResolver {
     if (Objects.isNull(parent)) {
       if (!fkNullable) {
         log.warn(
-            "Parent table '{}' not found for non-nullable FK '{}' on table '{}'. Setting FK columns to null.",
-            fk.pkTable(),
-            fk.name(),
-            table.name());
+            "Parent table '"
+                + fk.pkTable()
+                + "' not found for non-nullable FK '"
+                + fk.name()
+                + "' on table '"
+                + table.name()
+                + "'. Setting FK columns to null.");
       }
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
@@ -381,9 +384,11 @@ public final class ForeignKeyResolver {
                 + "' has no rows. Add rows to the parent table or make the FK nullable.");
       }
       log.warn(
-          "No parent rows available for nullable FK '{}' on table '{}'. Setting FK columns to null.",
-          fk.name(),
-          table.name());
+          "No parent rows available for nullable FK '"
+              + fk.name()
+              + "' on table '"
+              + table.name()
+              + "'. Setting FK columns to null.");
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
@@ -403,9 +408,11 @@ public final class ForeignKeyResolver {
                 + "'. Increase rows per table or remove the unique FK constraint.");
       }
       log.warn(
-          "No parent row available for nullable FK '{}' on table '{}'. Setting FK columns to null.",
-          fk.name(),
-          table.name());
+          "No parent row available for nullable FK '"
+              + fk.name()
+              + "' on table '"
+              + table.name()
+              + "'. Setting FK columns to null.");
       fk.columnMapping().keySet().forEach(col -> row.values().put(col, null));
       return;
     }
@@ -416,9 +423,11 @@ public final class ForeignKeyResolver {
     } else {
       if (!fkNullable) {
         log.warn(
-            "Non-nullable circular FK cycle: {} -> {}. Deferring resolution via UPDATE.",
-            table.name(),
-            parent.name());
+            "Non-nullable circular FK cycle: "
+                + table.name()
+                + " -> "
+                + parent.name()
+                + ". Deferring resolution via UPDATE.");
       }
       final Map<String, Object> pkVals = new LinkedHashMap<>();
       table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
@@ -454,9 +463,11 @@ public final class ForeignKeyResolver {
       if (queue.isEmpty()) {
         if (!fkNullable) {
           log.warn(
-              "Not enough rows in {} for non-nullable 1:1 FK from {}. Returning null.",
-              parentTableName,
-              tableName);
+              "Not enough rows in "
+                  + parentTableName
+                  + " for non-nullable 1:1 FK from "
+                  + tableName
+                  + ". Returning null.");
         }
         return null;
       }

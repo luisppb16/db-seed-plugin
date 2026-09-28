@@ -10,11 +10,13 @@ package com.luisppb16.dbseed.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationParameters;
 import com.luisppb16.dbseed.db.DataGenerator.GenerationResult;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
+import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.SqlKeyword;
 import com.luisppb16.dbseed.model.Table;
 import com.sun.net.httpserver.HttpServer;
@@ -880,5 +882,306 @@ class DataGeneratorTest {
             .findFirst()
             .orElseThrow();
     assertThat(normalRows).hasSize(5);
+  }
+
+  @Test
+  void generation_emitsTablesPhaseAndGeneralEvents() {
+    // Given
+    Table empty = new Table("empty", List.of(), List.of(), List.of(), List.of(), List.of());
+    Table normal =
+        new Table(
+            "normal",
+            List.of(intPk("id"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    final RecordingProgressListener listener = new RecordingProgressListener();
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    GenerationParameters params =
+        baseParams()
+            .tables(List.of(empty, normal))
+            .indicator(indicator)
+            .progressListener(listener)
+            .build();
+    // When
+    DataGenerator.generate(params);
+    // Then
+    assertThat(listener.phaseStarted()).hasSize(1);
+    assertThat(listener.phaseStarted().getFirst()).containsExactly(2);
+    assertThat(listener.tables()).hasSize(2);
+    assertThat(listener.tables().getFirst()).containsExactly("empty", "1", "2");
+    assertThat(listener.tables().get(1)).containsExactly("normal", "2", "2");
+    assertThat(listener.generalDetails()).anyMatch(Objects::nonNull);
+    assertThat(listener.generalFractions()).isNotEmpty();
+  }
+
+  @Test
+  void aiGeneration_emitsStreamingAiEvents() throws IOException {
+    // Given
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            final byte[] responseBytes =
+                "{\"response\":\"__AI_VALUE__\\n__AI_VALUE_2__\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+      final RecordingProgressListener listener = new RecordingProgressListener();
+      final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(t))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description")))
+              .indicator(indicator)
+              .progressListener(listener)
+              .build();
+      final GenerationResult result = DataGenerator.generate(params);
+      // Then
+      assertThat(listener.aiPhaseStarted()).hasSize(1);
+      assertThat(listener.aiPhaseStarted().getFirst()).containsExactly(1, 1);
+      assertThat(listener.aiColumns()).hasSize(1);
+      assertThat(listener.aiColumns().getFirst()[0]).isEqualTo("products");
+      assertThat(listener.aiColumns().getFirst()[1]).isEqualTo("description");
+      assertThat(listener.aiValues()).isNotEmpty();
+      assertThat(listener.aiValues().getLast()[1]).isEqualTo(1);
+      assertThat(listener.aiSkipped()).isFalse();
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aiGeneration_filteredColumns_recalibratesAiTotalsAndOverallReachesFull() throws IOException {
+    // Given — 3 AI columns requested, but "description" is excluded and "bio" is driven by a
+    // repetition rule, so only "name" (× 1 row) does real work.
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description"), varcharCol("bio"), varcharCol("name")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            final byte[] responseBytes =
+                "{\"response\":\"__AI_VALUE__\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+      final RecordingProgressListener listener = new RecordingProgressListener();
+      final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(t))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description", "bio", "name")))
+              .excludedColumns(Map.of("products", List.of("description")))
+              .repetitionRules(
+                  Map.of(
+                      "products",
+                      List.of(new RepetitionRule(1, Map.of("bio", "fixed"), Set.of(), Map.of()))))
+              .indicator(indicator)
+              .progressListener(listener)
+              .build();
+
+      // When
+      final GenerationResult result = DataGenerator.generate(params);
+      final ProgressTracker tracker = result.progress();
+      SqlGenerator.generate(result.rows(), result.updates(), false, null, tracker);
+
+      // Then — the real work (1 column × 1 row) drives the AI bar, not the raw estimate (3 × 1)
+      assertThat(listener.aiPhaseStarted()).hasSize(1);
+      assertThat(listener.aiPhaseStarted().getFirst()).containsExactly(1, 1);
+      assertThat(listener.aiValues()).isNotEmpty();
+      assertThat(listener.aiValues().getLast()).containsExactly(1, 1);
+      assertThat(listener.generalFractions().getLast()).isEqualTo(1.0d);
+      assertThat(tracker.getCompleted()).isEqualTo(tracker.getTotalWork());
+      assertThat(listener.aiColumns()).hasSize(1);
+      assertThat(listener.aiColumns().getFirst()[1]).isEqualTo("name");
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aiGeneration_allAiColumnsFiltered_skipsAiPhaseWithoutStartingIt() throws IOException {
+    // Given — the only AI column is excluded, so nothing is runnable.
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            final byte[] responseBytes =
+                "{\"response\":\"__AI_VALUE__\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+      final RecordingProgressListener listener = new RecordingProgressListener();
+      final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(t))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description")))
+              .excludedColumns(Map.of("products", List.of("description")))
+              .indicator(indicator)
+              .progressListener(listener)
+              .build();
+
+      // When
+      final GenerationResult result = DataGenerator.generate(params);
+      final ProgressTracker tracker = result.progress();
+      SqlGenerator.generate(result.rows(), result.updates(), false, null, tracker);
+
+      // Then — skip, never a 0/0 phase, and the dropped AI budget closes at 100%
+      assertThat(listener.aiSkipped()).isTrue();
+      assertThat(listener.aiPhaseStarted()).isEmpty();
+      assertThat(listener.aiValues()).isEmpty();
+      assertThat(listener.generalFractions().getLast()).isEqualTo(1.0d);
+      assertThat(tracker.getCompleted()).isEqualTo(tracker.getTotalWork());
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aiGeneration_warmupFailure_emitsAiPhaseSkipped() throws IOException {
+    // Given
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+    Table t =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            final byte[] responseBytes =
+                "{\"response\":\"__AI_VALUE__\\n__AI_VALUE_2__\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(404, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+      final RecordingProgressListener listener = new RecordingProgressListener();
+      final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(t))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description")))
+              .indicator(indicator)
+              .progressListener(listener)
+              .build();
+      final GenerationResult result = DataGenerator.generate(params);
+      // Then
+      // warm-up 404 → onAiPhaseSkipped y sin eventos IA
+      assertThat(listener.aiSkipped()).isTrue();
+      assertThat(listener.aiPhaseStarted()).isEmpty();
+      assertThat(listener.aiValues()).isEmpty();
+      // fallback DataFaker intacto
+      assertThat(result.aiReport().isTotalFailure()).isTrue();
+      assertThat(result.rows().get(t).getFirst().values().get("description")).isNotNull();
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
   }
 }

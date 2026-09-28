@@ -27,8 +27,21 @@ import lombok.Getter;
 public final class ProgressTracker {
 
   private final ProgressIndicator indicator;
-  private final long totalWork;
   private final AtomicLong completed = new AtomicLong(0);
+
+  /** AI-phase sub-counter mirrored from advances while the AI scope is active. */
+  private final AtomicLong aiCompleted = new AtomicLong(0);
+
+  private volatile long totalWork;
+
+  /** Progress event hub; defaults to the do-nothing listener. */
+  private volatile GenerationProgressListener progressListener = GenerationProgressListener.NO_OP;
+
+  /** Total AI work units of the current AI phase (used to cap the AI bar at 100%). */
+  private volatile long aiTotalWork = 0L;
+
+  /** Whether advances currently belong to the AI phase (bracketed by startAiPhase/endAiPhase). */
+  private volatile boolean aiPhaseActive = false;
 
   /**
    * @param indicator the IntelliJ progress indicator to update (may be {@code null} — all
@@ -50,8 +63,13 @@ public final class ProgressTracker {
   public void advance(final long units) {
     if (Objects.isNull(indicator) || units <= 0) return;
     final long now = completed.addAndGet(units);
-    final double fraction = Math.max(0.0, Math.min((double) now / totalWork, 1.0));
+    if (aiPhaseActive) {
+      final long aiDone = Math.min(aiCompleted.addAndGet(units), aiTotalWork);
+      progressListener.onAiValue(aiDone, aiTotalWork);
+    }
+    final double fraction = currentFraction(now);
     indicator.setFraction(fraction);
+    progressListener.onGeneral(fraction, null, null);
   }
 
   /** Convenience shorthand — advance by one unit. */
@@ -59,14 +77,58 @@ public final class ProgressTracker {
     advance(1);
   }
 
-  /** Set the primary status text. */
-  public void setText(final String text) {
-    if (Objects.nonNull(indicator)) indicator.setText(text);
+  /**
+   * Recalibrates the grand total when the real workload differs from the up-front estimate (e.g. AI
+   * columns dropped by exclusions or behaviour rules) or when work is discovered late. Meant to be
+   * called on phase boundaries, never while column threads are advancing concurrently.
+   */
+  public void adjustTotalWork(final long delta) {
+    if (delta == 0L) {
+      return;
+    }
+    totalWork = Math.max(1L, totalWork + delta);
   }
 
-  /** Set the secondary (detail) status text. */
+  /** Sets the progress listener (null normalizes to the no-op listener). */
+  public void setProgressListener(final GenerationProgressListener progressListener) {
+    this.progressListener =
+        Objects.requireNonNullElse(progressListener, GenerationProgressListener.NO_OP);
+  }
+
+  /**
+   * Marks the start of the AI phase: while active, every {@link #advance(long)} also mirrors onto
+   * the AI sub-counter and fires {@link GenerationProgressListener#onAiValue(long, long)}. No-op
+   * when {@code totalAiWork <= 0}.
+   */
+  public void startAiPhase(final long totalAiWork) {
+    if (totalAiWork <= 0) {
+      return;
+    }
+    aiTotalWork = totalAiWork;
+    aiPhaseActive = true;
+  }
+
+  /** Ends the AI phase: subsequent advances count toward the general bar only. */
+  public void endAiPhase() {
+    aiPhaseActive = false;
+  }
+
+  /** Set the primary status text and publish it through the listener. */
+  public void setText(final String text) {
+    if (Objects.isNull(indicator)) {
+      return;
+    }
+    indicator.setText(text);
+    progressListener.onGeneral(currentFraction(completed.get()), text, null);
+  }
+
+  /** Set the secondary (detail) status text and publish it through the listener. */
   public void setText2(final String text) {
-    if (Objects.nonNull(indicator)) indicator.setText2(text);
+    if (Objects.isNull(indicator)) {
+      return;
+    }
+    indicator.setText2(text);
+    progressListener.onGeneral(currentFraction(completed.get()), null, text);
   }
 
   /** Check whether the user has requested cancellation. */
@@ -87,5 +149,10 @@ public final class ProgressTracker {
   /** Return the total number of work units. */
   public long getTotalWork() {
     return totalWork;
+  }
+
+  /** Maps completed units to a 0.0–1.0 fraction (clamped). */
+  private double currentFraction(final long completedUnits) {
+    return Math.max(0.0, Math.min((double) completedUnits / totalWork, 1.0));
   }
 }

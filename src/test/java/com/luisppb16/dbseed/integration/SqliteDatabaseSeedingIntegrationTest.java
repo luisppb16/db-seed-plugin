@@ -23,17 +23,20 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -82,6 +85,18 @@ class SqliteDatabaseSeedingIntegrationTest {
         .findFirst()
         .orElseThrow(
             () -> new AssertionError("Artifact not found in classpath: " + artifactFragment));
+  }
+
+  private static String sha256(final Path file) throws Exception {
+    final MessageDigest digest = MessageDigest.getInstance("SHA-256");
+    try (final InputStream in = Files.newInputStream(file)) {
+      final byte[] buffer = new byte[64 * 1024];
+      int read;
+      while ((read = in.read(buffer)) >= 0) {
+        digest.update(buffer, 0, read);
+      }
+    }
+    return HexFormat.of().formatHex(digest.digest());
   }
 
   @BeforeEach
@@ -347,6 +362,12 @@ class SqliteDatabaseSeedingIntegrationTest {
     final Path sourceJar = resolveClasspathArtifact("sqlite-jdbc");
     final Path cachedJar = cacheDirectory.resolve("sqlite-jdbc-3.46.1.3.jar");
     Files.copy(sourceJar, cachedJar, StandardCopyOption.REPLACE_EXISTING);
+    // The checksum sidecar written by a real download; without it the loader would
+    // have to reach Maven Central to verify the cached jar.
+    Files.writeString(
+        cacheDirectory.resolve("sqlite-jdbc-3.46.1.3.jar.sha256"),
+        sha256(cachedJar),
+        StandardCharsets.UTF_8);
 
     DriverLoader.ensureDriverPresent(IntegrationTestSupport.SQLITE_DRIVER);
 
@@ -354,6 +375,26 @@ class SqliteDatabaseSeedingIntegrationTest {
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + sqlitePath)) {
       assertThat(connection.isValid(2)).isTrue();
     }
+  }
+
+  @Test
+  void testDriverLoader_cachedJarFailingChecksum_isRejected() throws Exception {
+    final Path cacheDirectory =
+        Path.of(System.getProperty("user.home"), ".db-seed-plugin", "drivers");
+    Files.createDirectories(cacheDirectory);
+
+    final Path sourceJar = resolveClasspathArtifact("sqlite-jdbc");
+    final Path cachedJar = cacheDirectory.resolve("sqlite-jdbc-3.46.1.3.jar");
+    Files.copy(sourceJar, cachedJar, StandardCopyOption.REPLACE_EXISTING);
+    final Path sidecar = cacheDirectory.resolve("sqlite-jdbc-3.46.1.3.jar.sha256");
+    Files.writeString(sidecar, "0".repeat(64), StandardCharsets.UTF_8);
+
+    assertThatThrownBy(() -> DriverLoader.ensureDriverPresent(IntegrationTestSupport.SQLITE_DRIVER))
+        .isInstanceOf(IOException.class)
+        .hasMessageContaining("SHA-256");
+
+    assertThat(cachedJar).doesNotExist();
+    assertThat(sidecar).doesNotExist();
   }
 
   @Test

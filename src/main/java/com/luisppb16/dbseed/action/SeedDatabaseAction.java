@@ -28,12 +28,14 @@ import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.config.GenerationConfig;
 import com.luisppb16.dbseed.db.DataGenerator;
+import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
 import com.luisppb16.dbseed.db.SqlGenerator;
 import com.luisppb16.dbseed.db.TopologicalSorter;
 import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.GenerationProgressDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
@@ -385,11 +387,18 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                 pkDialog.getSoftDeleteValue(),
                 pkDialog.getNumericScale());
 
+        final AtomicReference<ProgressIndicator> indicatorRef = new AtomicReference<>();
+        final GenerationProgressDialog progressDialog =
+            new GenerationProgressDialog(
+                project, indicatorRef, settings.isUseAiGeneration() && hasAnyAiColumn(aiColumns));
+        progressDialog.show();
+
         ProgressManager.getInstance()
             .run(
                 new Task.Backgroundable(project, APP_NAME.getValue(), true) {
                   @Override
                   public void run(@NotNull final ProgressIndicator indicator) {
+                    indicatorRef.set(indicator);
                     try {
                       indicator.setIndeterminate(false);
                       indicator.setFraction(0.0);
@@ -435,10 +444,12 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                                           ? settings.getAiApplicationContext()
                                           : null)
                                   .indicator(indicator)
+                                  .progressListener(progressDialog.progressListener())
                                   .build());
                       log.info(
-                          "Data generation completed for {} rows per table.",
-                          finalConfig.rowsPerTable());
+                          "Data generation completed for "
+                              + finalConfig.rowsPerTable()
+                              + " rows per table.");
 
                       // A voluntary cancellation must not surface as an AI failure: canceled
                       // columns report 0 applied values without any error cause.
@@ -446,14 +457,18 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
 
                       notifyAiReport(project, gen.aiReport(), aiColumns);
 
-                      indicator.setText("Building SQL...");
-                      indicator.setText2(
+                      // The tracker still holds the SQL phase's per-table units: SqlGenerator
+                      // advances them so the overall bar keeps moving until the script is built.
+                      final ProgressTracker progress = Objects.requireNonNull(gen.progress());
+                      progress.setText("Building SQL...");
+                      progress.setText2(
                           "Generating INSERT statements for " + gen.rows().size() + " tables");
                       final String sql =
                           SqlGenerator.generate(
-                              gen.rows(), gen.updates(), effectiveDeferred, chosenDriver);
+                              gen.rows(), gen.updates(), effectiveDeferred, chosenDriver, progress);
                       indicator.setFraction(1.0);
                       indicator.setText("Done!");
+                      progressDialog.progressListener().onGeneral(1.0, "Done!", null);
                       log.info("SQL script built successfully.");
 
                       final Path filePath = writeSqlFile(project, sql);
@@ -473,6 +488,11 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                     } catch (final Exception ex) {
                       handleException(project, "Error during SQL generation: ", ex);
                     }
+                  }
+
+                  @Override
+                  public void onFinished() {
+                    progressDialog.closeSafely();
                   }
                 });
       }

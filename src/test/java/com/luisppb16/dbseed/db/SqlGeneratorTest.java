@@ -9,7 +9,11 @@ package com.luisppb16.dbseed.db;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
+import com.intellij.openapi.progress.ProgressIndicator;
 import com.luisppb16.dbseed.config.DriverInfo;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
@@ -19,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 class SqlGeneratorTest {
 
@@ -187,5 +192,64 @@ class SqlGeneratorTest {
     // but we can't call it directly. So test passes if no exception on normal flow.
     assertThatCode(() -> SqlGenerator.generate(new LinkedHashMap<>(), List.of(), false))
         .doesNotThrowAnyException();
+  }
+
+  // ── Progreso ──
+
+  @Test
+  void generate_withTracker_advancesOncePerTableAndPerUpdate() {
+    // Given
+    final Table users = tbl("users", "id");
+    final Table orders = tbl("orders", "id");
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(users, List.of(row("id", 1)));
+    data.put(orders, List.of());
+    final PendingUpdate update = new PendingUpdate("orders", Map.of("fk_id", 5), Map.of("id", 1));
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 3);
+    final RecordingProgressListener listener = new RecordingProgressListener();
+    tracker.setProgressListener(listener);
+
+    // When
+    final String sql = SqlGenerator.generate(data, List.of(update), false, null, tracker);
+
+    // Then
+    assertThat(sql).isEqualTo(SqlGenerator.generate(data, List.of(update), false));
+    verify(indicator, times(3)).setFraction(anyDouble());
+    assertThat(tracker.getCompleted()).isEqualTo(3);
+    assertThat(listener.generalFractions()).contains(1.0d / 3, 2.0d / 3, 1.0d);
+    assertThat(listener.generalDetails()).contains("Writing INSERTs for users");
+  }
+
+  @Test
+  void generate_withTracker_reportsEmptyTableAndNullUpdates() {
+    // Given
+    final Table users = tbl("users", "id");
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(users, List.of());
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 1);
+
+    // When
+    final String sql = SqlGenerator.generate(data, null, false, null, tracker);
+
+    // Then
+    assertThat(sql).isEmpty();
+    assertThat(tracker.getCompleted()).isEqualTo(1);
+    verify(indicator).setFraction(1.0d);
+  }
+
+  @Test
+  void generate_nullTracker_noProgressEvents() {
+    // Given
+    final Table users = tbl("users", "id");
+    final Map<Table, List<Row>> data = new LinkedHashMap<>();
+    data.put(users, List.of(row("id", 1)));
+
+    // When
+    final String sql = SqlGenerator.generate(data, List.of(), false, null, null);
+
+    // Then
+    assertThat(sql).contains("INSERT INTO");
   }
 }

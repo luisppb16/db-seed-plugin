@@ -7,7 +7,7 @@ foreign keys, uniqueness constraints, and complex cycles. It is ideal for develo
 seeds for testing,
 demos, QA, or development environments.
 
-This project is developed in **Java 21** with **Gradle 9.6.1**, applying a modern programming style: `record`, `switch`
+This project is developed in **Java 25** with **Gradle 9.7.1**, applying a modern programming style: `record`, `switch`
 with `yield`,
 pattern matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (
 `@Builder`, `@Slf4j`,
@@ -32,9 +32,10 @@ pattern matching, functional programming with Streams, `Optional` to avoid nulls
 
 To align with current JetBrains Marketplace approval criteria:
 
-- Plugin metadata declares explicit compatibility (`since-build=251`, `until-build=261.*`) and the required Java module
+- Plugin metadata declares explicit compatibility (`since-build=262`) and the required Java module
   dependency.
-- JDBC driver download is **explicitly confirmed by the user** before any external artifact is fetched.
+- JDBC driver download is **explicitly confirmed by the user** before any external artifact is fetched, and every
+  downloaded or cached driver is verified against the SHA-256 checksum published by Maven Central.
 - The plugin works locally by default; external network use is opt-in and user-triggered.
 - AI generation calls only a user-configured Ollama endpoint and uses user-provided context plus schema metadata (
   table/column names).
@@ -156,10 +157,13 @@ solely on random/faker values, you can leverage AI to produce meaningful content
 - **AI Columns Selection**: A dedicated tab in the generation dialog lets you choose which string columns receive
   AI-generated content.
 - **Smart Defaults**: Columns named `description`, `title`, `bio`, `email`, etc. are pre-selected automatically.
-- **Batch Generation**: AI values are generated in batches with retries and deduplication.
+- **Batch Generation**: AI values are generated in batches with retries and deduplication, and streamed per value
+  as they arrive.
 - **Configurable Word Count**: Control output length from a single word up to full paragraphs.
 - **Request Timeout Control**: Configure the Ollama request timeout from settings.
-- **Cancellable Processing**: The generation task can be canceled from the IDE progress UI.
+- **Multi-Bar Progress Dialog**: A live dialog shows four progress bars — overall work units, tables completed, AI
+  columns finished and AI values arriving from the stream — plus phase text and a Cancel button (Esc and the window
+  close button cancel too; the task can also be canceled from the IDE progress widget).
 - **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide domain context, and test
   connectivity from
   **Settings → DBSeed4SQL**.
@@ -218,9 +222,9 @@ Generated scripts preserve referential integrity while reducing manual post-proc
 
 ### ✅ Compatibility and Requirements
 
-- **IntelliJ Platform**: builds `251` through `261.*`.
-- **Java**: Java 21.
-- **Build Tool**: Gradle wrapper `9.6.1`.
+- **IntelliJ Platform**: builds `262` and later.
+- **Java**: Java 25.
+- **Build Tool**: Gradle wrapper `9.7.1`.
 - **Optional AI Runtime**: a reachable Ollama server if you enable AI generation.
 - **Optional Docker**: useful for local database smoke testing and integration scenarios.
 
@@ -323,7 +327,7 @@ The file is automatically opened in an editor within IntelliJ, ready to be execu
 ### 📝 Changelog
 
 The release history is available in the plugin's change notes on
-the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version is **`1.3.7.0`**.
+the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version is **`1.3.7.2`**.
 
 ---
 

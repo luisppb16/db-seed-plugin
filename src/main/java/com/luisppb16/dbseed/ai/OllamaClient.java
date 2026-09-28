@@ -11,19 +11,33 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongConsumer;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -108,6 +122,48 @@ public class OllamaClient {
   /** Keep the model loaded in VRAM for 10 minutes between requests to avoid cold-start penalty. */
   private static final String DEFAULT_KEEP_ALIVE = "10m";
 
+  /**
+   * Upper bound on the generated token budget per request. Models normally stop early by EOS long
+   * before reaching this, so it rarely bites; it only guards the pathological case of array columns
+   * with a high word count, where {@code count * max(15, words × 3)} can otherwise reach tens of
+   * thousands of tokens and, if a model ever fails to emit EOS, blow past the HTTP request timeout.
+   */
+  private static final int MAX_NUM_PREDICT = 8192;
+
+  /**
+   * Fraction of the configured request timeout used as the streaming inactivity window. While
+   * streaming, the client tracks the elapsed time since the last token was received; if no token
+   * arrives within {@code requestTimeoutSeconds × STREAMING_INACTIVITY_FRACTION}, the request is
+   * aborted. This turns the "stuck after a certain number of tokens" failure mode (a model that
+   * stalls mid-way through a large {@code num_predict} budget) from a full-timeout wait into a
+   * fast, detectable failure that the caller can retry on a smaller batch.
+   */
+  private static final double STREAMING_INACTIVITY_FRACTION = 0.5;
+
+  /** Polling cadence (ms) for the streaming inactivity watchdog. */
+  private static final long STREAMING_WATCHDOG_POLL_MILLIS = 250L;
+
+  /**
+   * Poll interval for cancel-aware awaits. Bounds how long a blocked generation thread takes to
+   * notice a cancellation request: instead of waiting up to the full HTTP request timeout (which
+   * can reach 120s), the thread re-checks cancellation at least every {@code AI_AWAIT_POLL_MILLIS}.
+   */
+  private static final long AI_AWAIT_POLL_MILLIS = 50L;
+
+  /**
+   * Dedicated single-thread scheduler for the streaming inactivity watchdog. Daemon thread, so it
+   * never blocks JVM shutdown. Each streaming request registers a one-shot watchdog task that
+   * aborts the request when no token has been received within the inactivity window; the watchdog
+   * is cancelled when the stream completes normally.
+   */
+  private static final ScheduledExecutorService STREAMING_WATCHDOG =
+      Executors.newSingleThreadScheduledExecutor(
+          r -> {
+            final Thread thread = new Thread(r, "ollama-stream-watchdog");
+            thread.setDaemon(true);
+            return thread;
+          });
+
   private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)\\-]\\s*");
 
   private static final String SYSTEM_ROLE =
@@ -145,13 +201,29 @@ public class OllamaClient {
   private final String modelName;
   private final int requestTimeoutSeconds;
 
+  /** Test-only override of the streaming inactivity window (ms); {@code 0} means derive it. */
+  private final long inactivityOverrideMillis;
+
   public OllamaClient(
       @NotNull final String ollamaUrl,
       @NotNull final String modelName,
       final int requestTimeoutSeconds) {
+    this(ollamaUrl, modelName, requestTimeoutSeconds, 0L);
+  }
+
+  /**
+   * Test-only constructor: {@code inactivityOverrideMillis} shortens the streaming inactivity
+   * window so watchdog-stall tests do not need to wait the real window.
+   */
+  OllamaClient(
+      @NotNull final String ollamaUrl,
+      @NotNull final String modelName,
+      final int requestTimeoutSeconds,
+      final long inactivityOverrideMillis) {
     this.normalizedUrl = normalizeUrl(ollamaUrl);
     this.modelName = modelName;
     this.requestTimeoutSeconds = Math.max(MIN_REQUEST_TIMEOUT_SECONDS, requestTimeoutSeconds);
+    this.inactivityOverrideMillis = inactivityOverrideMillis;
   }
 
   static String normalizeUrl(final String url) {
@@ -288,9 +360,12 @@ public class OllamaClient {
     return lower.endsWith("[]") || lower.startsWith("_") || lower.contains("array");
   }
 
-  /** Shuts down the shared HTTP executor. Called when the plugin is being unloaded. */
+  /**
+   * Shuts down the shared HTTP and watchdog executors. Called when the plugin is being unloaded.
+   */
   public static void shutdown() {
     HTTP_EXECUTOR.shutdownNow();
+    STREAMING_WATCHDOG.shutdownNow();
   }
 
   /**
@@ -325,6 +400,81 @@ public class OllamaClient {
       return "<empty>";
     }
     return trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed;
+  }
+
+  /** Cancels the scheduled watchdog task, if any. Safe to call more than once. */
+  private static void cancelWatchdog(final AtomicReference<ScheduledFuture<?>> watchdog) {
+    final ScheduledFuture<?> scheduled = watchdog.get();
+    if (Objects.nonNull(scheduled)) {
+      scheduled.cancel(false);
+    }
+  }
+
+  /** Closes a response body stream to abort a blocking read. Null-safe, idempotent. */
+  private static void abortBody(@Nullable final InputStream body) {
+    if (Objects.nonNull(body)) {
+      try {
+        body.close();
+      } catch (final IOException ignored) {
+        // The stream is already closed or the connection is broken; nothing to recover.
+      }
+    }
+  }
+
+  /**
+   * Awaits a {@link CompletableFuture} while periodically polling a cancellation flag. Unlike
+   * {@link CompletableFuture#join()}, control returns within at most {@link #AI_AWAIT_POLL_MILLIS}
+   * when the caller is canceled: the underlying future is canceled and a {@link
+   * CancellationException} is thrown, so blocked AI-generation threads are released promptly
+   * instead of waiting for the full HTTP request timeout (which can reach 120s). This makes the
+   * generation cancel responsive to the progress indicator's cancel button.
+   *
+   * @param future the future to await
+   * @param isCanceled cancellation flag supplier, polled every {@link #AI_AWAIT_POLL_MILLIS}
+   * @param onWaitMillis invoked on every poll with the total elapsed wait in ms; may be {@code
+   *     null}. Callers use it to keep the progress text alive during long waits.
+   * @return the future's result
+   * @throws CancellationException if the caller is canceled or the waiting thread is interrupted
+   * @throws CompletionException if the future completed exceptionally
+   */
+  public static <T> T awaitCancellable(
+      final CompletableFuture<T> future,
+      final BooleanSupplier isCanceled,
+      @Nullable final LongConsumer onWaitMillis) {
+    final long startNanos = System.nanoTime();
+    while (true) {
+      if (isCanceled.getAsBoolean()) {
+        future.cancel(true);
+        throw new CancellationException();
+      }
+      try {
+        return future.get(AI_AWAIT_POLL_MILLIS, TimeUnit.MILLISECONDS);
+      } catch (final TimeoutException timeout) {
+        // Re-check cancellation and report elapsed wait on the next iteration.
+        if (Objects.nonNull(onWaitMillis)) {
+          onWaitMillis.accept((System.nanoTime() - startNanos) / 1_000_000L);
+        }
+      } catch (final ExecutionException execution) {
+        throw new CompletionException(execution.getCause());
+      } catch (final InterruptedException interrupted) {
+        Thread.currentThread().interrupt();
+        future.cancel(true);
+        throw new CancellationException();
+      }
+    }
+  }
+
+  /**
+   * Returns the streaming inactivity window: the test-only override when set, otherwise a fraction
+   * of the configured request timeout (bounded below by twice the watchdog poll interval).
+   */
+  private long inactivityWindowMillis() {
+    if (inactivityOverrideMillis > 0) {
+      return inactivityOverrideMillis;
+    }
+    return Math.max(
+        STREAMING_WATCHDOG_POLL_MILLIS * 2,
+        (long) (requestTimeoutSeconds * 1000L * STREAMING_INACTIVITY_FRACTION));
   }
 
   /**
@@ -405,13 +555,19 @@ public class OllamaClient {
     return models;
   }
 
+  /**
+   * Generates a batch of values for a column, streaming the Ollama response so sanitized values
+   * arrive incrementally. Each time a new value survives sanitization and dedup, {@code
+   * onValueAdded} is invoked, enabling live per-value progress.
+   */
   public CompletableFuture<List<String>> generateBatchValues(
       @NotNull final String applicationContext,
       @NotNull final String tableName,
       @NotNull final String columnName,
       @NotNull final String sqlType,
       final int wordCount,
-      final int count) {
+      final int count,
+      @Nullable final Runnable onValueAdded) {
 
     final int effectiveWordCount = Math.max(MIN_WORD_COUNT, wordCount);
     final String contextLine =
@@ -441,31 +597,35 @@ public class OllamaClient {
                       effectiveWordCount);
         }
         numPredict =
-            Math.max(
-                count
-                    * elementCount
-                    * Math.max(
-                        BATCH_NUM_PREDICT_FACTOR,
-                        effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
-                NUM_PREDICT_FLOOR);
+            Math.min(
+                Math.max(
+                    count
+                        * elementCount
+                        * Math.max(
+                            BATCH_NUM_PREDICT_FACTOR,
+                            effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
+                    NUM_PREDICT_FLOOR),
+                MAX_NUM_PREDICT);
       } else {
         if (effectiveWordCount == 1) {
           prompt =
               "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). One per line. Raw values only."
                   .formatted(contextLine, count, columnName, tableName, sqlType);
-          numPredict = count * BATCH_NUM_PREDICT_FACTOR;
+          numPredict = Math.min(count * BATCH_NUM_PREDICT_FACTOR, MAX_NUM_PREDICT);
         } else {
           prompt =
               "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). Up to %d words each. One per line. Raw values only."
                   .formatted(
                       contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
           numPredict =
-              Math.max(
-                  count
-                      * Math.max(
-                          BATCH_NUM_PREDICT_FACTOR,
-                          effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
-                  NUM_PREDICT_FLOOR);
+              Math.min(
+                  Math.max(
+                      count
+                          * Math.max(
+                              BATCH_NUM_PREDICT_FACTOR,
+                              effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
+                      NUM_PREDICT_FLOOR),
+                  MAX_NUM_PREDICT);
         }
       }
 
@@ -479,64 +639,286 @@ public class OllamaClient {
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
               .build();
 
-      return HTTP_CLIENT
-          .sendAsync(request, HttpResponse.BodyHandlers.ofString())
-          .thenApply(
-              response -> {
-                if (response.statusCode() != 200) {
-                  log.warn(
-                      "Ollama error: {}",
-                      extractErrorMessage(response.statusCode(), response.body()));
-                  throw new OllamaException(
-                      extractErrorMessage(response.statusCode(), response.body()));
-                }
-                return response.body();
-              })
-          .thenApply(body -> parseBatchResponse(body, columnName));
+      return streamGenerateValues(request, columnName, onValueAdded);
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
   }
 
-  private List<String> parseBatchResponse(final String responseBody, final String columnName)
-      throws OllamaException {
-    final String raw;
-    try {
-      raw = extractRawResponse(responseBody);
-    } catch (final Exception e) {
-      throw new OllamaException("Failed to parse Ollama batch response: " + e.getMessage(), e);
-    }
-
-    final List<String> values =
-        raw.lines()
-            .map(line -> sanitizeAiOutput(line, columnName))
-            .filter(Objects::nonNull)
-            .filter(s -> !s.isBlank())
-            .distinct()
-            .toList();
-    if (values.isEmpty()) {
-      throw new OllamaException(
-          "AI response contained no valid values for column '%s'. Model output: %s"
-              .formatted(columnName, snippetOf(raw)));
-    }
-    return values;
+  /**
+   * Overload without live progress: values are still streamed internally, but no per-value callback
+   * is invoked.
+   */
+  public CompletableFuture<List<String>> generateBatchValues(
+      @NotNull final String applicationContext,
+      @NotNull final String tableName,
+      @NotNull final String columnName,
+      @NotNull final String sqlType,
+      final int wordCount,
+      final int count) {
+    return generateBatchValues(
+        applicationContext, tableName, columnName, sqlType, wordCount, count, null);
   }
 
-  private String extractRawResponse(final String responseBody) throws IOException {
+  /**
+   * Streams an Ollama {@code /api/generate} response (NDJSON, one JSON object per line per emitted
+   * token chunk) and accumulates sanitized, distinct values as soon as each value line is completed
+   * in the stream.
+   *
+   * <p>Streaming (instead of {@code stream:false}) eliminates the "stuck after a certain number of
+   * tokens" failure mode: with the buffered request the client blocks until the full {@code
+   * num_predict} budget is produced or the request timeout fires, so a model that stalls mid-way
+   * (common on slow CPU/GPU hardware when the batch was sized against an optimistic throughput
+   * assumption) holds the thread for up to the whole timeout — and {@code RowGenerator} then
+   * retries up to {@code AI_MAX_RETRIES} times, each waiting the full timeout, compounding into
+   * minutes of apparent hang.
+   *
+   * <p>Here, each token chunk updates an inactivity timestamp; a watchdog scheduled at {@link
+   * #STREAMING_WATCHDOG_POLL_MILLIS} aborts the request if no token arrives within {@code
+   * requestTimeoutSeconds × STREAMING_INACTIVITY_FRACTION}. A stall therefore surfaces as a fast,
+   * retryable failure instead of a full-timeout wait, and the caller can split the batch and retry
+   * on a smaller size.
+   *
+   * <p>Ollama emits the {@code response} field incrementally: each JSON line carries a token (or
+   * token chunk) of the generated text, and a chunk may carry a newline character that completes a
+   * value line. Completed value lines are sanitized through {@link #sanitizeAiOutput} as soon as
+   * they appear, and every time a new value is added {@code onValueAdded} is invoked, so the caller
+   * can advance the progress bar per value instead of per batch.
+   *
+   * @param onValueAdded invoked each time a new sanitized, distinct value is added to the batch
+   *     result; may be {@code null} to skip live progress
+   * @return a future completing with the list of distinct, sanitized values
+   */
+  private CompletableFuture<List<String>> streamGenerateValues(
+      final HttpRequest request,
+      @NotNull final String columnName,
+      @Nullable final Runnable onValueAdded) {
+    final long inactivityTimeoutMillis = inactivityWindowMillis();
+
+    final CompletableFuture<List<String>> result = new CompletableFuture<>();
+    final List<String> values = new ArrayList<>();
+    final StringBuilder lineBuffer = new StringBuilder();
+    // Accumulates every raw token chunk so that, when the model yields no usable values, the
+    // thrown error can include a snippet of what the model actually returned (diagnosability).
+    final StringBuilder rawOutput = new StringBuilder();
+    // Last instant at which a token was received. Initialized to now so the watchdog doesn't fire
+    // before the first token (prompt evaluation can take a while before generation starts).
+    final AtomicReference<Long> lastTokenNanos = new AtomicReference<>(System.nanoTime());
+    final AtomicReference<ScheduledFuture<?>> watchdog = new AtomicReference<>();
+    final AtomicReference<CompletableFuture<HttpResponse<InputStream>>> pending =
+        new AtomicReference<>();
+    // Response body stream once the request reaches its body-reading phase; the watchdog closes
+    // it to abort a blocking read that cancelling the (already-completed) future cannot stop.
+    final AtomicReference<InputStream> bodyRef = new AtomicReference<>();
+
+    // Watchdog: abort the request if no token has arrived within the inactivity window.
+    final Runnable watchdogTask =
+        () -> {
+          final long idleNanos = System.nanoTime() - lastTokenNanos.get();
+          if (idleNanos < TimeUnit.MILLISECONDS.toNanos(inactivityTimeoutMillis)) {
+            return;
+          }
+          log.warn(
+              "Ollama stream for column '"
+                  + columnName
+                  + "' stalled (no tokens for "
+                  + inactivityTimeoutMillis
+                  + "ms), aborting request");
+          // Complete the result BEFORE cancelling the in-flight request: cancelling pending
+          // triggers this future's .handle callback, whose error-wrapping path only skips
+          // overwriting when the result is already done. Otherwise the stalled diagnostic is
+          // lost to a generic "streaming request failed" message.
+          if (!result.isDone()) {
+            result.completeExceptionally(
+                new OllamaException(
+                    "AI generation stalled for column '"
+                        + columnName
+                        + "' (no tokens received within "
+                        + inactivityTimeoutMillis
+                        + "ms)"));
+          }
+          final CompletableFuture<HttpResponse<InputStream>> inFlight = pending.get();
+          if (Objects.nonNull(inFlight)) {
+            inFlight.cancel(true);
+          }
+          // The request may already be in its body-phase, where cancelling the future is a
+          // no-op; closing the body stream aborts the blocking read instead.
+          abortBody(bodyRef.get());
+        };
+    watchdog.set(
+        STREAMING_WATCHDOG.scheduleAtFixedRate(
+            watchdogTask,
+            STREAMING_WATCHDOG_POLL_MILLIS,
+            STREAMING_WATCHDOG_POLL_MILLIS,
+            TimeUnit.MILLISECONDS));
+
+    pending.set(HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream()));
+
+    // handleAsync on the client executor: attaching a plain .handle to an already-completed
+    // future (fast server) would run the whole stream-reading loop on the CALLER's thread,
+    // where it blocks the thread that must cancel the stream. On the executor, the loop always
+    // runs off the caller and stays cancellable via the body-stream close.
+    pending
+        .get()
+        .handleAsync(
+            (response, ex) -> {
+              if (Objects.nonNull(ex)) {
+                cancelWatchdog(watchdog);
+                if (!result.isDone()) {
+                  result.completeExceptionally(
+                      new OllamaException(
+                          "Ollama streaming request failed: " + ex.getMessage(), ex));
+                }
+                return null;
+              }
+              if (response.statusCode() != 200) {
+                // Non-200: consume the stream to surface the server's own error message.
+                try (final BufferedReader errorReader =
+                    new BufferedReader(
+                        new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                  final StringBuilder errorBody = new StringBuilder();
+                  String errorLine;
+                  while (Objects.nonNull(errorLine = errorReader.readLine())) {
+                    errorBody.append(errorLine);
+                  }
+                  if (!result.isDone()) {
+                    result.completeExceptionally(
+                        new OllamaException(
+                            extractErrorMessage(response.statusCode(), errorBody.toString())));
+                  }
+                } catch (final IOException ioException) {
+                  if (!result.isDone()) {
+                    result.completeExceptionally(
+                        new OllamaException(
+                            "Ollama returned status code: " + response.statusCode(), ioException));
+                  }
+                }
+                cancelWatchdog(watchdog);
+                return null;
+              }
+              // Stream the NDJSON body line by line.
+              bodyRef.set(response.body());
+              try (final BufferedReader reader =
+                  new BufferedReader(
+                      new InputStreamReader(response.body(), StandardCharsets.UTF_8))) {
+                String ndjsonLine;
+                while (Objects.nonNull(ndjsonLine = reader.readLine())) {
+                  if (result.isDone()) {
+                    break;
+                  }
+                  if (ndjsonLine.isBlank()) {
+                    continue;
+                  }
+                  // Mark activity: a line arrived from the server.
+                  lastTokenNanos.set(System.nanoTime());
+                  processStreamLine(
+                      ndjsonLine, columnName, lineBuffer, rawOutput, values, onValueAdded);
+                }
+                // Flush any trailing text that the model emitted without a final newline.
+                flushLineBuffer(lineBuffer, columnName, values, onValueAdded);
+              } catch (final IOException ioException) {
+                cancelWatchdog(watchdog);
+                if (!result.isDone()) {
+                  result.completeExceptionally(
+                      new OllamaException(
+                          "Failed reading Ollama stream for column '"
+                              + columnName
+                              + "': "
+                              + ioException.getMessage(),
+                          ioException));
+                }
+                return null;
+              }
+              cancelWatchdog(watchdog);
+              if (!result.isDone()) {
+                if (values.isEmpty()) {
+                  result.completeExceptionally(
+                      new OllamaException(
+                          "AI response contained no valid values for column '"
+                              + columnName
+                              + "'. Model output: "
+                              + snippetOf(rawOutput.toString())));
+                } else {
+                  result.complete(values);
+                }
+              }
+              return null;
+            },
+            HTTP_EXECUTOR);
+
+    // Propagate external cancellation to the in-flight request.
+    result.whenComplete(
+        (ignored, throwable) -> {
+          cancelWatchdog(watchdog);
+          if (throwable instanceof CancellationException) {
+            final CompletableFuture<HttpResponse<InputStream>> inFlight = pending.get();
+            if (Objects.nonNull(inFlight)) {
+              inFlight.cancel(true);
+            }
+            // Abort a blocking body read that the future cancellation cannot interrupt.
+            abortBody(bodyRef.get());
+          }
+        });
+
+    return result;
+  }
+
+  /**
+   * Processes one NDJSON line from the Ollama stream. Each line is a JSON object carrying a token
+   * chunk in its {@code response} field. The chunk may contain partial value lines and newline
+   * characters; complete value lines (terminated by {@code \n}) are sanitized and added to {@code
+   * values} as soon as they appear, invoking the progress callback each time the count grows and
+   * keeping memory usage bounded regardless of {@code num_predict}.
+   */
+  private void processStreamLine(
+      final String ndjsonLine,
+      final String columnName,
+      final StringBuilder lineBuffer,
+      final StringBuilder rawOutput,
+      final List<String> values,
+      @Nullable final Runnable onValueAdded) {
     try {
-      final JsonObject json = JsonParser.parseString(responseBody).getAsJsonObject();
-      // /api/generate format: { "response": "..." }
-      if (json.has("response")) {
-        return json.get("response").getAsString();
+      final JsonObject json = JsonParser.parseString(ndjsonLine).getAsJsonObject();
+      final String chunk =
+          json.has("response") && !json.get("response").isJsonNull()
+              ? json.get("response").getAsString()
+              : "";
+      rawOutput.append(chunk);
+      lineBuffer.append(chunk);
+      int newlineIndex;
+      while ((newlineIndex = lineBuffer.indexOf("\n")) >= 0) {
+        final String completeLine = lineBuffer.substring(0, newlineIndex);
+        lineBuffer.delete(0, newlineIndex + 1);
+        addSanitizedValue(completeLine, columnName, values, onValueAdded);
       }
-      // Fallback for /api/chat format
-      if (json.has("message") && json.getAsJsonObject("message").has("content")) {
-        return json.getAsJsonObject("message").get("content").getAsString();
-      }
-      throw new IOException("Invalid response from Ollama: missing 'response' field");
     } catch (final Exception e) {
-      if (e instanceof IOException) throw e;
-      throw new IOException("Failed to parse Ollama response: " + e.getMessage(), e);
+      log.debug("Skipping malformed Ollama stream line: " + e.getMessage());
+    }
+  }
+
+  /** Flushes any trailing text left in the buffer when the stream ends without a final newline. */
+  private void flushLineBuffer(
+      final StringBuilder lineBuffer,
+      final String columnName,
+      final List<String> values,
+      @Nullable final Runnable onValueAdded) {
+    if (lineBuffer.length() > 0) {
+      addSanitizedValue(lineBuffer.toString(), columnName, values, onValueAdded);
+      lineBuffer.setLength(0);
+    }
+  }
+
+  private void addSanitizedValue(
+      final String rawLine,
+      final String columnName,
+      final List<String> values,
+      @Nullable final Runnable onValueAdded) {
+    final String sanitized = sanitizeAiOutput(rawLine, columnName);
+    if (Objects.nonNull(sanitized) && !sanitized.isBlank() && !values.contains(sanitized)) {
+      values.add(sanitized);
+      if (Objects.nonNull(onValueAdded)) {
+        onValueAdded.run();
+      }
     }
   }
 
@@ -550,7 +932,10 @@ public class OllamaClient {
     body.addProperty("model", modelName);
     body.addProperty("prompt", prompt);
     body.addProperty("system", SYSTEM_ROLE);
-    body.addProperty("stream", false);
+    // Streaming (instead of stream:false) is what makes per-value progress possible: tokens are
+    // consumed as they arrive, the progress bar advances per value, and the inactivity watchdog
+    // can abort stalled requests instead of blocking on a buffered response for the full timeout.
+    body.addProperty("stream", true);
     // Reasoning models spend the token budget on hidden thinking, leaving "response"
     // empty; seed generation never needs chain-of-thought, so it stays off.
     body.addProperty("think", false);

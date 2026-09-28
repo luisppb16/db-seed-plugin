@@ -53,6 +53,11 @@ jacoco {
 
 intellijPlatform {
     buildSearchableOptions = false
+    pluginConfiguration {
+        ideaVersion {
+            sinceBuild = '262'
+        }
+    }
     signing.certificateChain.set(providers.environmentVariable("CERTIFICATE_CHAIN"))
     signing.privateKey.set(providers.environmentVariable("PRIVATE_KEY"))
     signing.password.set(providers.environmentVariable("PRIVATE_KEY_PASSWORD"))

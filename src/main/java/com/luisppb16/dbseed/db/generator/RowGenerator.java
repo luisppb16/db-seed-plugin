@@ -32,11 +32,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -191,6 +193,19 @@ public final class RowGenerator {
       return ex.getClass().getSimpleName();
     }
     return Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName());
+  }
+
+  /**
+   * Detects whether an AI request failure was caused by the streaming inactivity watchdog (the
+   * model stalled mid-generation). Used to trigger batch-splitting on retry: a stall means the
+   * {@code num_predict} budget for the requested count exceeded what the model could produce within
+   * the inactivity window, so halving the count is the right corrective action.
+   */
+  private static boolean isStreamStall(final Throwable ex) {
+    if (Objects.isNull(ex) || Objects.isNull(ex.getMessage())) {
+      return false;
+    }
+    return ex.getMessage().contains("stalled") || ex.getMessage().contains("no tokens received");
   }
 
   public List<Row> generate() {
@@ -376,10 +391,13 @@ public final class RowGenerator {
             });
     if (generatedCount.get() < rowsPerTable) {
       log.warn(
-          "Could only generate {}/{} rows for table '{}' due to constraint restrictions",
-          generatedCount.get(),
-          rowsPerTable,
-          table.name());
+          "Could only generate "
+              + generatedCount.get()
+              + "/"
+              + rowsPerTable
+              + " rows for table '"
+              + table.name()
+              + "' due to constraint restrictions");
     }
   }
 
@@ -512,6 +530,10 @@ public final class RowGenerator {
     final Set<String> seenAiValues = new HashSet<>();
 
     final int totalBatches = (totalRows + AI_BATCH_SIZE - 1) / AI_BATCH_SIZE;
+    // Rolling per-column batch timing for the verbose progress texts (last batch + ETA).
+    final AtomicLong lastBatchMillis = new AtomicLong(0L);
+    final AtomicLong batchesTotalMillis = new AtomicLong(0L);
+    final AtomicInteger batchesDone = new AtomicInteger(0);
 
     IntStream.range(0, totalBatches)
         .forEach(
@@ -526,46 +548,107 @@ public final class RowGenerator {
               final int batchStart = b * AI_BATCH_SIZE;
               final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
               final int batchCount = batchEnd - batchStart;
-
-              tracker.setText2(
-                  "AI generating "
-                      .concat(table.name())
-                      .concat(".")
-                      .concat(colName)
-                      .concat(" (")
+              final long batchStartNanos = System.nanoTime();
+              final String batchRangeText =
+                  "rows "
                       .concat(String.valueOf(batchStart + 1))
                       .concat("-")
                       .concat(String.valueOf(batchEnd))
                       .concat("/")
-                      .concat(String.valueOf(totalRows))
-                      .concat(")"));
+                      .concat(String.valueOf(totalRows));
+
+              // Verbose per-batch main text: updates on every batch instead of only when a whole
+              // column completes.
+              tracker.setText(
+                  "Phase 2/4 (AI): "
+                      .concat(table.name())
+                      .concat(".")
+                      .concat(colName)
+                      .concat(" — batch ")
+                      .concat(String.valueOf(b + 1))
+                      .concat("/")
+                      .concat(String.valueOf(totalBatches)));
+
+              final long avgBatchMillis =
+                  batchesDone.get() > 0 ? batchesTotalMillis.get() / batchesDone.get() : 0L;
+              tracker.setText2(
+                  batchRangeText
+                      + (lastBatchMillis.get() > 0
+                          ? " · last batch "
+                              .concat(String.valueOf(lastBatchMillis.get() / 1000))
+                              .concat("s · ETA ~")
+                              .concat(String.valueOf((avgBatchMillis * (totalBatches - b)) / 1000))
+                              .concat("s")
+                          : ""));
 
               // Improvement #2: over-request to absorb dedup losses
               final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
 
+              // Live per-value progress: every sanitized, distinct value arriving from the stream
+              // advances the bar (capped at batchCount — over-requested surplus values must not
+              // push the bar past this batch's share). The end-of-batch reconcile below covers
+              // deficits filled with fallback data.
+              final AtomicInteger advancedInBatch = new AtomicInteger(0);
+              final Runnable onValueAdded =
+                  () -> {
+                    final int before =
+                        advancedInBatch.getAndUpdate(cur -> Math.min(cur + 1, batchCount));
+                    if (before < batchCount) {
+                      tracker.advance(1);
+                      tracker.setText2(
+                          "rows "
+                              .concat(String.valueOf(batchStart + 1))
+                              .concat("-")
+                              .concat(String.valueOf(batchEnd))
+                              .concat("/")
+                              .concat(String.valueOf(totalRows))
+                              .concat(" · values ")
+                              .concat(String.valueOf(advancedInBatch.get()))
+                              .concat("/")
+                              .concat(String.valueOf(batchCount)));
+                    }
+                  };
+
               final List<String> allValues = new ArrayList<>();
-              int retries = 0;
+              final AtomicInteger retries = new AtomicInteger(0);
 
               try {
                 final List<String> batchValues =
-                    ollamaClient
-                        .generateBatchValues(
+                    OllamaClient.awaitCancellable(
+                        ollamaClient.generateBatchValues(
                             applicationContext,
                             table.name(),
                             colName,
                             sqlType,
                             wordCount,
-                            requestCount)
-                        .join();
+                            requestCount,
+                            onValueAdded),
+                        tracker::isCanceled,
+                        waitMillis ->
+                            tracker.setText2(
+                                batchRangeText
+                                    + " · values "
+                                    + advancedInBatch.get()
+                                    + "/"
+                                    + batchCount
+                                    + " · waiting "
+                                    + waitMillis / 1000
+                                    + "s"));
                 batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
+              } catch (final CancellationException canceled) {
+                // User-requested cancellation must not surface as an AI failure; the remaining
+                // batches of this column are skipped by the isCanceled() guard at the top.
+                return;
               } catch (final Exception ex) {
                 log.warn(
-                    "Batch AI generation failed for {}.{}: {}",
-                    table.name(),
-                    colName,
-                    errorMessageOf(ex));
+                    "Batch AI generation failed for "
+                        + table.name()
+                        + "."
+                        + colName
+                        + ": "
+                        + errorMessageOf(ex));
                 aiColumnErrors.put(colName, errorMessageOf(ex));
-                retries++;
+                retries.incrementAndGet();
               }
 
               // Improvement #2: recycle existing values if deficit is small and column is not
@@ -578,25 +661,41 @@ public final class RowGenerator {
                 IntStream.range(0, deficit)
                     .forEach(i -> allValues.add(allValues.get(i % allValues.size())));
               } else {
-                // Full retry loop only when deficit is large or column requires uniqueness
-                while (allValues.size() < batchCount && retries < AI_MAX_RETRIES) {
+                // Full retry loop only when deficit is large or column requires uniqueness.
+                // On a streaming inactivity-stall, halve the requested count before retrying so
+                // the next request targets a smaller num_predict budget and is more likely to
+                // complete within the inactivity window.
+                int stallSplitFactor = 1;
+                while (allValues.size() < batchCount && retries.get() < AI_MAX_RETRIES) {
                   if (tracker.isCanceled()) return;
 
-                  final int remaining = batchCount - allValues.size();
+                  final int remaining =
+                      Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
                   try {
                     final List<String> batchValues =
-                        ollamaClient
-                            .generateBatchValues(
+                        OllamaClient.awaitCancellable(
+                            ollamaClient.generateBatchValues(
                                 applicationContext,
                                 table.name(),
                                 colName,
                                 sqlType,
                                 wordCount,
-                                remaining)
-                            .join();
+                                remaining,
+                                onValueAdded),
+                            tracker::isCanceled,
+                            waitMillis ->
+                                tracker.setText2(
+                                    batchRangeText
+                                        + " · retry "
+                                        + retries.get()
+                                        + "/"
+                                        + AI_MAX_RETRIES
+                                        + " · waiting "
+                                        + waitMillis / 1000
+                                        + "s"));
 
                     if (batchValues.isEmpty()) {
-                      retries++;
+                      retries.incrementAndGet();
                       continue;
                     }
                     boolean addedAny =
@@ -606,31 +705,52 @@ public final class RowGenerator {
                             .findAny()
                             .isPresent();
                     if (!addedAny) {
-                      retries++;
+                      retries.incrementAndGet();
                     }
+                  } catch (final CancellationException canceled) {
+                    return;
                   } catch (final Exception ex) {
                     log.warn(
-                        "Batch AI retry failed for {}.{}: {}",
-                        table.name(),
-                        colName,
-                        errorMessageOf(ex));
+                        "Batch AI retry failed for "
+                            + table.name()
+                            + "."
+                            + colName
+                            + ": "
+                            + errorMessageOf(ex));
                     aiColumnErrors.put(colName, errorMessageOf(ex));
-                    retries++;
+                    retries.incrementAndGet();
+                    if (isStreamStall(ex)) {
+                      stallSplitFactor = Math.min(stallSplitFactor * 2, batchCount);
+                    }
                   }
                 }
               }
 
               if (allValues.size() < batchCount) {
                 log.warn(
-                    "AI generation only filled {}/{} values for column '{}.{}', remaining rows will use random data",
-                    allValues.size(),
-                    batchCount,
-                    table.name(),
-                    colName);
+                    "AI generation only filled "
+                        + allValues.size()
+                        + "/"
+                        + batchCount
+                        + " values for column '"
+                        + table.name()
+                        + "."
+                        + colName
+                        + "', remaining rows will use random data");
               }
 
               applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
-              tracker.advance(batchCount);
+
+              // Advance any remaining work units for values filled with fallback data so each
+              // batch always accounts for exactly batchCount units.
+              final int gap = batchCount - advancedInBatch.get();
+              if (gap > 0) {
+                tracker.advance(gap);
+              }
+
+              lastBatchMillis.set((System.nanoTime() - batchStartNanos) / 1_000_000L);
+              batchesTotalMillis.addAndGet(lastBatchMillis.get());
+              batchesDone.incrementAndGet();
             });
   }
 

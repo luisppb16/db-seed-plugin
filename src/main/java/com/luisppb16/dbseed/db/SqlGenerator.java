@@ -20,6 +20,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.experimental.UtilityClass;
+import lombok.extern.slf4j.Slf4j;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Advanced SQL generation engine for the DBSeed plugin ecosystem.
@@ -76,6 +78,7 @@ import lombok.experimental.UtilityClass;
  * @see DriverInfo
  */
 @UtilityClass
+@Slf4j
 public class SqlGenerator {
 
   private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
@@ -245,7 +248,7 @@ public class SqlGenerator {
 
   public static String generate(
       Map<Table, List<Row>> data, List<PendingUpdate> updates, boolean deferred) {
-    return generate(data, updates, deferred, null);
+    return generate(data, updates, deferred, null, null);
   }
 
   public static String generate(
@@ -253,6 +256,23 @@ public class SqlGenerator {
       List<PendingUpdate> updates,
       boolean deferred,
       DriverInfo driverInfo) {
+    return generate(data, updates, deferred, driverInfo, null);
+  }
+
+  /**
+   * Generates the SQL script while reporting progress through {@code tracker}: one work unit per
+   * table and one per deferred update <em>evaluated</em> (empty tables and dropped updates
+   * included, so the caller's reservation always matches). The caller owns the total reserved for
+   * this phase.
+   *
+   * @param tracker progress sink, may be {@code null} (no progress reporting)
+   */
+  public static String generate(
+      final Map<Table, List<Row>> data,
+      final List<PendingUpdate> updates,
+      final boolean deferred,
+      final DriverInfo driverInfo,
+      @Nullable final ProgressTracker tracker) {
     final boolean hasData = data != null && !data.isEmpty();
     final boolean hasUpdates = updates != null && !updates.isEmpty();
     if (!deferred && !hasData && !hasUpdates) {
@@ -268,9 +288,9 @@ public class SqlGenerator {
     }
 
     if (hasData) {
-      generateInsertStatements(sb, data, opts, dialect);
+      generateInsertStatements(sb, data, opts, dialect, tracker);
     }
-    generateUpdateStatements(sb, updates, opts, dialect);
+    generateUpdateStatements(sb, updates, opts, dialect, tracker);
 
     if (deferred) {
       sb.append(dialect.enableConstraints());
@@ -284,9 +304,14 @@ public class SqlGenerator {
       final StringBuilder sb,
       final Map<Table, List<Row>> data,
       final SqlOptions opts,
-      final DatabaseDialect dialect) {
+      final DatabaseDialect dialect,
+      @Nullable final ProgressTracker tracker) {
     data.forEach(
         (table, rows) -> {
+          if (Objects.nonNull(tracker)) {
+            tracker.setText2("Writing INSERTs for ".concat(table.name()));
+            tracker.advance();
+          }
           if (Objects.isNull(rows) || rows.isEmpty()) {
             return;
           }
@@ -306,12 +331,17 @@ public class SqlGenerator {
       final StringBuilder sb,
       final List<PendingUpdate> updates,
       final SqlOptions opts,
-      final DatabaseDialect dialect) {
+      final DatabaseDialect dialect,
+      @Nullable final ProgressTracker tracker) {
     if (updates == null || updates.isEmpty()) {
       return;
     }
     updates.forEach(
         update -> {
+          if (Objects.nonNull(tracker)) {
+            tracker.setText2("Writing deferred UPDATEs for ".concat(update.table()));
+            tracker.advance();
+          }
           if (update.fkValues().isEmpty() || update.pkValues().isEmpty()) {
             return;
           }

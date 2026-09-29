@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.ai;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -24,7 +25,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -37,6 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -114,6 +118,13 @@ public class OllamaClient {
   private static final int MIN_WORD_COUNT = 1;
 
   /**
+   * Number of elements requested for every array value, written with PostgreSQL array syntax
+   * ({@code {el1,el2,el3}}). Values whose element count differs are reasoning about the requested
+   * shape, not data, so they are dropped.
+   */
+  private static final int ARRAY_ELEMENT_COUNT = 3;
+
+  /**
    * Minimum token budget for batch requests. {@code num_predict} is a cap, not a target, so a
    * generous floor costs nothing when the model stops early; it only prevents truncation on small
    * batches where a verbose preamble would otherwise consume the whole budget.
@@ -175,9 +186,49 @@ public class OllamaClient {
   private static final Pattern THINKING_TAG = Pattern.compile("[<＜]/?(?:think|thinking)[>＞]");
 
   private static final String SYSTEM_ROLE =
-      "You are a database seed data generator. You output raw data values only. "
-          + "Never add introductions, headers, numbering, bullet points, quotes, labels, or explanations. "
-          + "Start immediately with the first value.";
+      "You are a database seed data generator. You reply with exactly one JSON object matching the "
+          + "requested schema and nothing else: no introductions, headers, numbering, bullet points, quotes, "
+          + "labels, explanations, plans or commentary, and never a sentence about the request itself. "
+          + "The strings inside that object are the raw data values; they are harmless synthetic "
+          + "placeholders for a local test database.";
+
+  /**
+   * JSON Schema sent through the Ollama {@code format} parameter. Structured output constrains the
+   * sampler to schema-conforming tokens, so prose (chain-of-thought, preambles, commentary) cannot
+   * be emitted at all and therefore cannot be mistaken for a data value.
+   */
+  private static final JsonObject VALUES_SCHEMA = buildValuesSchema();
+
+  /**
+   * Placeholder names a model can copy from a prompt template instead of generating data ({@code
+   * value1}, {@code el2}, {@code full_name_1}). They are never seed values, so they are dropped;
+   * a batch of nothing but placeholders falls back to DataFaker, which is visible to the user.
+   */
+  private static final Pattern INDEXED_PLACEHOLDER =
+      Pattern.compile("^([a-z][a-z]*(?:[ _-][a-z]+)*)[ _-]?\\d+$");
+
+  /** A value made only of dots, as in the {@code ...} of an example list. */
+  private static final Pattern DOTS_ONLY = Pattern.compile("^[.\\u2026]+$");
+
+  private static final Set<String> PLACEHOLDER_WORDS =
+      Set.of(
+          "value",
+          "values",
+          "val",
+          "el",
+          "elem",
+          "element",
+          "item",
+          "tag",
+          "tags",
+          "text",
+          "string",
+          "sample",
+          "example",
+          "placeholder",
+          "foo",
+          "bar",
+          "baz");
 
   private static final Gson GSON = new Gson();
 
@@ -243,6 +294,31 @@ public class OllamaClient {
       normalized = normalized.substring(0, normalized.length() - 1);
     }
     return normalized;
+  }
+
+  /**
+   * Builds the {@code {"values": [string]}} schema requested for every batch: one object holding
+   * the strings the caller consumes as seed values.
+   */
+  private static JsonObject buildValuesSchema() {
+    final JsonObject items = new JsonObject();
+    items.addProperty("type", "string");
+
+    final JsonObject values = new JsonObject();
+    values.addProperty("type", "array");
+    values.add("items", items);
+
+    final JsonObject properties = new JsonObject();
+    properties.add("values", values);
+
+    final JsonArray required = new JsonArray();
+    required.add("values");
+
+    final JsonObject schema = new JsonObject();
+    schema.addProperty("type", "object");
+    schema.add("properties", properties);
+    schema.add("required", required);
+    return schema;
   }
 
   static String sanitizeAiOutput(final String value, @Nullable final String columnName) {
@@ -336,7 +412,27 @@ public class OllamaClient {
         || lower.startsWith("we need to produce")
         || lower.startsWith("i need to generate")
         || lower.startsWith("i need to produce")
-        || lower.startsWith("necesito generar");
+        || lower.startsWith("necesito generar")
+        // Reasoning that comments on the request or on the shape of the answer. These phrases
+        // cannot be data: they only appear when the model talks about the task instead of doing
+        // it. "Let me know your thoughts" is a valid value and stays out of this list.
+        || lower.startsWith("let me generate")
+        || lower.startsWith("let me create")
+        || lower.startsWith("let me produce")
+        || lower.startsWith("this seems like")
+        || lower.startsWith("this sounds like")
+        || lower.startsWith("this is for")
+        || lower.contains("the context is")
+        || lower.contains("should be like")
+        || lower.contains("one per line")
+        || lower.contains("raw values only")
+        || lower.contains("words each")
+        || lower.contains("unique values")
+        || lower.contains("unique arrays")
+        || lower.contains("unique lines")
+        || lower.contains("legitimate request")
+        || lower.contains("legitimate use case")
+        || lower.contains("benign request");
   }
 
   static boolean isAiRefusal(final String text) {
@@ -513,6 +609,140 @@ public class OllamaClient {
   }
 
   /**
+   * Extracts the strings of the {@code values} array from a complete answer. Returns an empty list
+   * when the answer is not the requested JSON object (truncated output, or a plain-text answer).
+   */
+  private static List<String> extractJsonValues(final String rawText) {
+    final List<String> extracted = new ArrayList<>();
+    final JsonObject object = tryParseJsonObject(rawText);
+    if (Objects.isNull(object)) {
+      return extracted;
+    }
+    final JsonArray array = findValuesArray(object);
+    if (Objects.isNull(array)) {
+      return extracted;
+    }
+    for (final JsonElement element : array) {
+      if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+        extracted.add(element.getAsString());
+      }
+    }
+    return extracted;
+  }
+
+  @Nullable
+  private static JsonArray findValuesArray(final JsonObject object) {
+    final JsonElement declared = object.get("values");
+    if (Objects.nonNull(declared)
+        && declared.isJsonArray()
+        && containsOnlyStrings(declared.getAsJsonArray())) {
+      return declared.getAsJsonArray();
+    }
+    // The model may name the array differently: any string array in the object is taken as the
+    // requested value list, which keeps the extraction working across model families.
+    for (final Map.Entry<String, JsonElement> entry : object.entrySet()) {
+      if (entry.getValue().isJsonArray()
+          && containsOnlyStrings(entry.getValue().getAsJsonArray())) {
+        return entry.getValue().getAsJsonArray();
+      }
+    }
+    return null;
+  }
+
+  private static boolean containsOnlyStrings(final JsonArray array) {
+    for (final JsonElement element : array) {
+      if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Parses the accumulated answer as a JSON object, tolerating the text a model may write around
+   * it. Ollama can also prefix the object with a stray {@code {"} when thinking and a format schema
+   * are combined (ollama#10929), so that known prefix is repaired before giving up.
+   */
+  @Nullable
+  private static JsonObject tryParseJsonObject(final String rawText) {
+    final String trimmed = rawText.trim();
+    final JsonObject direct = parseJsonObject(trimmed);
+    if (Objects.nonNull(direct)) {
+      return direct;
+    }
+    if (trimmed.startsWith("{\"{")) {
+      final JsonObject repaired = parseJsonObject("{" + trimmed.substring(3));
+      if (Objects.nonNull(repaired)) {
+        return repaired;
+      }
+    }
+    final int firstBrace = trimmed.indexOf('{');
+    final int lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      return parseJsonObject(trimmed.substring(firstBrace, lastBrace + 1));
+    }
+    return null;
+  }
+
+  @Nullable
+  private static JsonObject parseJsonObject(final String candidate) {
+    try {
+      final JsonElement parsed = JsonParser.parseString(candidate);
+      return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+    } catch (final Exception e) {
+      return null;
+    }
+  }
+
+  /**
+   * Checks the {@code {el1,el2,el3}} shape requested for array columns. A reasoning line that talks
+   * about the requested shape ({@code So each line should be like {tag1, tag2, tag3} where ...})
+   * has a different element count and is dropped here; {@code expectedArrayElements} is 0 for
+   * scalar columns, which accept any value.
+   */
+  private static boolean hasExpectedArrayShape(
+      final String value, final int expectedArrayElements, final String columnName) {
+    if (expectedArrayElements <= 0) {
+      return true;
+    }
+    final String body = value.trim();
+    final boolean braced = body.startsWith("{") && body.endsWith("}");
+    final boolean bracketed = body.startsWith("[") && body.endsWith("]");
+    if (!braced && !bracketed) {
+      return false;
+    }
+    final String[] elements = body.substring(1, body.length() - 1).split(",", -1);
+    if (elements.length != expectedArrayElements) {
+      return false;
+    }
+    for (final String element : elements) {
+      if (element.isBlank() || isPlaceholderValue(element, columnName)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Whether a value is a placeholder a model copied from the prompt template rather than a
+   * generated value: the template words themselves, a template word with an index ({@code value1},
+   * {@code el2}), the column name with an index ({@code full_name_1}) or a bare ellipsis.
+   */
+  private static boolean isPlaceholderValue(final String value, @Nullable final String columnName) {
+    final String lower = value.trim().toLowerCase(Locale.ROOT);
+    if (DOTS_ONLY.matcher(lower).matches() || PLACEHOLDER_WORDS.contains(lower)) {
+      return true;
+    }
+    final Matcher indexed = INDEXED_PLACEHOLDER.matcher(lower);
+    if (!indexed.matches()) {
+      return false;
+    }
+    return PLACEHOLDER_WORDS.contains(indexed.group(1))
+        || (Objects.nonNull(columnName)
+            && indexed.group(1).equals(columnName.trim().toLowerCase(Locale.ROOT)));
+  }
+
+  /**
    * Returns the streaming inactivity window: the test-only override when set, otherwise a fraction
    * of the configured request timeout (bounded below by twice the watchdog poll interval).
    */
@@ -627,22 +857,24 @@ public class OllamaClient {
       final int numPredict;
 
       if (isArrayType) {
-        final int elementCount = 3;
+        final int elementCount = ARRAY_ELEMENT_COUNT;
         if (effectiveWordCount == 1) {
           prompt =
-              "%sGenerate exactly %d unique array values for column \"%s\" (table: %s, type: %s). Format: {el1,el2,el3} with %d elements. Single word each. PostgreSQL array syntax. One per line. Raw values only."
-                  .formatted(contextLine, count, columnName, tableName, sqlType, elementCount);
+              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). Answer with a JSON object holding a \"values\" array of exactly %d strings; every string is a PostgreSQL array literal, that is, exactly %d single comma-separated words wrapped in curly braces. Write real words in place of the el1, el2 and el3 of this template: no placeholders, no numbering, no commentary."
+                  .formatted(
+                      contextLine, count, columnName, tableName, sqlType, count, elementCount);
         } else {
           prompt =
-              "%sGenerate exactly %d unique array values for column \"%s\" (table: %s, type: %s). Format: {el1,el2,el3} with %d elements, up to %d words each. PostgreSQL array syntax. One per line. Raw values only."
+              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s), up to %d words per element. Answer with a JSON object holding a \"values\" array of exactly %d strings; every string is a PostgreSQL array literal, that is, exactly %d comma-separated values wrapped in curly braces. Write real words in place of the el1, el2 and el3 of this template: no placeholders, no numbering, no commentary."
                   .formatted(
                       contextLine,
                       count,
                       columnName,
                       tableName,
                       sqlType,
-                      elementCount,
-                      effectiveWordCount);
+                      effectiveWordCount,
+                      count,
+                      elementCount);
         }
         numPredict =
             Math.min(
@@ -657,14 +889,20 @@ public class OllamaClient {
       } else {
         if (effectiveWordCount == 1) {
           prompt =
-              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). One per line. Raw values only."
-                  .formatted(contextLine, count, columnName, tableName, sqlType);
+              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s), one single word each. Answer with a JSON object holding a \"values\" array of exactly %d strings, every one of them a real value for that column: no placeholders, no numbering, no labels, no commentary."
+                  .formatted(contextLine, count, columnName, tableName, sqlType, count);
           numPredict = Math.min(count * BATCH_NUM_PREDICT_FACTOR, MAX_NUM_PREDICT);
         } else {
           prompt =
-              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). Up to %d words each. One per line. Raw values only."
+              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s), up to %d words each. Answer with a JSON object holding a \"values\" array of exactly %d strings, every one of them a real value for that column: no placeholders, no numbering, no labels, no commentary."
                   .formatted(
-                      contextLine, count, columnName, tableName, sqlType, effectiveWordCount);
+                      contextLine,
+                      count,
+                      columnName,
+                      tableName,
+                      sqlType,
+                      effectiveWordCount,
+                      count);
           numPredict =
               Math.min(
                   Math.max(
@@ -687,7 +925,8 @@ public class OllamaClient {
               .POST(HttpRequest.BodyPublishers.ofString(requestBody))
               .build();
 
-      return streamGenerateValues(request, columnName, onValueAdded);
+      return streamGenerateValues(
+          request, columnName, isArrayType ? ARRAY_ELEMENT_COUNT : 0, onValueAdded);
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
@@ -727,12 +966,21 @@ public class OllamaClient {
    * retryable failure instead of a full-timeout wait, and the caller can split the batch and retry
    * on a smaller size.
    *
-   * <p>Ollama emits the {@code response} field incrementally: each JSON line carries a token (or
-   * token chunk) of the generated text, and a chunk may carry a newline character that completes a
-   * value line. Completed value lines are sanitized through {@link #sanitizeAiOutput} as soon as
-   * they appear, and every time a new value is added {@code onValueAdded} is invoked, so the caller
-   * can advance the progress bar per value instead of per batch.
+   * <p>Ollama emits the response incrementally: each NDJSON line carries a token (or token chunk)
+   * of the generated text in its {@code response} field. Because the request pins a JSON schema
+   * through the {@code format} parameter, that text is a {@code {"values": [...]}} object whose
+   * string literals are extracted as soon as they close ({@link JsonValueScanner}); every new value
+   * invokes {@code onValueAdded}, so the caller advances the progress bar per value instead of per
+   * batch. Anything outside that array — preambles, stray reasoning, a {@code thinking} field — is
+   * never read as a value.
    *
+   * <p>Servers that predate structured output ignore {@code format} altogether. When the
+   * accumulated text holds no JSON string array, the legacy line-based extraction runs over it as a
+   * fallback, so those setups keep producing values.
+   *
+   * @param expectedArrayElements element count required for array columns ({@code 0} for scalars);
+   *     values with a different count describe the requested shape instead of being data, so they
+   *     are dropped
    * @param onValueAdded invoked each time a new sanitized, distinct value is added to the batch
    *     result; may be {@code null} to skip live progress
    * @return a future completing with the list of distinct, sanitized values
@@ -740,15 +988,22 @@ public class OllamaClient {
   private CompletableFuture<List<String>> streamGenerateValues(
       final HttpRequest request,
       @NotNull final String columnName,
+      final int expectedArrayElements,
       @Nullable final Runnable onValueAdded) {
     final long inactivityTimeoutMillis = inactivityWindowMillis();
 
     final CompletableFuture<List<String>> result = new CompletableFuture<>();
     final List<String> values = new ArrayList<>();
-    final StringBuilder lineBuffer = new StringBuilder();
     // Accumulates every raw token chunk so that, when the model yields no usable values, the
     // thrown error can include a snippet of what the model actually returned (diagnosability).
     final StringBuilder rawOutput = new StringBuilder();
+    // Walks the accumulated answer as it grows, so each value is delivered when its closing quote
+    // arrives instead of waiting for the whole object.
+    final JsonValueScanner scanner = new JsonValueScanner(rawOutput);
+    // Plain-text path, used until (and unless) the JSON contract shows up: complete lines are
+    // handed out as they arrive, which keeps the per-value progress working for servers that
+    // ignore `format`.
+    final StringBuilder lineBuffer = new StringBuilder();
     // Last instant at which a token was received. Initialized to now so the watchdog doesn't fire
     // before the first token (prompt evaluation can take a while before generation starts).
     final AtomicReference<Long> lastTokenNanos = new AtomicReference<>(System.nanoTime());
@@ -860,10 +1115,19 @@ public class OllamaClient {
                   // Mark activity: a line arrived from the server.
                   lastTokenNanos.set(System.nanoTime());
                   processStreamLine(
-                      ndjsonLine, columnName, lineBuffer, rawOutput, values, onValueAdded);
+                      ndjsonLine,
+                      columnName,
+                      scanner,
+                      lineBuffer,
+                      rawOutput,
+                      expectedArrayElements,
+                      values,
+                      onValueAdded);
                 }
-                // Flush any trailing text that the model emitted without a final newline.
-                flushLineBuffer(lineBuffer, columnName, values, onValueAdded);
+                // The stream ended: settle what the scanner could not close and, when the text is
+                // not the requested JSON shape, fall back to the legacy line-based extraction.
+                collectRemainingValues(
+                    scanner, rawOutput, columnName, expectedArrayElements, values, onValueAdded);
               } catch (final IOException ioException) {
                 cancelWatchdog(watchdog);
                 if (!result.isDone()) {
@@ -913,76 +1177,145 @@ public class OllamaClient {
 
   /**
    * Processes one NDJSON line from the Ollama stream. Each line is a JSON object carrying a token
-   * chunk in its {@code response} field. The chunk may contain partial value lines and newline
-   * characters; complete value lines (terminated by {@code \n}) are sanitized and added to {@code
-   * values} as soon as they appear, invoking the progress callback each time the count grows and
-   * keeping memory usage bounded regardless of {@code num_predict}.
+   * chunk in its {@code response} field; a reasoning model may also send its chain-of-thought in a
+   * separate {@code thinking} field, which is never a seed value and is ignored here.
    *
-   * <p>Reasoning models may emit their chain-of-thought inside {@code response} instead of real
-   * values, so any thinking block is discarded before a line is handed out.
+   * <p>The chunk is appended to the accumulated answer and handed to the JSON scanner, which
+   * delivers every string of the requested {@code values} array the moment its closing quote
+   * arrives, so the progress callback keeps firing value by value while the stream is still open.
+   * Until that array shows up, the text is read as plain lines instead, so a server or a model that
+   * ignores the {@code format} schema keeps the previous behaviour.
    */
   private void processStreamLine(
       final String ndjsonLine,
       final String columnName,
+      final JsonValueScanner scanner,
       final StringBuilder lineBuffer,
       final StringBuilder rawOutput,
+      final int expectedArrayElements,
       final List<String> values,
       @Nullable final Runnable onValueAdded) {
     try {
       final JsonObject json = JsonParser.parseString(ndjsonLine).getAsJsonObject();
-      final String chunk =
-          json.has("response") && !json.get("response").isJsonNull()
-              ? json.get("response").getAsString()
-              : "";
-      rawOutput.append(chunk);
-      lineBuffer.append(chunk);
-      // Drop a chain-of-thought block as soon as its closing tag shows up, and hold back complete
-      // lines while an opening tag is still unmatched: otherwise reasoning lines (which are long
-      // and contain newlines) reach the caller as the first values of the column.
-      discardClosedThinking(lineBuffer);
-      if (isInsideThinking(lineBuffer)) {
+      if (!json.has("response") || json.get("response").isJsonNull()) {
         return;
       }
-      int newlineIndex;
-      while ((newlineIndex = lineBuffer.indexOf("\n")) >= 0) {
-        final String completeLine = lineBuffer.substring(0, newlineIndex);
-        lineBuffer.delete(0, newlineIndex + 1);
-        addSanitizedValue(completeLine, columnName, values, onValueAdded);
+      final String chunk = json.get("response").getAsString();
+      rawOutput.append(chunk);
+      if (!scanner.hasSeenValuesKey() && scanner.locateValuesArray()) {
+        // The answer is the JSON object after all, so whatever the plain-text path collected
+        // before it was prose about the request, never a value.
+        values.clear();
+        lineBuffer.setLength(0);
       }
+      if (scanner.hasSeenValuesKey()) {
+        scanner.scan(
+            value ->
+                addSanitizedValue(value, columnName, expectedArrayElements, values, onValueAdded));
+        return;
+      }
+      appendPlainTextChunk(
+          chunk, lineBuffer, columnName, expectedArrayElements, values, onValueAdded);
     } catch (final Exception e) {
       log.debug("Skipping malformed Ollama stream line: " + e.getMessage());
     }
   }
 
-  /** Flushes any trailing text left in the buffer when the stream ends without a final newline. */
-  private void flushLineBuffer(
+  /**
+   * Appends one token chunk to the plain-text buffer and hands out every line it completes, which
+   * is how values are streamed when the answer carries no JSON contract.
+   */
+  private void appendPlainTextChunk(
+      final String chunk,
       final StringBuilder lineBuffer,
       final String columnName,
+      final int expectedArrayElements,
       final List<String> values,
       @Nullable final Runnable onValueAdded) {
-    if (lineBuffer.length() > 0) {
-      discardClosedThinking(lineBuffer);
-      if (isInsideThinking(lineBuffer)) {
-        // Truncated mid-thought (num_predict exhausted): the trailing text is reasoning.
-        lineBuffer.setLength(0);
-        return;
-      }
-      addSanitizedValue(lineBuffer.toString(), columnName, values, onValueAdded);
-      lineBuffer.setLength(0);
+    lineBuffer.append(chunk);
+    // Drop a chain-of-thought block as soon as its closing tag shows up, and hold back complete
+    // lines while an opening tag is still unmatched: otherwise reasoning lines (which are long and
+    // contain newlines) reach the caller as the first values of the column.
+    discardClosedThinking(lineBuffer);
+    if (isInsideThinking(lineBuffer)) {
+      return;
+    }
+    int newlineIndex;
+    while ((newlineIndex = lineBuffer.indexOf("\n")) >= 0) {
+      final String completeLine = lineBuffer.substring(0, newlineIndex);
+      lineBuffer.delete(0, newlineIndex + 1);
+      addSanitizedValue(completeLine, columnName, expectedArrayElements, values, onValueAdded);
+    }
+  }
+
+  /**
+   * Settles the answer once the stream is closed. When the text is the requested JSON contract, the
+   * end-of-stream parse is authoritative and adds any string the scanner could not close
+   * incrementally; when the answer has no {@code values} array at all (a server or a model that
+   * ignored the {@code format} schema), the plain-text extraction takes over, which is exactly the
+   * behaviour this client had before structured output.
+   */
+  private void collectRemainingValues(
+      final JsonValueScanner scanner,
+      final StringBuilder rawOutput,
+      final String columnName,
+      final int expectedArrayElements,
+      final List<String> values,
+      @Nullable final Runnable onValueAdded) {
+    final String rawText = rawOutput.toString();
+    if (!scanner.hasSeenValuesKey()) {
+      addPlainTextValues(rawText, columnName, expectedArrayElements, values, onValueAdded);
+      return;
+    }
+    for (final String jsonValue : extractJsonValues(rawText)) {
+      addSanitizedValue(jsonValue, columnName, expectedArrayElements, values, onValueAdded);
+    }
+  }
+
+  /**
+   * Legacy extraction: one value per line. Used when the answer carries no JSON contract, so the
+   * previous chain-of-thought handling stays in place as the safety net.
+   */
+  private void addPlainTextValues(
+      final String rawText,
+      final String columnName,
+      final int expectedArrayElements,
+      final List<String> values,
+      @Nullable final Runnable onValueAdded) {
+    final StringBuilder buffer = new StringBuilder(rawText);
+    discardClosedThinking(buffer);
+    if (isInsideThinking(buffer)) {
+      // Truncated mid-thought (num_predict exhausted): the trailing text is reasoning.
+      return;
+    }
+    int newlineIndex;
+    while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+      final String completeLine = buffer.substring(0, newlineIndex);
+      buffer.delete(0, newlineIndex + 1);
+      addSanitizedValue(completeLine, columnName, expectedArrayElements, values, onValueAdded);
+    }
+    if (buffer.length() > 0) {
+      addSanitizedValue(buffer.toString(), columnName, expectedArrayElements, values, onValueAdded);
     }
   }
 
   private void addSanitizedValue(
       final String rawLine,
       final String columnName,
+      final int expectedArrayElements,
       final List<String> values,
       @Nullable final Runnable onValueAdded) {
     final String sanitized = sanitizeAiOutput(rawLine, columnName);
-    if (Objects.nonNull(sanitized) && !sanitized.isBlank() && !values.contains(sanitized)) {
-      values.add(sanitized);
-      if (Objects.nonNull(onValueAdded)) {
-        onValueAdded.run();
-      }
+    if (Objects.isNull(sanitized)
+        || sanitized.isBlank()
+        || isPlaceholderValue(sanitized, columnName)
+        || !hasExpectedArrayShape(sanitized, expectedArrayElements, columnName)
+        || values.contains(sanitized)) {
+      return;
+    }
+    values.add(sanitized);
+    if (Objects.nonNull(onValueAdded)) {
+      onValueAdded.run();
     }
   }
 
@@ -1003,6 +1336,11 @@ public class OllamaClient {
     // Reasoning models spend the token budget on hidden thinking, leaving "response"
     // empty; seed generation never needs chain-of-thought, so it stays off.
     body.addProperty("think", false);
+    // Structured output: the sampler is constrained to this schema, so prose (chain-of-thought,
+    // preambles, commentary about the request) cannot be emitted at all and therefore cannot be
+    // mistaken for a value. Servers or models that ignore `format` still get the plain-text
+    // extraction path as a fallback.
+    body.add("format", VALUES_SCHEMA);
     body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
     body.add("options", options);
 
@@ -1050,6 +1388,138 @@ public class OllamaClient {
               });
     } catch (final Exception e) {
       return CompletableFuture.failedFuture(e);
+    }
+  }
+
+  /**
+   * Incremental scanner for the {@code {"values": [string]}} contract requested through the Ollama
+   * {@code format} parameter.
+   *
+   * <p>It reads the answer as it is appended, finds the {@code "values"} array and walks its
+   * elements with a small state machine, so every string literal is decoded and delivered as soon
+   * as its closing quote arrives. Nothing outside that array is ever handed out: prose cannot
+   * become a value even if a model manages to produce it.
+   */
+  private static final class JsonValueScanner {
+
+    /** The array key requested by the schema sent through the Ollama {@code format} parameter. */
+    private static final String VALUES_KEY = "\"values\"";
+
+    private static final int VALUES_KEY_LENGTH = VALUES_KEY.length();
+
+    /** Characters kept for a re-scan when the key may still be arriving split across chunks. */
+    private static final int VALUES_KEY_LOOKBEHIND = VALUES_KEY_LENGTH - 1;
+
+    private final StringBuilder text;
+
+    /** Position from which the {@code "values"} key is searched on the next chunk. */
+    private int searchFrom;
+
+    /** Position of the next character to walk inside the array. */
+    private int cursor;
+
+    /** Index of the first character of the literal being read, or -1 outside a string. */
+    private int stringStart = -1;
+
+    private boolean insideValuesArray;
+    private boolean insideString;
+    private boolean escaped;
+    private boolean valuesKeySeen;
+
+    JsonValueScanner(final StringBuilder text) {
+      this.text = text;
+    }
+
+    /** Whether the answer carries the requested key, i.e. it tried to honour the JSON contract. */
+    boolean hasSeenValuesKey() {
+      return valuesKeySeen;
+    }
+
+    /**
+     * Looks for the {@code values} array without emitting anything, so the caller can decide what
+     * to do with whatever it collected before the object showed up.
+     */
+    boolean locateValuesArray() {
+      return insideValuesArray || enterValuesArray();
+    }
+
+    /** Scans everything appended since the last call and emits each complete string it closes. */
+    void scan(final Consumer<String> onElement) {
+      if (!locateValuesArray()) {
+        return;
+      }
+      scanElements(onElement);
+    }
+
+    /** Locates the opening bracket of the {@code values} array, waiting for it across chunks. */
+    private boolean enterValuesArray() {
+      final int keyIndex = text.indexOf(VALUES_KEY, searchFrom);
+      if (keyIndex < 0) {
+        searchFrom = Math.max(0, text.length() - VALUES_KEY_LOOKBEHIND);
+        return false;
+      }
+      searchFrom = keyIndex;
+      final int bracketIndex = text.indexOf("[", keyIndex + VALUES_KEY_LENGTH);
+      if (bracketIndex < 0) {
+        return false;
+      }
+      valuesKeySeen = true;
+      insideValuesArray = true;
+      cursor = bracketIndex + 1;
+      searchFrom = cursor;
+      return true;
+    }
+
+    /** Walks the array elements, emitting the text between each pair of unescaped quotes. */
+    private void scanElements(final Consumer<String> onElement) {
+      while (cursor < text.length()) {
+        final char current = text.charAt(cursor);
+        if (escaped) {
+          escaped = false;
+          cursor++;
+          continue;
+        }
+        if (current == '\\') {
+          escaped = true;
+          cursor++;
+          continue;
+        }
+        if (current == '"') {
+          if (insideString) {
+            insideString = false;
+            emit(stringStart, cursor, onElement);
+            stringStart = -1;
+          } else {
+            insideString = true;
+            stringStart = cursor + 1;
+          }
+          cursor++;
+          continue;
+        }
+        if (!insideString && current == ']') {
+          // The array closed: everything the model adds afterwards is not a value.
+          insideValuesArray = false;
+          cursor++;
+          return;
+        }
+        cursor++;
+      }
+    }
+
+    /** Decodes the JSON escapes of a literal and hands the resulting value to the caller. */
+    private void emit(final int start, final int end, final Consumer<String> onElement) {
+      if (start < 0 || end < start) {
+        return;
+      }
+      try {
+        final String decoded =
+            GSON.fromJson("\"" + text.substring(start, end) + "\"", String.class);
+        if (Objects.nonNull(decoded)) {
+          onElement.accept(decoded);
+        }
+      } catch (final Exception e) {
+        log.debug("Skipping malformed JSON string in Ollama response: " + e.getMessage());
+      }
     }
   }
 

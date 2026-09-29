@@ -159,9 +159,12 @@ solely on random/faker values, you can leverage AI to produce meaningful content
 - **Smart Defaults**: Columns named `description`, `title`, `bio`, `email`, etc. are pre-selected automatically.
 - **Batch Generation**: AI values are generated in batches with retries and deduplication, and streamed per value
   as they arrive.
-- **Reasoning-Safe Output**: Chain-of-thought text emitted by reasoning models (Qwen3/DeepSeek style) is dropped
-  from the response stream and reasoning-only lines are rejected, so the first rows of an AI column always hold
-  real requested values instead of the model's thinking.
+- **Reasoning-Safe Output**: every AI call requests a JSON schema through Ollama's `format` parameter, so the
+  sampler can only produce the `{"values": [...]}` object and chain-of-thought prose (Qwen3/DeepSeek style)
+  cannot turn into a value. If a server or model ignores the schema, the plain-text path still drops reasoning
+  blocks and reasoning-only lines, and values of array columns must carry exactly the requested element count.
+  Prompts carry no copyable sample values, and placeholder-shaped answers (`value1`, `full_name_2`, `...`) are
+  rejected, so a model that just echoes the template falls back to DataFaker instead of seeding them.
 - **Configurable Word Count**: Control output length from a single word up to full paragraphs.
 - **Request Timeout Control**: Configure the Ollama request timeout from settings.
 - **Multi-Bar Progress Dialog**: A live dialog shows four progress bars — overall work units, tables completed, AI

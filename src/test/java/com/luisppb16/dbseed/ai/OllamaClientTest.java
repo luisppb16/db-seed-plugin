@@ -11,6 +11,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class OllamaClientTest {
 
@@ -171,6 +173,21 @@ class OllamaClientTest {
           .isNull();
     }
 
+    @ParameterizedTest
+    @ValueSource(
+        strings = {
+          "This seems like a benign request for military simulation data.",
+          "Let me generate 12 unique text values, one per line.",
+          "Let me create 12 unique tag strings for the column.",
+          "So each line should be like {tag1, tag2, tag3} where each tag is up to 10 words.",
+          "The context is \"Military simulations on foreign territory\", so tags should relate.",
+          "Raw values only, no numbering and no quotes.",
+          "Unique values from a curated keyword list."
+        })
+    void leakedReasoningPhrases_returnNull(final String phrase) {
+      assertThat(OllamaClient.sanitizeAiOutput(phrase, "tags")).isNull();
+    }
+
     @Test
     void valueStartingWithOrdinaryWords_notDropped() {
       // Guard against an over-eager reasoning filter: only instruction-restating text is dropped.
@@ -178,6 +195,8 @@ class OllamaClientTest {
           .isEqualTo("Let me know your thoughts");
       assertThat(OllamaClient.sanitizeAiOutput("Under the same sky", "title"))
           .isEqualTo("Under the same sky");
+      assertThat(OllamaClient.sanitizeAiOutput("Each tag was reviewed by hand", "tags"))
+          .isEqualTo("Each tag was reviewed by hand");
     }
   }
 

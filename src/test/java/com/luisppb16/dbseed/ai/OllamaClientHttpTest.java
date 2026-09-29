@@ -404,7 +404,150 @@ class OllamaClientHttpTest {
       assertThat(capturedBody.get())
           .contains("\"model\"")
           .contains("\"stream\":true")
-          .contains("\"think\":false");
+          .contains("\"think\":false")
+          // Structured output: the sampler is constrained to the value schema, so reasoning prose
+          // cannot be emitted at all.
+          .contains("\"format\"")
+          .contains("\"values\"")
+          .contains("\"array\"")
+          // A prompt example with numbered placeholders is copied verbatim by small models, so the
+          // prompt carries none.
+          .doesNotContain("value1")
+          .doesNotContain("...");
+    }
+
+    @Test
+    void promptPlaceholders_neverBecomeValues() throws Exception {
+      // Reported on a small local model: it answered with the template names of the prompt instead
+      // of generating data. Those must never reach the script.
+      respondWithNdjson("{\"values\": [\"value1\", \"full_name_2\", \"...\", \"Marta Ruiz\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "full_name", "varchar", 2, 4)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("Marta Ruiz");
+    }
+
+    @Test
+    void arrayTemplatePlaceholders_dropped() throws Exception {
+      respondWithNdjson("{\"values\": [\"{el1,el2,el3}\", \"{red,green,blue}\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{red,green,blue}");
+    }
+
+    @Test
+    void jsonContract_extractsOnlyTheRequestedValues() throws Exception {
+      // Prose may surround the object when a model ignores the schema: only the array is data.
+      respondWithNdjson(
+          "Looking at the request, here is the answer:\n",
+          "{\"values\": [\"valor1\", \"valor2\", \"valor3\"]}\n");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2", "valor3");
+    }
+
+    @Test
+    void jsonContract_progressCallbackFiresPerString() throws Exception {
+      final AtomicInteger addedCalls = new AtomicInteger();
+      respondWithNdjson("{\"values\": [\"valor1\", ", "\"valor2\", \"valor3\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues(
+                  "online store", "users", "city", "varchar", 1, 3, addedCalls::incrementAndGet)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2", "valor3");
+      assertThat(addedCalls.get()).isEqualTo(3);
+    }
+
+    @Test
+    void jsonContract_escapedStringsDecoded() throws Exception {
+      respondWithNdjson("{\"values\": [\"caf\\u00e9\", \"say \\\"hi\\\"\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 2)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("café", "say \"hi\"");
+    }
+
+    @Test
+    void truncatedJsonContract_keepsClosedValues() throws Exception {
+      respondWithNdjson("{\"values\": [\"valor1\", \"valor2\"");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1", "valor2");
+    }
+
+    @Test
+    void separateThinkingField_ignored() throws Exception {
+      // Ollama may split reasoning into its own `thinking` field: it is never a seed value.
+      HANDLER.set(
+          exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream os = exchange.getResponseBody()) {
+              os.write(
+                  ("{\"thinking\":\"The user wants three city names.\",\"response\":\"\"}\n"
+                          + "{\"response\":\"{\\\"values\\\": [\\\"valor1\\\"]}\","
+                          + "\"done\":false}\n"
+                          + "{\"response\":\"\",\"done\":true}\n")
+                      .getBytes(StandardCharsets.UTF_8));
+              os.flush();
+            }
+            exchange.close();
+          });
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("valor1");
+    }
+
+    @Test
+    void jsonContract_arrayColumn_keepsThreeElementValues() throws Exception {
+      respondWithNdjson("{\"values\": [\"{python,cli,linux}\", \"{java,gradle,idea}\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 3, 2)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{python,cli,linux}", "{java,gradle,idea}");
+    }
+
+    @Test
+    void arrayColumn_valueWithWrongElementCount_dropped() throws Exception {
+      // Reported leak shape: reasoning about the requested array is chopped into pieces that look
+      // like values. Only the requested element count is accepted.
+      respondWithNdjson("{tag1,tag2}\n", "{python,cli,linux}\n");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 3, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{python,cli,linux}");
     }
 
     @Test

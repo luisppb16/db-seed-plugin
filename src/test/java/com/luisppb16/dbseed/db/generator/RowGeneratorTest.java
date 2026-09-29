@@ -455,7 +455,7 @@ class RowGeneratorTest {
   @Test
   void aiValues_appliedToRowsAndCounted() throws Exception {
     final FakeOllamaServer server =
-        new FakeOllamaServer(200, "{\"response\":\"val1\\nval2\\nval3\"}");
+        new FakeOllamaServer(200, "{\"response\":\"Marta Ruiz\\nAna Gil\\nLuis Pepe\"}");
     try {
       final Table t =
           new Table(
@@ -470,7 +470,7 @@ class RowGeneratorTest {
       gen.generateAiValuesForColumn(varcharCol("name"));
 
       assertThat(rows.stream().map(r -> r.values().get("name")))
-          .containsExactly("val1", "val2", "val3");
+          .containsExactly("Marta Ruiz", "Ana Gil", "Luis Pepe");
       assertThat(gen.getAiAppliedCounts()).containsEntry("name", 3);
       assertThat(gen.getAiColumnErrors()).isEmpty();
     } finally {

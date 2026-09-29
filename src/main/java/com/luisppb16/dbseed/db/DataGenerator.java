@@ -420,7 +420,9 @@ public class DataGenerator {
     final GenerationProgressListener progress = tracker.getProgressListener();
     progress.onAiPhaseStarted(realAiWork, (int) totalAiColumns);
 
-    tracker.setText("Phase 2/4 (AI): Col 0/" + totalAiColumns);
+    // The first line names the phase only: the column being generated is named by the AI bars,
+    // which are driven by the batch record itself.
+    tracker.setText("Phase 2/4 (AI)");
     tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
 
     futures.addAll(
@@ -441,11 +443,6 @@ public class DataGenerator {
                                     + ex.getMessage());
                           } finally {
                             final int completed = completedColumns.incrementAndGet();
-                            tracker.setText(
-                                "Phase 2/4 (AI): Col "
-                                    .concat(String.valueOf(completed))
-                                    .concat("/")
-                                    .concat(String.valueOf(totalAiColumns)));
                             tracker
                                 .getProgressListener()
                                 .onAiColumnCompleted(

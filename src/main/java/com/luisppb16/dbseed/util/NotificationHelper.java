@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.util;
 
 import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationGroup;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
@@ -68,5 +69,30 @@ public class NotificationHelper {
     final Notification notification =
         notificationGroup().createNotification(title, message, NotificationType.WARNING);
     notification.notify(project);
+  }
+
+  /**
+   * Shows an information notification carrying a single action, and hands the notification back so
+   * the caller can expire it once the action is no longer meaningful.
+   *
+   * @param project project the notification belongs to; {@code null} for application-level notices
+   * @param title notification title
+   * @param message notification body
+   * @param actionText label of the action link
+   * @param action runnable executed when the link is clicked
+   * @return the notification that was shown
+   */
+  public static Notification notifyWithAction(
+      @Nullable final Project project,
+      @NotNull final String title,
+      @NotNull final String message,
+      @NotNull final String actionText,
+      @NotNull final Runnable action) {
+    final Notification notification =
+        notificationGroup().createNotification(title, message, NotificationType.INFORMATION);
+    notification.setSuggestionType(true);
+    notification.addAction(NotificationAction.createSimple(actionText, action));
+    notification.notify(project);
+    return notification;
   }
 }

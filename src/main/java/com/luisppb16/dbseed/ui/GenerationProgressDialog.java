@@ -9,17 +9,24 @@ package com.luisppb16.dbseed.ui;
 
 import static com.luisppb16.dbseed.model.Constant.APP_NAME;
 
+import com.intellij.notification.Notification;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
+import com.luisppb16.dbseed.db.AiBatchProgress;
 import com.luisppb16.dbseed.db.GenerationProgressListener;
+import com.luisppb16.dbseed.util.NotificationHelper;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.awt.Window;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.JButton;
 import javax.swing.JComponent;
@@ -35,14 +42,18 @@ import org.jetbrains.annotations.NotNull;
  */
 public final class GenerationProgressDialog extends DialogWrapper {
 
-  /** Horizontal scale applied to the panel's natural width. */
+  /** Horizontal scale applied to the natural width of the bars. */
   private static final int WIDTH_FACTOR = 2;
 
   private final AtomicReference<ProgressIndicator> indicatorRef;
   private final GenerationProgressModel model;
+  private final Project project;
+  /** Detail slot of the header: the fixed-slot AI batch line, or the plain text line. */
+  private final AiBatchDetailLine detailLine = new AiBatchDetailLine();
+  /** Balloon offering to bring the dialog back; {@code null} while the dialog is on screen. */
+  private Notification backgroundNotification;
   private JPanel centerPanel;
   private JBLabel phaseLabel;
-  private JBLabel detailLabel;
   private JProgressBar generalBar;
   private JProgressBar tablesBar;
   private JProgressBar aiColumnsBar;
@@ -52,6 +63,9 @@ public final class GenerationProgressDialog extends DialogWrapper {
   private JBLabel aiValuesCountLabel;
   private JPanel aiColumnsRow;
   private JPanel aiValuesRow;
+
+  /** Visibility last applied to the AI rows; the rows are built visible, hence the {@code true}. */
+  private boolean lastAiVisible = true;
 
   /**
    * @param project project used as dialog parent/scope
@@ -67,6 +81,7 @@ public final class GenerationProgressDialog extends DialogWrapper {
     super(project, false);
     Objects.requireNonNull(indicatorRef, "indicatorRef cannot be null");
     this.indicatorRef = indicatorRef;
+    this.project = project;
     setModal(false);
     setTitle(APP_NAME.getValue() + " - Seed generation progress");
     this.model = new GenerationProgressModel(this::syncFromModel);
@@ -94,11 +109,12 @@ public final class GenerationProgressDialog extends DialogWrapper {
     return model;
   }
 
-  /** Closes the dialog once (guarded for double-close). */
+  /** Closes the dialog once (guarded for double-close), retiring the balloon it may have left. */
   public void closeSafely() {
     if (isDisposed()) {
       return;
     }
+    expireBackgroundNotification();
     close(DialogWrapper.CANCEL_EXIT_CODE);
   }
 
@@ -126,7 +142,7 @@ public final class GenerationProgressDialog extends DialogWrapper {
 
   @Override
   protected Action @NotNull [] createActions() {
-    return new Action[] {getCancelAction()};
+    return new Action[] {new BackgroundAction(), getCancelAction()};
   }
 
   @Override
@@ -139,8 +155,21 @@ public final class GenerationProgressDialog extends DialogWrapper {
     if (isDisposed()) {
       return;
     }
+    // The first line names the phase only; the AI bars below carry the column being generated.
     phaseLabel.setText(Objects.requireNonNullElse(model.getPhaseText(), ""));
-    detailLabel.setText(Objects.requireNonNullElse(model.getDetailText(), ""));
+
+    // While a batch is in flight the detail slot renders into fixed slots (only digits change);
+    // every other phase uses the plain text line of the same slot. The model hands the record out
+    // every 2 seconds at most, so the digits never move faster than the eye can read.
+    final AiBatchProgress batchProgress = model.batchLineForRender();
+    if (Objects.nonNull(batchProgress)) {
+      detailLine.render(batchProgress);
+    } else {
+      detailLine.showText(model.getDetailText());
+    }
+    // Both AI bars name the column of the batch in flight; with no batch running they show counts.
+    final String aiColumnLabel =
+        Objects.nonNull(batchProgress) ? batchProgress.columnLabel() : null;
 
     generalBar.setValue(percentageOf(model.getGeneralFraction()));
 
@@ -149,11 +178,14 @@ public final class GenerationProgressDialog extends DialogWrapper {
         rowLabel(model.getTablesDone(), model.getTablesTotal(), model.getLastTableName()));
 
     final boolean showAi = model.isAiPhaseVisible();
-    aiColumnsRow.setVisible(showAi);
-    aiValuesRow.setVisible(showAi);
-    if (!showAi) {
+    if (lastAiVisible != showAi) {
+      lastAiVisible = showAi;
+      aiColumnsRow.setVisible(showAi);
+      aiValuesRow.setVisible(showAi);
       centerPanel.revalidate();
       centerPanel.repaint();
+    }
+    if (!showAi) {
       return;
     }
     if (model.isAiPhaseIndeterminate()) {
@@ -167,24 +199,57 @@ public final class GenerationProgressDialog extends DialogWrapper {
     aiColumnsBar.setValue(
         percentageOf(ratioOf(model.getAiColumnsDone(), model.getAiColumnsTotal())));
     aiColumnsCountLabel.setText(
-        rowLabel(model.getAiColumnsDone(), model.getAiColumnsTotal(), model.getLastAiColumnName()));
+        rowLabel(model.getAiColumnsDone(), model.getAiColumnsTotal(), aiColumnLabel));
 
     aiValuesBar.setIndeterminate(false);
     aiValuesBar.setValue(percentageOf(ratioOf(model.getAiValuesDone(), model.getAiValuesTotal())));
     aiValuesCountLabel.setText(
-        rowLabel(model.getAiValuesDone(), model.getAiValuesTotal(), model.getLastAiColumnName()));
+        rowLabel(model.getAiValuesDone(), model.getAiValuesTotal(), aiColumnLabel));
+  }
 
-    centerPanel.revalidate();
-    centerPanel.repaint();
+  /**
+   * EDT-only: hides the window without cancelling or disposing it ({@code close()} would dispose
+   * the dialog for good) and leaves a balloon to bring it back. The generation keeps running and
+   * the IDE status bar keeps showing its progress.
+   */
+  private void hideToBackground() {
+    getWindow().setVisible(false);
+    backgroundNotification =
+        NotificationHelper.notifyWithAction(
+            project,
+            APP_NAME.getValue(),
+            "Seed generation is still running in the background.",
+            "Show progress",
+            this::reopen);
+  }
+
+  /** EDT-only: brings the hidden window back to the front and retires its balloon. */
+  private void reopen() {
+    if (isDisposed()) {
+      return;
+    }
+    expireBackgroundNotification();
+    final Window window = getWindow();
+    window.setVisible(true);
+    window.toFront();
+  }
+
+  /** Retires the balloon offering to reopen the dialog, when one is still up. */
+  private void expireBackgroundNotification() {
+    if (Objects.nonNull(backgroundNotification)) {
+      backgroundNotification.expire();
+      backgroundNotification = null;
+    }
   }
 
   private JComponent buildCenterPanel() {
     centerPanel = new JPanel(new BorderLayout(0, 10));
     final JPanel header = new JPanel(new BorderLayout(0, 2));
     phaseLabel = new JBLabel();
-    detailLabel = new JBLabel();
+    // A single child in the SOUTH slot: the detail slot stacks both renderings as cards, since a
+    // BorderLayout only ever lays out the last child added to a region.
     header.add(phaseLabel, BorderLayout.NORTH);
-    header.add(detailLabel, BorderLayout.SOUTH);
+    header.add(detailLine.component(), BorderLayout.SOUTH);
     centerPanel.add(header, BorderLayout.NORTH);
 
     final JPanel barsPanel = new JPanel(new GridLayout(0, 1, 0, 6));
@@ -206,8 +271,14 @@ public final class GenerationProgressDialog extends DialogWrapper {
     barsPanel.add(aiValuesRow);
 
     centerPanel.add(barsPanel, BorderLayout.CENTER);
+    // Only the bars are widened: their tracks are the part that uses the room. The detail line,
+    // with
+    // every slot of its widest stage reserved, is taken at its own width — doubling it made the
+    // dialog twice as wide as before.
     final Dimension natural = centerPanel.getPreferredSize();
-    centerPanel.setPreferredSize(new Dimension(natural.width * WIDTH_FACTOR, natural.height));
+    final Dimension bars = barsPanel.getPreferredSize();
+    centerPanel.setPreferredSize(
+        new Dimension(Math.max(bars.width * WIDTH_FACTOR, natural.width), natural.height));
     return centerPanel;
   }
 
@@ -221,5 +292,18 @@ public final class GenerationProgressDialog extends DialogWrapper {
       row.add(countLabel, BorderLayout.EAST);
     }
     return row;
+  }
+
+  /** Sends the dialog to the background, leaving a balloon that brings it back. */
+  private final class BackgroundAction extends AbstractAction {
+    private BackgroundAction() {
+      super("Background");
+      putValue(MNEMONIC_KEY, KeyEvent.VK_B);
+    }
+
+    @Override
+    public void actionPerformed(final ActionEvent event) {
+      hideToBackground();
+    }
   }
 }

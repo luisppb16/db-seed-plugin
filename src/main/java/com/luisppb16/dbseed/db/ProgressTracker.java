@@ -129,6 +129,29 @@ public final class ProgressTracker {
     }
     indicator.setText2(text);
     progressListener.onGeneral(currentFraction(completed.get()), null, text);
+    // A free-form text replaces the structured AI batch line, when one was being shown.
+    progressListener.onAiBatchProgress(null);
+  }
+
+  /**
+   * Set the AI batch detail line from its raw numbers. The IDE widget receives the equivalent plain
+   * text, while the listener receives the numbers themselves so that consumers can keep the static
+   * words of the line pinned and update only the digits — the line stays readable no matter how
+   * fast values stream in.
+   *
+   * <p>Every event is published: the refresh cadence of the dialog line belongs to the view, which
+   * samples the freshest line it has (see {@code GenerationProgressModel}).
+   *
+   * @param progress the batch numbers to display; must not be {@code null}
+   */
+  public void setAiBatchProgress(final AiBatchProgress progress) {
+    Objects.requireNonNull(progress, "Batch progress cannot be null");
+    if (Objects.isNull(indicator)) {
+      return;
+    }
+    indicator.setText2(progress.format());
+    progressListener.onGeneral(currentFraction(completed.get()), null, null);
+    progressListener.onAiBatchProgress(progress);
   }
 
   /** Check whether the user has requested cancellation. */

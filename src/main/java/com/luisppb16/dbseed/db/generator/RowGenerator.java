@@ -8,6 +8,7 @@
 package com.luisppb16.dbseed.db.generator;
 
 import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.db.AiBatchProgress;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
 import com.luisppb16.dbseed.db.SchemaIntrospector;
@@ -90,6 +91,9 @@ public final class RowGenerator {
   private static final int AI_MAX_RETRIES = 5;
   private static final double AI_OVER_REQUEST_FACTOR = 1.2;
   private static final int AI_RECYCLE_THRESHOLD = 5;
+
+  /** Sentinel for the optional seconds of {@link AiBatchProgress}: the segment is not shown. */
+  private static final long ABSENT_SECONDS = -1L;
 
   @Getter private final Table table;
   private final int rowsPerTable;
@@ -181,6 +185,11 @@ public final class RowGenerator {
             .toList();
 
     this.multiColumnConstraints = ConstraintParser.parseMultiColumnConstraints(table.checks());
+  }
+
+  /** Whole seconds elapsed since {@code startNanos}, for the detail line of the progress dialog. */
+  private static long elapsedSecondsSince(final long startNanos) {
+    return (System.nanoTime() - startNanos) / 1_000_000_000L;
   }
 
   /** Unwraps future-completion wrappers so the notification shows the real cause message. */
@@ -549,37 +558,22 @@ public final class RowGenerator {
               final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
               final int batchCount = batchEnd - batchStart;
               final long batchStartNanos = System.nanoTime();
-              final String batchRangeText =
-                  "rows "
-                      .concat(String.valueOf(batchStart + 1))
-                      .concat("-")
-                      .concat(String.valueOf(batchEnd))
-                      .concat("/")
-                      .concat(String.valueOf(totalRows));
-
-              // Verbose per-batch main text: updates on every batch instead of only when a whole
-              // column completes.
-              tracker.setText(
-                  "Phase 2/4 (AI): "
-                      .concat(table.name())
-                      .concat(".")
-                      .concat(colName)
-                      .concat(" — batch ")
-                      .concat(String.valueOf(b + 1))
-                      .concat("/")
-                      .concat(String.valueOf(totalBatches)));
 
               final long avgBatchMillis =
                   batchesDone.get() > 0 ? batchesTotalMillis.get() / batchesDone.get() : 0L;
-              tracker.setText2(
-                  batchRangeText
-                      + (lastBatchMillis.get() > 0
-                          ? " · last batch "
-                              .concat(String.valueOf(lastBatchMillis.get() / 1000))
-                              .concat("s · ETA ~")
-                              .concat(String.valueOf((avgBatchMillis * (totalBatches - b)) / 1000))
-                              .concat("s")
-                          : ""));
+              tracker.setAiBatchProgress(
+                  new AiBatchProgress(
+                      batchStart + 1,
+                      batchEnd,
+                      totalRows,
+                      AiBatchProgress.Stage.TIMING,
+                      0,
+                      0,
+                      ABSENT_SECONDS,
+                      lastBatchMillis.get() > 0 ? lastBatchMillis.get() / 1000 : ABSENT_SECONDS,
+                      (avgBatchMillis * (totalBatches - b)) / 1000,
+                      table.name(),
+                      colName));
 
               // Improvement #2: over-request to absorb dedup losses
               final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
@@ -587,25 +581,29 @@ public final class RowGenerator {
               // Live per-value progress: every sanitized, distinct value arriving from the stream
               // advances the bar (capped at batchCount — over-requested surplus values must not
               // push the bar past this batch's share). The end-of-batch reconcile below covers
-              // deficits filled with fallback data.
+              // deficits filled with fallback data. The elapsed seconds of the current attempt are
+              // published alongside so the waiting segment is always present and never blinks.
               final AtomicInteger advancedInBatch = new AtomicInteger(0);
+              final AtomicLong attemptStartNanos = new AtomicLong(batchStartNanos);
               final Runnable onValueAdded =
                   () -> {
                     final int before =
                         advancedInBatch.getAndUpdate(cur -> Math.min(cur + 1, batchCount));
                     if (before < batchCount) {
                       tracker.advance(1);
-                      tracker.setText2(
-                          "rows "
-                              .concat(String.valueOf(batchStart + 1))
-                              .concat("-")
-                              .concat(String.valueOf(batchEnd))
-                              .concat("/")
-                              .concat(String.valueOf(totalRows))
-                              .concat(" · values ")
-                              .concat(String.valueOf(advancedInBatch.get()))
-                              .concat("/")
-                              .concat(String.valueOf(batchCount)));
+                      tracker.setAiBatchProgress(
+                          new AiBatchProgress(
+                              batchStart + 1,
+                              batchEnd,
+                              totalRows,
+                              AiBatchProgress.Stage.VALUES,
+                              advancedInBatch.get(),
+                              batchCount,
+                              elapsedSecondsSince(attemptStartNanos.get()),
+                              ABSENT_SECONDS,
+                              ABSENT_SECONDS,
+                              table.name(),
+                              colName));
                     }
                   };
 
@@ -625,15 +623,19 @@ public final class RowGenerator {
                             onValueAdded),
                         tracker::isCanceled,
                         waitMillis ->
-                            tracker.setText2(
-                                batchRangeText
-                                    + " · values "
-                                    + advancedInBatch.get()
-                                    + "/"
-                                    + batchCount
-                                    + " · waiting "
-                                    + waitMillis / 1000
-                                    + "s"));
+                            tracker.setAiBatchProgress(
+                                new AiBatchProgress(
+                                    batchStart + 1,
+                                    batchEnd,
+                                    totalRows,
+                                    AiBatchProgress.Stage.VALUES,
+                                    advancedInBatch.get(),
+                                    batchCount,
+                                    waitMillis / 1000,
+                                    ABSENT_SECONDS,
+                                    ABSENT_SECONDS,
+                                    table.name(),
+                                    colName)));
                 batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
               } catch (final CancellationException canceled) {
                 // User-requested cancellation must not surface as an AI failure; the remaining
@@ -671,6 +673,7 @@ public final class RowGenerator {
 
                   final int remaining =
                       Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
+                  attemptStartNanos.set(System.nanoTime());
                   try {
                     final List<String> batchValues =
                         OllamaClient.awaitCancellable(
@@ -684,15 +687,19 @@ public final class RowGenerator {
                                 onValueAdded),
                             tracker::isCanceled,
                             waitMillis ->
-                                tracker.setText2(
-                                    batchRangeText
-                                        + " · retry "
-                                        + retries.get()
-                                        + "/"
-                                        + AI_MAX_RETRIES
-                                        + " · waiting "
-                                        + waitMillis / 1000
-                                        + "s"));
+                                tracker.setAiBatchProgress(
+                                    new AiBatchProgress(
+                                        batchStart + 1,
+                                        batchEnd,
+                                        totalRows,
+                                        AiBatchProgress.Stage.RETRY,
+                                        retries.get(),
+                                        AI_MAX_RETRIES,
+                                        waitMillis / 1000,
+                                        ABSENT_SECONDS,
+                                        ABSENT_SECONDS,
+                                        table.name(),
+                                        colName)));
 
                     if (batchValues.isEmpty()) {
                       retries.incrementAndGet();

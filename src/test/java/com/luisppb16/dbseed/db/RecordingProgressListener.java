@@ -28,6 +28,8 @@ final class RecordingProgressListener implements GenerationProgressListener {
   private final List<long[]> tablesPhaseStarted = Collections.synchronizedList(new ArrayList<>());
   private final List<long[]> aiPhaseStarted = Collections.synchronizedList(new ArrayList<>());
   private final List<Boolean> aiSkipped = Collections.synchronizedList(new ArrayList<>());
+  private final List<AiBatchProgress> aiBatchProgress =
+      Collections.synchronizedList(new ArrayList<>());
 
   @Override
   public void onGeneral(final double fraction, final String phaseText, final String detailText) {
@@ -75,6 +77,11 @@ final class RecordingProgressListener implements GenerationProgressListener {
     aiSkipped.add(Boolean.TRUE);
   }
 
+  @Override
+  public void onAiBatchProgress(final AiBatchProgress progress) {
+    aiBatchProgress.add(progress);
+  }
+
   long generalEventCount() {
     return generalCount.get();
   }
@@ -113,5 +120,10 @@ final class RecordingProgressListener implements GenerationProgressListener {
 
   boolean aiSkipped() {
     return !aiSkipped.isEmpty();
+  }
+
+  List<AiBatchProgress> aiBatchProgress() {
+    // ArrayList, not List.copyOf: a null entry legitimately means "the line no longer applies".
+    return new ArrayList<>(aiBatchProgress);
   }
 }

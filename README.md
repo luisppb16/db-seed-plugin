@@ -169,7 +169,12 @@ solely on random/faker values, you can leverage AI to produce meaningful content
 - **Request Timeout Control**: Configure the Ollama request timeout from settings.
 - **Multi-Bar Progress Dialog**: A live dialog shows four progress bars — overall work units, tables completed, AI
   columns finished and AI values arriving from the stream — plus phase text and a Cancel button (Esc and the window
-  close button cancel too; the task can also be canceled from the IDE progress widget).
+  close button cancel too; the task can also be canceled from the IDE progress widget). While an AI batch runs, the
+  first line names the phase only, and the two AI bars name the column of the batch in flight. The detail line is
+  laid out in fixed slots: the words stay put and the numbers are refreshed at most once every 2 seconds,
+  always with the freshest values, so the line stays readable however fast values stream in. A **Background** button
+  hides the window without cancelling the generation and leaves a notification whose *Show progress* link brings it
+  back to the front.
 - **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide domain context, and test
   connectivity from
   **Settings → DBSeed4SQL**.

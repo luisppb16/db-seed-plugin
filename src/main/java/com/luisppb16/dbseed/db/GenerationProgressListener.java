@@ -107,4 +107,13 @@ public interface GenerationProgressListener {
    * texts keep the previous values.
    */
   void onGeneral(double fraction, String phaseText, String detailText);
+
+  /**
+   * The AI batch detail line changed. Published as raw numbers (not as a formatted string) so
+   * consumers can keep the static words of the line pinned and update only the digits; a {@code
+   * null} value means the line no longer applies.
+   */
+  default void onAiBatchProgress(final AiBatchProgress progress) {
+    // Consumers that only render text may ignore it.
+  }
 }

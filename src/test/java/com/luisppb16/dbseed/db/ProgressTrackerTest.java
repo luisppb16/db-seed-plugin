@@ -63,6 +63,59 @@ class ProgressTrackerTest {
   }
 
   @Test
+  void setAiBatchProgress_setsPlainTextOnIndicatorAndPublishesNumbers() {
+    // Given
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 10);
+    final RecordingProgressListener listener = new RecordingProgressListener();
+    tracker.setProgressListener(listener);
+    final AiBatchProgress progress =
+        new AiBatchProgress(
+            1, 50, 61, AiBatchProgress.Stage.RETRY, 4, 5, 24L, -1L, -1L, "users", "email");
+
+    // When
+    tracker.setAiBatchProgress(progress);
+
+    // Then
+    verify(indicator).setText2("rows 1-50/61 · retry 4/5 · waiting 24s");
+    assertThat(listener.aiBatchProgress()).containsExactly(progress);
+  }
+
+  @Test
+  void setText2_afterBatchProgress_clearsTheStructuredLine() {
+    // Given
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 10);
+    final RecordingProgressListener listener = new RecordingProgressListener();
+    tracker.setProgressListener(listener);
+    final AiBatchProgress progress =
+        new AiBatchProgress(
+            1, 50, 61, AiBatchProgress.Stage.VALUES, 7, 50, 3L, -1L, -1L, "users", "email");
+    tracker.setAiBatchProgress(progress);
+
+    // When
+    tracker.setText2("AI generation complete");
+
+    // Then
+    assertThat(listener.aiBatchProgress()).containsExactly(progress, null);
+  }
+
+  @Test
+  void setText2_repeatedFreeFormTexts_reachTheIndicatorEveryTime() {
+    // Given
+    final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
+    final ProgressTracker tracker = new ProgressTracker(indicator, 10);
+
+    // When — the free-form texts of the other phases, which are rare by construction
+    tracker.setText2("Preparing tables");
+    tracker.setText2("Writing SQL");
+
+    // Then — every free-form text reaches the widget at once
+    verify(indicator).setText2("Preparing tables");
+    verify(indicator).setText2("Writing SQL");
+  }
+
+  @Test
   void advance_publishesGeneralEventWithTexts() {
     // Given
     final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);

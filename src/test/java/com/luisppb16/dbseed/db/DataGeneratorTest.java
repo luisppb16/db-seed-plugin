@@ -972,6 +972,22 @@ class DataGeneratorTest {
       assertThat(listener.aiValues()).isNotEmpty();
       assertThat(listener.aiValues().getLast()[1]).isEqualTo(1);
       assertThat(listener.aiSkipped()).isFalse();
+      // The detail line is published as raw numbers (null = the line no longer applies).
+      final List<AiBatchProgress> batches =
+          listener.aiBatchProgress().stream().filter(Objects::nonNull).toList();
+      assertThat(batches).isNotEmpty();
+      assertThat(batches.getFirst().rowsFrom()).isEqualTo(1);
+      assertThat(batches.getFirst().rowsTo()).isEqualTo(1);
+      assertThat(batches.getFirst().rowsTotal()).isEqualTo(1);
+      assertThat(batches)
+          .anySatisfy(
+              progress -> assertThat(progress.stage()).isEqualTo(AiBatchProgress.Stage.TIMING));
+      assertThat(batches)
+          .anySatisfy(
+              progress -> {
+                assertThat(progress.stage()).isEqualTo(AiBatchProgress.Stage.VALUES);
+                assertThat(progress.done()).isGreaterThanOrEqualTo(1);
+              });
     } finally {
       if (Objects.nonNull(server)) {
         server.stop(0);

@@ -177,7 +177,7 @@ public final class GenerationProgressDialog extends DialogWrapper {
     } else {
       detailLine.showText(model.getDetailText());
     }
-    // Both AI bars name the column of the batch in flight; with no batch running they show counts.
+    // The AI values bar names the column of the batch in flight; without one it shows counts.
     final String aiColumnLabel =
         Objects.nonNull(batchProgress) ? batchProgress.columnLabel() : null;
 
@@ -209,7 +209,7 @@ public final class GenerationProgressDialog extends DialogWrapper {
     aiColumnsBar.setValue(
         percentageOf(ratioOf(model.getAiColumnsDone(), model.getAiColumnsTotal())));
     aiColumnsCountLabel.setText(
-        rowLabel(model.getAiColumnsDone(), model.getAiColumnsTotal(), aiColumnLabel));
+        rowLabel(model.getAiColumnsDone(), model.getAiColumnsTotal(), null));
 
     aiValuesBar.setIndeterminate(false);
     aiValuesBar.setValue(percentageOf(ratioOf(model.getAiValuesDone(), model.getAiValuesTotal())));

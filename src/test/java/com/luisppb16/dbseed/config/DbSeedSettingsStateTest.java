@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class DbSeedSettingsStateTest {
 
@@ -175,5 +177,61 @@ class DbSeedSettingsStateTest {
 
     assertThat(state.getCircularReferenceTerminationModes().get("orders"))
         .containsOnly(Map.entry("customer_id", "NULL"));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false, 4, 1", "true, 1, 1", "true, 4, 4", "true, 99, 16", "true, 0, 1"})
+  void effectiveAiThreads_clampsToTheAllowedRange(
+      final boolean parallel, final int threads, final int expected) {
+    state.setAiParallelGeneration(parallel);
+    state.setAiGenerationThreads(threads);
+
+    assertThat(state.effectiveAiThreads()).isEqualTo(expected);
+  }
+
+  @Test
+  void effectiveAiThreads_parallelGenerationOff_isSequentialByDefault() {
+    assertThat(state.isAiParallelGeneration()).isFalse();
+    assertThat(state.effectiveAiThreads()).isEqualTo(1);
+  }
+
+  @Test
+  void effectiveAiThreads_noConfiguration_usesTheConfiguredThreadCount() {
+    state.setAiParallelGeneration(true);
+
+    assertThat(state.effectiveAiThreads()).isEqualTo(2);
+  }
+
+  @Test
+  void loadState_aiThreadsOutOfRange_fallBackToDefault() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiGenerationThreads(0);
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiGenerationThreads()).isEqualTo(2);
+  }
+
+  @Test
+  void loadState_aiThreadsAboveMaximum_fallBackToDefault() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiGenerationThreads(99);
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiGenerationThreads()).isEqualTo(2);
+  }
+
+  @Test
+  void loadState_copiesParallelismFlagAndThreads() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiParallelGeneration(true);
+    incoming.setAiGenerationThreads(8);
+
+    state.loadState(incoming);
+
+    assertThat(state.isAiParallelGeneration()).isTrue();
+    assertThat(state.getAiGenerationThreads()).isEqualTo(8);
+    assertThat(state.effectiveAiThreads()).isEqualTo(8);
   }
 }

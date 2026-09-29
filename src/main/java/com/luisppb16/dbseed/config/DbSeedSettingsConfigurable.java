@@ -72,7 +72,9 @@ public class DbSeedSettingsConfigurable implements Configurable {
         || !Objects.equals(mySettingsComponent.getOllamaUrl(), settings.getOllamaUrl())
         || !Objects.equals(mySettingsComponent.getOllamaModel(), settings.getOllamaModel())
         || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
-        || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds();
+        || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds()
+        || mySettingsComponent.getAiParallelGeneration() != settings.isAiParallelGeneration()
+        || mySettingsComponent.getAiGenerationThreads() != settings.getAiGenerationThreads();
   }
 
   @Override
@@ -112,6 +114,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
     settings.setOllamaModel(mySettingsComponent.getOllamaModel());
     settings.setAiWordCount(mySettingsComponent.getAiWordCount());
     settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
+    settings.setAiParallelGeneration(mySettingsComponent.getAiParallelGeneration());
+    settings.setAiGenerationThreads(mySettingsComponent.getAiGenerationThreads());
 
     mySettingsComponent.applyProfileSettings();
 
@@ -170,6 +174,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
     mySettingsComponent.setOllamaModel(settings.getOllamaModel());
     mySettingsComponent.setAiWordCount(settings.getAiWordCount());
     mySettingsComponent.setAiRequestTimeout(settings.getAiRequestTimeoutSeconds());
+    mySettingsComponent.setAiParallelGeneration(settings.isAiParallelGeneration());
+    mySettingsComponent.setAiGenerationThreads(settings.getAiGenerationThreads());
 
     mySettingsComponent.resetProfileSettings();
   }

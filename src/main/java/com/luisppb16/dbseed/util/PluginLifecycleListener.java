@@ -9,7 +9,6 @@ package com.luisppb16.dbseed.util;
 
 import com.intellij.ide.AppLifecycleListener;
 import com.luisppb16.dbseed.ai.OllamaClient;
-import com.luisppb16.dbseed.db.DataGenerator;
 import lombok.extern.slf4j.Slf4j;
 
 /** Listener that cleans up plugin resources when the IDE is closing. */
@@ -28,11 +27,6 @@ public class PluginLifecycleListener implements AppLifecycleListener {
       OllamaClient.shutdown();
     } catch (final Exception e) {
       log.warn("Error shutting down Ollama client during shutdown", e);
-    }
-    try {
-      DataGenerator.shutdown();
-    } catch (final Exception e) {
-      log.warn("Error shutting down DataGenerator during shutdown", e);
     }
   }
 }

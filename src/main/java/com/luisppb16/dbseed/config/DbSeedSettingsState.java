@@ -64,6 +64,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final String DEFAULT_SOFT_DELETE_COLUMNS = "deleted_at,is_deleted";
   private static final String DEFAULT_OLLAMA_URL = "http://localhost:11434";
   private static final String DEFAULT_OLLAMA_MODEL = "";
+  private static final int DEFAULT_AI_THREADS = 2;
+  private static final int MAX_AI_THREADS = 16;
 
   private boolean useLatinDictionary = true;
   private boolean useEnglishDictionary = false;
@@ -82,6 +84,8 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private String aiApplicationContext = "";
   private int aiWordCount = 1;
   private int aiRequestTimeoutSeconds = 120;
+  private boolean aiParallelGeneration = false;
+  private int aiGenerationThreads = DEFAULT_AI_THREADS;
 
   private Map<String, Map<String, Integer>> circularReferences = new HashMap<>();
 
@@ -98,6 +102,14 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     final Map<String, Map<String, V>> copy = new HashMap<>();
     source.forEach((key, value) -> copy.put(key, new HashMap<>(value)));
     return copy;
+  }
+
+  /**
+   * @return how many AI columns may be generated at the same time: one when parallel generation is
+   *     off, the configured number otherwise, always within {@code 1..MAX_AI_THREADS}
+   */
+  public int effectiveAiThreads() {
+    return aiParallelGeneration ? Math.clamp(aiGenerationThreads, 1, MAX_AI_THREADS) : 1;
   }
 
   @Nullable
@@ -130,6 +142,11 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.aiWordCount = state.aiWordCount > 0 ? state.aiWordCount : 1;
     this.aiRequestTimeoutSeconds =
         state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
+    this.aiParallelGeneration = state.aiParallelGeneration;
+    this.aiGenerationThreads =
+        state.aiGenerationThreads > 0 && state.aiGenerationThreads <= MAX_AI_THREADS
+            ? state.aiGenerationThreads
+            : DEFAULT_AI_THREADS;
 
     this.circularReferences =
         Objects.nonNull(state.circularReferences)

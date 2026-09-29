@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -601,6 +602,99 @@ class DataGeneratorTest {
       assertThat(result.rows().get(products).getFirst().values())
           .containsEntry("description", "__AI_VALUE__");
       assertThat(result.rows().get(users).getFirst().values()).containsEntry("bio", "__AI_VALUE__");
+    } catch (final IOException e) {
+      throw new IllegalStateException("Failed to start fake Ollama server", e);
+    } finally {
+      if (Objects.nonNull(server)) {
+        server.stop(0);
+      }
+      serverExecutor.shutdownNow();
+    }
+  }
+
+  @Test
+  void aiGeneration_parallelismDisabled_handlesOneRequestAtATime() {
+    DbSeedSettingsState state = new DbSeedSettingsState();
+    state.setUseAiGeneration(true);
+    state.setOllamaModel("test-model");
+    state.setAiRequestTimeoutSeconds(30);
+    state.setAiWordCount(1);
+    state.setAiParallelGeneration(false);
+
+    Table products =
+        new Table(
+            "products",
+            List.of(intPk("id"), varcharCol("description")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+    Table users =
+        new Table(
+            "users",
+            List.of(intPk("id"), varcharCol("bio")),
+            List.of("id"),
+            List.of(),
+            List.of(),
+            List.of());
+
+    final AtomicInteger inFlight = new AtomicInteger();
+    final AtomicInteger maxInFlight = new AtomicInteger();
+    ExecutorService serverExecutor = Executors.newCachedThreadPool();
+    HttpServer server = null;
+
+    try {
+      server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+      server.setExecutor(serverExecutor);
+      server.createContext(
+          "/api/generate",
+          exchange -> {
+            final String body =
+                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            final String responseBody;
+
+            if (body.contains("\"prompt\":\"\"")) {
+              responseBody = "{\"response\":\"\"}";
+            } else {
+              maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+              try {
+                Thread.sleep(100L);
+              } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                    "Interrupted while handling fake Ollama request", e);
+              } finally {
+                inFlight.decrementAndGet();
+              }
+
+              responseBody = "{\"response\":\"__AI_VALUE__\"}";
+            }
+
+            final byte[] responseBytes = responseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, responseBytes.length);
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+              outputStream.write(responseBytes);
+            }
+          });
+      server.start();
+      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
+
+      GenerationParameters params =
+          baseParams()
+              .tables(List.of(products, users))
+              .rowsPerTable(1)
+              .aiColumns(Map.of("products", Set.of("description"), "users", Set.of("bio")))
+              .build();
+
+      final GenerationResult result = DataGenerator.generate(params);
+
+      assertThat(result.rows().get(products).getFirst().values())
+          .containsEntry("description", "__AI_VALUE__");
+      assertThat(result.rows().get(users).getFirst().values()).containsEntry("bio", "__AI_VALUE__");
+      assertThat(maxInFlight.get()).isEqualTo(1);
+      assertThat(inFlight.get()).isZero();
     } catch (final IOException e) {
       throw new IllegalStateException("Failed to start fake Ollama server", e);
     } finally {

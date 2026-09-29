@@ -76,6 +76,9 @@ public class DbSeedSettingsComponent {
   private final JSpinner myAiWordCount = new JSpinner(new SpinnerNumberModel(1, 1, 500, 1));
   private final JSpinner myAiRequestTimeout =
       new JSpinner(new SpinnerNumberModel(120, 10, 600, 10));
+  private final JBCheckBox myAiParallelGeneration =
+      new JBCheckBox("Generate AI columns in parallel");
+  private final JSpinner myAiGenerationThreads = new JSpinner(new SpinnerNumberModel(2, 1, 16, 1));
   private final JBTextField myOllamaUrl = new JBTextField();
   private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
   private final JButton myRefreshModelsButton = new JButton("Get models");
@@ -104,6 +107,8 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setText(settings.getAiApplicationContext());
     myAiWordCount.setValue(settings.getAiWordCount());
     myAiRequestTimeout.setValue(settings.getAiRequestTimeoutSeconds());
+    myAiParallelGeneration.setSelected(settings.isAiParallelGeneration());
+    myAiGenerationThreads.setValue(settings.getAiGenerationThreads());
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
     myAiApplicationContext.setBorder(JBUI.Borders.empty(4));
@@ -122,6 +127,10 @@ public class DbSeedSettingsComponent {
 
     updateAiFieldsEnabled(settings.isUseAiGeneration());
     myUseAiGeneration.addActionListener(e -> updateAiFieldsEnabled(myUseAiGeneration.isSelected()));
+    myAiParallelGeneration.addActionListener(
+        e ->
+            updateAiParallelFieldsEnabled(
+                myAiParallelGeneration.isSelected() && myUseAiGeneration.isSelected()));
 
     configureFolderChooser(myDefaultOutputDirectory);
 
@@ -349,6 +358,15 @@ public class DbSeedSettingsComponent {
     timeoutDesc.setFont(JBUI.Fonts.smallFont());
     timeoutDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
+    final JBLabel parallelDesc =
+        new JBLabel(
+            "<html>Generate several AI columns at once. Only worth it when the Ollama server "
+                + "answers more than one request at a time (OLLAMA_NUM_PARALLEL); otherwise the "
+                + "requests just queue up.</html>");
+    parallelDesc.setForeground(UIUtil.getContextHelpForeground());
+    parallelDesc.setFont(JBUI.Fonts.smallFont());
+    parallelDesc.setBorder(JBUI.Borders.emptyLeft(16));
+
     final JPanel serverConfigPanel =
         FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
@@ -363,6 +381,10 @@ public class DbSeedSettingsComponent {
             .addLabeledComponent(
                 new JBLabel("Request timeout (seconds):"), myAiRequestTimeout, 1, false)
             .addComponent(timeoutDesc, 0)
+            .addVerticalGap(8)
+            .addComponent(myAiParallelGeneration, 1)
+            .addComponent(parallelDesc, 0)
+            .addLabeledComponent(new JBLabel("Parallel threads:"), myAiGenerationThreads, 1, false)
             .getPanel();
 
     final JPanel contextPanel =
@@ -420,6 +442,12 @@ public class DbSeedSettingsComponent {
     myOllamaUrl.setEnabled(enabled);
     myOllamaModelDropdown.setEnabled(enabled);
     myRefreshModelsButton.setEnabled(enabled);
+    myAiParallelGeneration.setEnabled(enabled);
+    updateAiParallelFieldsEnabled(enabled && myAiParallelGeneration.isSelected());
+  }
+
+  private void updateAiParallelFieldsEnabled(final boolean enabled) {
+    myAiGenerationThreads.setEnabled(enabled);
   }
 
   private void refreshModels() {
@@ -640,6 +668,22 @@ public class DbSeedSettingsComponent {
 
   public void setAiRequestTimeout(final int seconds) {
     myAiRequestTimeout.setValue(seconds);
+  }
+
+  public boolean getAiParallelGeneration() {
+    return myAiParallelGeneration.isSelected();
+  }
+
+  public void setAiParallelGeneration(final boolean parallel) {
+    myAiParallelGeneration.setSelected(parallel);
+  }
+
+  public int getAiGenerationThreads() {
+    return (Integer) myAiGenerationThreads.getValue();
+  }
+
+  public void setAiGenerationThreads(final int threads) {
+    myAiGenerationThreads.setValue(threads);
   }
 
   public String getOllamaUrl() {

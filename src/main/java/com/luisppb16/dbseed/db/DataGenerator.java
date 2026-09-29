@@ -104,23 +104,6 @@ public class DataGenerator {
   private static final String SOFT_DELETE_DELIMITER = ",";
   private static final String EMPTY_CONTEXT = "";
 
-  /**
-   * Global executor for AI column generation.
-   *
-   * <p>The hotfix that serialized AI work column-by-column removed all useful overlap between
-   * columns/tables and caused large regressions on machines where Ollama can queue or process more
-   * than one request efficiently. We keep a bounded pool to recover throughput without
-   * reintroducing the unbounded contention of the old nested parallelism.
-   */
-  private static final ExecutorService AI_COLUMN_EXECUTOR =
-      Executors.newFixedThreadPool(
-          Math.clamp(Runtime.getRuntime().availableProcessors(), 2, 4),
-          r -> {
-            final Thread thread = new Thread(r, "ai-col-gen");
-            thread.setDaemon(true);
-            return thread;
-          });
-
   public static GenerationResult generate(final GenerationParameters params) {
     ConstraintParser.clearCache();
     final List<Table> orderedTables =
@@ -227,7 +210,13 @@ public class DataGenerator {
     // Phase 2: Run AI generation with bounded parallelism across AI columns
     final AiGenerationReport aiReport =
         generateAiValues(
-            generators, aiWork, params.rowsPerTable(), modelConfigured, warmUpError, tracker);
+            generators,
+            aiWork,
+            params.rowsPerTable(),
+            modelConfigured,
+            warmUpError,
+            tracker,
+            settings.effectiveAiThreads());
 
     tracker.setText("Phase 3/4: Validating constraints...");
     tracker.setText2("Checking numeric bounds for " + orderedTables.size() + " tables");
@@ -379,6 +368,20 @@ public class DataGenerator {
     return generators;
   }
 
+  /**
+   * @param threads how many columns may be generated at once; one thread is the sequential path
+   * @return a bounded pool of daemon threads, owned by the run that asked for it
+   */
+  private static ExecutorService newAiColumnExecutor(final int threads) {
+    return Executors.newFixedThreadPool(
+        threads,
+        r -> {
+          final Thread thread = new Thread(r, "ai-col-gen");
+          thread.setDaemon(true);
+          return thread;
+        });
+  }
+
   /** Phase 2: Runs AI value generation with bounded parallelism across all selected AI columns. */
   private static AiGenerationReport generateAiValues(
       final List<RowGenerator> generators,
@@ -386,7 +389,8 @@ public class DataGenerator {
       final int rowsPerTable,
       final boolean modelConfigured,
       final String warmUpError,
-      final ProgressTracker tracker) {
+      final ProgressTracker tracker,
+      final int aiThreadCount) {
     final List<RowGenerator> aiGenerators =
         generators.stream().filter(RowGenerator::hasAiColumns).toList();
 
@@ -425,6 +429,9 @@ public class DataGenerator {
     tracker.setText("Phase 2/4 (AI)");
     tracker.setText2(totalAiColumns + " AI columns across " + aiGenerators.size() + " tables");
 
+    // The pool lives only for this run: one thread is the sequential path, and a run no longer
+    // shares threads with any other run.
+    final ExecutorService aiExecutor = newAiColumnExecutor(aiThreadCount);
     futures.addAll(
         aiTargets.stream()
             .map(
@@ -452,7 +459,7 @@ public class DataGenerator {
                                     (int) totalAiColumns);
                           }
                         },
-                        AI_COLUMN_EXECUTOR))
+                        aiExecutor))
             .toList());
 
     try {
@@ -460,6 +467,7 @@ public class DataGenerator {
     } catch (final Exception ex) {
       log.warn("Some AI column generations failed: {}", ex.getMessage());
     } finally {
+      aiExecutor.shutdownNow();
       final long completedAfter = tracker.getCompleted();
       final long gap = realAiWork - (completedAfter - completedBefore);
       if (gap > 0) {
@@ -570,11 +578,6 @@ public class DataGenerator {
                 row.values().put(col.name(), val);
               }
             });
-  }
-
-  /** Shuts down the AI column generation executor. Called when the plugin is being unloaded. */
-  public static void shutdown() {
-    AI_COLUMN_EXECUTOR.shutdownNow();
   }
 
   public record GenerationParameters(

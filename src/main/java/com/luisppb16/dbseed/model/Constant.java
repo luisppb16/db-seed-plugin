@@ -34,7 +34,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum Constant {
   APP_NAME("DBSeed4SQL"),
-  NOTIFICATION_ID("DBSeed4SQL");
+  NOTIFICATION_ID("DBSeed4SQL"),
+  PROGRESS_WIDGET_ID("DBSeed4SQLProgress");
 
   private final String value;
 }

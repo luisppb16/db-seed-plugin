@@ -201,8 +201,8 @@ public class OllamaClient {
 
   /**
    * Placeholder names a model can copy from a prompt template instead of generating data ({@code
-   * value1}, {@code el2}, {@code full_name_1}). They are never seed values, so they are dropped;
-   * a batch of nothing but placeholders falls back to DataFaker, which is visible to the user.
+   * value1}, {@code el2}, {@code full_name_1}). They are never seed values, so they are dropped; a
+   * batch of nothing but placeholders falls back to DataFaker, which is visible to the user.
    */
   private static final Pattern INDEXED_PLACEHOLDER =
       Pattern.compile("^([a-z][a-z]*(?:[ _-][a-z]+)*)[ _-]?\\d+$");

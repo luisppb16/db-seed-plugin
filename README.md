@@ -167,6 +167,9 @@ solely on random/faker values, you can leverage AI to produce meaningful content
   rejected, so a model that just echoes the template falls back to DataFaker instead of seeding them.
 - **Configurable Word Count**: Control output length from a single word up to full paragraphs.
 - **Request Timeout Control**: Configure the Ollama request timeout from settings.
+- **Optional Column Parallelism**: AI columns are generated one at a time by default, which is what a single-slot
+  Ollama server (`OLLAMA_NUM_PARALLEL=1`) can actually serve. If your server handles several requests at once, tick
+  *Generate AI columns in parallel* and set the thread count in settings to generate them concurrently.
 - **Multi-Bar Progress Dialog**: A live dialog shows four progress bars — overall work units, tables completed, AI
   columns finished and AI values arriving from the stream — plus phase text and a Cancel button (Esc and the window
   close button cancel too; the task can also be canceled from the IDE progress widget). While an AI batch runs, the
@@ -174,7 +177,8 @@ solely on random/faker values, you can leverage AI to produce meaningful content
   laid out in fixed slots: the words stay put and the numbers are refreshed at most once every 2 seconds,
   always with the freshest values, so the line stays readable however fast values stream in. A **Background** button
   hides the window without cancelling the generation and leaves a notification whose *Show progress* link brings it
-  back to the front.
+  back to the front; a **DBSeed4SQL** entry also appears in the IDE status bar while the window is hidden, so the
+  window can always be reopened even after the notification fades away.
 - **Global AI Settings**: Enable/disable AI generation, set the Ollama URL and model, provide domain context, and test
   connectivity from
   **Settings → DBSeed4SQL**.

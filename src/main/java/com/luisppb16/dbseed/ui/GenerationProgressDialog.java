@@ -13,6 +13,7 @@ import com.intellij.notification.Notification;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.wm.impl.status.widget.StatusBarWidgetsManager;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import com.luisppb16.dbseed.db.AiBatchProgress;
@@ -48,10 +49,16 @@ public final class GenerationProgressDialog extends DialogWrapper {
   private final AtomicReference<ProgressIndicator> indicatorRef;
   private final GenerationProgressModel model;
   private final Project project;
+
+  /** State that hands the status bar entry the way back to a window hidden in the background. */
+  private final ProgressReopenService reopenService;
+
   /** Detail slot of the header: the fixed-slot AI batch line, or the plain text line. */
   private final AiBatchDetailLine detailLine = new AiBatchDetailLine();
+
   /** Balloon offering to bring the dialog back; {@code null} while the dialog is on screen. */
   private Notification backgroundNotification;
+
   private JPanel centerPanel;
   private JBLabel phaseLabel;
   private JProgressBar generalBar;
@@ -82,6 +89,7 @@ public final class GenerationProgressDialog extends DialogWrapper {
     Objects.requireNonNull(indicatorRef, "indicatorRef cannot be null");
     this.indicatorRef = indicatorRef;
     this.project = project;
+    this.reopenService = ProgressReopenService.getInstance(project);
     setModal(false);
     setTitle(APP_NAME.getValue() + " - Seed generation progress");
     this.model = new GenerationProgressModel(this::syncFromModel);
@@ -115,6 +123,8 @@ public final class GenerationProgressDialog extends DialogWrapper {
       return;
     }
     expireBackgroundNotification();
+    reopenService.show();
+    updateStatusBarWidget();
     close(DialogWrapper.CANCEL_EXIT_CODE);
   }
 
@@ -209,11 +219,13 @@ public final class GenerationProgressDialog extends DialogWrapper {
 
   /**
    * EDT-only: hides the window without cancelling or disposing it ({@code close()} would dispose
-   * the dialog for good) and leaves a balloon to bring it back. The generation keeps running and
-   * the IDE status bar keeps showing its progress.
+   * the dialog for good) and leaves a balloon and a status bar entry to bring it back. The
+   * generation keeps running and the IDE progress widget keeps showing its progress.
    */
   private void hideToBackground() {
     getWindow().setVisible(false);
+    reopenService.hide(this::reopen);
+    updateStatusBarWidget();
     backgroundNotification =
         NotificationHelper.notifyWithAction(
             project,
@@ -229,6 +241,8 @@ public final class GenerationProgressDialog extends DialogWrapper {
       return;
     }
     expireBackgroundNotification();
+    reopenService.show();
+    updateStatusBarWidget();
     final Window window = getWindow();
     window.setVisible(true);
     window.toFront();
@@ -239,6 +253,17 @@ public final class GenerationProgressDialog extends DialogWrapper {
     if (Objects.nonNull(backgroundNotification)) {
       backgroundNotification.expire();
       backgroundNotification = null;
+    }
+  }
+
+  /**
+   * Asks the platform to re-evaluate whether the status bar entry must be there: it exists only
+   * while the window is hidden in the background, so the same call adds it and retires it.
+   */
+  private void updateStatusBarWidget() {
+    final StatusBarWidgetsManager widgetManager = project.getService(StatusBarWidgetsManager.class);
+    if (Objects.nonNull(widgetManager)) {
+      widgetManager.updateWidget(ProgressStatusBarWidgetFactory.class);
     }
   }
 

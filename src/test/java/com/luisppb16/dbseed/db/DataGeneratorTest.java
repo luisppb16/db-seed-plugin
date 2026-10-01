@@ -530,7 +530,7 @@ class DataGeneratorTest {
   void aiGeneration_populatesSelectedColumnsViaOllamaClient() {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
 
@@ -587,7 +587,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
 
       GenerationParameters params =
@@ -616,7 +616,7 @@ class DataGeneratorTest {
   void aiGeneration_parallelismDisabled_handlesOneRequestAtATime() {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
     state.setAiParallelGeneration(false);
@@ -678,7 +678,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
 
       GenerationParameters params =
@@ -709,8 +709,8 @@ class DataGeneratorTest {
   void aiGeneration_modelNotConfigured_skipsAiPhaseAndReports() {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaUrl("http://127.0.0.1:1");
-    state.setOllamaModel("");
+    state.setAiUrl("http://127.0.0.1:1");
+    state.setAiModel("");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
     settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
@@ -742,7 +742,7 @@ class DataGeneratorTest {
   void aiGeneration_totalFailure_reportsTotalFailureAndKeepsDataFaker() throws IOException {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
 
@@ -774,7 +774,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
 
       GenerationParameters params =
@@ -803,7 +803,7 @@ class DataGeneratorTest {
   void aiGeneration_partialFailure_reportsPartialAndKeepsSuccessfulColumn() throws IOException {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
 
@@ -855,7 +855,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
 
       GenerationParameters params =
@@ -891,7 +891,7 @@ class DataGeneratorTest {
       throws IOException {
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
 
@@ -924,7 +924,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
 
       GenerationParameters params =
@@ -1015,7 +1015,7 @@ class DataGeneratorTest {
     // Given
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
     Table t =
@@ -1044,7 +1044,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
       final RecordingProgressListener listener = new RecordingProgressListener();
       final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
@@ -1096,7 +1096,7 @@ class DataGeneratorTest {
     // repetition rule, so only "name" (× 1 row) does real work.
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
     Table t =
@@ -1125,7 +1125,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
       final RecordingProgressListener listener = new RecordingProgressListener();
       final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
@@ -1170,7 +1170,7 @@ class DataGeneratorTest {
     // Given — the only AI column is excluded, so nothing is runnable.
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
     Table t =
@@ -1199,7 +1199,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
       final RecordingProgressListener listener = new RecordingProgressListener();
       final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);
@@ -1237,7 +1237,7 @@ class DataGeneratorTest {
     // Given
     DbSeedSettingsState state = new DbSeedSettingsState();
     state.setUseAiGeneration(true);
-    state.setOllamaModel("test-model");
+    state.setAiModel("test-model");
     state.setAiRequestTimeoutSeconds(30);
     state.setAiWordCount(1);
     Table t =
@@ -1266,7 +1266,7 @@ class DataGeneratorTest {
             }
           });
       server.start();
-      state.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+      state.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
       settingsMock.when(DbSeedSettingsState::getInstance).thenReturn(state);
       final RecordingProgressListener listener = new RecordingProgressListener();
       final ProgressIndicator indicator = Mockito.mock(ProgressIndicator.class);

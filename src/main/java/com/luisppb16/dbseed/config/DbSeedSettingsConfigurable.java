@@ -11,7 +11,9 @@ import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
-import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.AiClient;
+import com.luisppb16.dbseed.ai.AiClientFactory;
+import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.util.NotificationHelper;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -69,8 +71,12 @@ public class DbSeedSettingsConfigurable implements Configurable {
         || mySettingsComponent.getUseAiGeneration() != settings.isUseAiGeneration()
         || !Objects.equals(
             mySettingsComponent.getAiApplicationContext(), settings.getAiApplicationContext())
-        || !Objects.equals(mySettingsComponent.getOllamaUrl(), settings.getOllamaUrl())
-        || !Objects.equals(mySettingsComponent.getOllamaModel(), settings.getOllamaModel())
+        || mySettingsComponent.getAiProvider() != settings.getAiProvider()
+        || !Objects.equals(mySettingsComponent.getAiUrl(), settings.getAiUrl())
+        || !Objects.equals(mySettingsComponent.getAiModel(), settings.getAiModel())
+        || !Objects.equals(
+            mySettingsComponent.getAiApiKey(),
+            AiApiKeyStore.load(mySettingsComponent.getAiProvider()))
         || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
         || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds()
         || mySettingsComponent.getAiParallelGeneration() != settings.isAiParallelGeneration()
@@ -79,23 +85,33 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
   @Override
   public void apply() throws ConfigurationException {
+    final AiProvider provider = mySettingsComponent.getAiProvider();
     if (mySettingsComponent.getUseAiGeneration()) {
-      String url = mySettingsComponent.getOllamaUrl();
+      String url = mySettingsComponent.getAiUrl();
       if (Objects.isNull(url) || url.trim().isEmpty()) {
         throw new ConfigurationException(
-            "Please enter a valid Ollama URL when AI generation is enabled.",
-            "Invalid Ollama Configuration");
+            "Please enter a valid server URL when AI generation is enabled.",
+            "Invalid AI Configuration");
       }
-      String model = mySettingsComponent.getOllamaModel();
+      String model = mySettingsComponent.getAiModel();
       if (Objects.isNull(model) || model.trim().isEmpty()) {
         throw new ConfigurationException(
-            "Please select an Ollama model when AI generation is enabled,"
-                + " or disable AI generation.",
-            "Invalid Ollama Configuration");
+            "Please select an "
+                + provider.getDisplayName()
+                + " model when AI generation is enabled, or disable AI generation.",
+            "Invalid AI Configuration");
+      }
+      if (provider.isApiKeyRequired() && mySettingsComponent.getAiApiKey().isBlank()) {
+        throw new ConfigurationException(
+            provider.getDisplayName()
+                + " requires a credential. Paste either the API key Unsloth Studio hands out under"
+                + " Settings → API, or the password you sign in to it with, or enable Keyless API"
+                + " access there, or choose another engine.",
+            "Invalid AI Configuration");
       }
     }
 
-    // Save all settings first, regardless of Ollama availability
+    // Save all settings first, regardless of AI server availability
     DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
 
     settings.setColumnSpinnerStep(mySettingsComponent.getColumnSpinnerStep());
@@ -110,8 +126,14 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
     settings.setUseAiGeneration(mySettingsComponent.getUseAiGeneration());
     settings.setAiApplicationContext(mySettingsComponent.getAiApplicationContext());
-    settings.setOllamaUrl(mySettingsComponent.getOllamaUrl());
-    settings.setOllamaModel(mySettingsComponent.getOllamaModel());
+    settings.setAiProvider(provider);
+    settings.setAiUrl(mySettingsComponent.getAiUrl());
+    settings.setAiModel(mySettingsComponent.getAiModel());
+    if (mySettingsComponent.getAiApiKey().isBlank()) {
+      AiApiKeyStore.clear(provider);
+    } else {
+      AiApiKeyStore.save(provider, mySettingsComponent.getAiApiKey());
+    }
     settings.setAiWordCount(mySettingsComponent.getAiWordCount());
     settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());
     settings.setAiParallelGeneration(mySettingsComponent.getAiParallelGeneration());
@@ -119,21 +141,30 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
     mySettingsComponent.applyProfileSettings();
 
-    // Validate Ollama connection as a non-blocking warning (settings are already saved)
+    // Validate the AI connection as a non-blocking warning (settings are already saved)
     if (mySettingsComponent.getUseAiGeneration()) {
-      String url = mySettingsComponent.getOllamaUrl();
+      String url = mySettingsComponent.getAiUrl();
       if (Objects.nonNull(url) && !url.trim().isEmpty()) {
+        final AiClient client =
+            AiClientFactory.create(
+                provider,
+                url.trim(),
+                mySettingsComponent.getAiModel(),
+                mySettingsComponent.getAiApiKey(),
+                10);
         AtomicReference<Exception> pingError = new AtomicReference<>();
         ProgressManager.getInstance()
             .runProcessWithProgressSynchronously(
                 () -> {
                   try {
-                    new OllamaClient(url.trim(), "", 10).ping().get(3, TimeUnit.SECONDS);
+                    if (Objects.nonNull(client)) {
+                      client.ping().get(3, TimeUnit.SECONDS);
+                    }
                   } catch (Exception e) {
                     pingError.set(e);
                   }
                 },
-                "Checking Ollama Server...",
+                "Checking " + provider.getDisplayName() + " server...",
                 false,
                 myProject);
 
@@ -144,10 +175,12 @@ public class DbSeedSettingsConfigurable implements Configurable {
                   : pingError.get();
           NotificationHelper.notifyWarning(
               myProject,
-              "Ollama server not reachable",
-              "Settings saved, but no Ollama server found at "
+              provider.getDisplayName() + " server not reachable",
+              "Settings saved, but no "
+                  + provider.getDisplayName()
+                  + " server found at "
                   + url.trim()
-                  + ". AI generation may not work until Ollama is available. Error: "
+                  + ". AI generation may not work until it is available. Error: "
                   + Objects.requireNonNullElse(
                       cause.getMessage(), cause.getClass().getSimpleName()));
         }
@@ -170,8 +203,10 @@ public class DbSeedSettingsConfigurable implements Configurable {
 
     mySettingsComponent.setUseAiGeneration(settings.isUseAiGeneration());
     mySettingsComponent.setAiApplicationContext(settings.getAiApplicationContext());
-    mySettingsComponent.setOllamaUrl(settings.getOllamaUrl());
-    mySettingsComponent.setOllamaModel(settings.getOllamaModel());
+    mySettingsComponent.setAiProvider(settings.getAiProvider());
+    mySettingsComponent.setAiUrl(settings.getAiUrl());
+    mySettingsComponent.setAiModel(settings.getAiModel());
+    mySettingsComponent.setAiApiKey(AiApiKeyStore.load(settings.getAiProvider()));
     mySettingsComponent.setAiWordCount(settings.getAiWordCount());
     mySettingsComponent.setAiRequestTimeout(settings.getAiRequestTimeoutSeconds());
     mySettingsComponent.setAiParallelGeneration(settings.isAiParallelGeneration());

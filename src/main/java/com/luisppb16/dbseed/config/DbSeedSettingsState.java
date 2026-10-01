@@ -11,10 +11,12 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
+import com.luisppb16.dbseed.ai.AiProvider;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 import org.jetbrains.annotations.NotNull;
@@ -37,7 +39,8 @@ import org.jetbrains.annotations.Nullable;
  *   <li>Handling migration and validation of configuration data
  *   <li>Supporting dynamic reconfiguration during runtime
  *   <li>Integrating with IntelliJ's settings infrastructure
- *   <li>Maintaining backward compatibility with older configuration formats
+ *   <li>Maintaining backward compatibility with older configuration formats, including the
+ *       single-Ollama-endpoint settings written before the AI engine was abstracted
  * </ul>
  *
  * <p>The implementation uses IntelliJ's XmlSerializerUtil for automatic serialization and
@@ -62,23 +65,36 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final String DEFAULT_SOFT_DELETE_VALUE = "NULL";
   private static final boolean DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT = true;
   private static final String DEFAULT_SOFT_DELETE_COLUMNS = "deleted_at,is_deleted";
-  private static final String DEFAULT_OLLAMA_URL = "http://localhost:11434";
-  private static final String DEFAULT_OLLAMA_MODEL = "";
+  private static final String DEFAULT_AI_URL = AiProvider.OLLAMA.getDefaultUrl();
+  private static final String DEFAULT_AI_MODEL = "";
   private static final int DEFAULT_AI_THREADS = 2;
   private static final int MAX_AI_THREADS = 16;
+
+  /**
+   * Settings written by versions up to 1.3.7.4, which knew a single Ollama endpoint. They are read
+   * once in {@link #loadState(DbSeedSettingsState)} to seed {@link #aiUrl} and {@link #aiModel} and
+   * then dropped, so the file stops carrying two names for the same thing. No accessors are
+   * generated for them: only the XML serializer and the migration test touch them.
+   */
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  String ollamaUrl;
+
+  @Getter(AccessLevel.NONE)
+  @Setter(AccessLevel.NONE)
+  String ollamaModel;
 
   private boolean useLatinDictionary = true;
   private boolean useEnglishDictionary = false;
   private boolean useSpanishDictionary = false;
   private int columnSpinnerStep = DEFAULT_COLUMN_SPINNER_STEP;
   private String defaultOutputDirectory = DEFAULT_OUTPUT_DIRECTORY;
-
   private String softDeleteColumns = DEFAULT_SOFT_DELETE_COLUMNS;
   private boolean softDeleteUseSchemaDefault = DEFAULT_SOFT_DELETE_USE_SCHEMA_DEFAULT;
   private String softDeleteValue = DEFAULT_SOFT_DELETE_VALUE;
-
-  private String ollamaUrl = DEFAULT_OLLAMA_URL;
-  private String ollamaModel = DEFAULT_OLLAMA_MODEL;
+  private AiProvider aiProvider = AiProvider.OLLAMA;
+  private String aiUrl = DEFAULT_AI_URL;
+  private String aiModel = DEFAULT_AI_MODEL;
 
   private boolean useAiGeneration = false;
   private String aiApplicationContext = "";
@@ -134,8 +150,25 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
         Objects.requireNonNullElse(state.softDeleteValue, DEFAULT_SOFT_DELETE_VALUE);
     this.softDeleteUseSchemaDefault = state.softDeleteUseSchemaDefault;
 
-    this.ollamaUrl = Objects.requireNonNullElse(state.ollamaUrl, DEFAULT_OLLAMA_URL);
-    this.ollamaModel = Objects.requireNonNullElse(state.ollamaModel, DEFAULT_OLLAMA_MODEL);
+    this.aiProvider = Objects.requireNonNullElse(state.aiProvider, AiProvider.OLLAMA);
+    // A configuration saved before the engine was abstracted carries only the legacy Ollama fields;
+    // adopt them so an upgrade never costs the user their URL or their model.
+    final String legacyUrl = state.ollamaUrl;
+    final String legacyModel = state.ollamaModel;
+    // A deserialized instance starts from the field initializers, so "untouched" means null, blank
+    // or still holding the default URL, never just blank.
+    final boolean aiUrlUntouched =
+        Objects.isNull(state.aiUrl) || state.aiUrl.isBlank() || DEFAULT_AI_URL.equals(state.aiUrl);
+    final String loadedUrl = aiUrlUntouched ? legacyUrl : state.aiUrl;
+    final String loadedModel =
+        Objects.isNull(state.aiModel) || state.aiModel.isBlank() ? legacyModel : state.aiModel;
+    this.aiUrl = Objects.requireNonNullElse(loadedUrl, DEFAULT_AI_URL);
+    this.aiModel = Objects.requireNonNullElse(loadedModel, DEFAULT_AI_MODEL);
+    state.ollamaUrl = null;
+    state.ollamaModel = null;
+    // A build that kept a single credential saved it under whichever engine was selected when the
+    // settings were applied, so hand it to that engine before anything reads it.
+    AiApiKeyStore.migrateLegacyKey(this.aiProvider);
 
     this.useAiGeneration = state.useAiGeneration;
     this.aiApplicationContext = Objects.requireNonNullElse(state.aiApplicationContext, "");

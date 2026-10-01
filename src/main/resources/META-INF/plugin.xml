@@ -23,14 +23,14 @@
               <li>Synthetic data generation with DataFaker.</li>
               <li>Cycle handling with deferred constraints.</li>
               <li>Support for multiple databases with dynamic driver downloads (explicit user confirmation).</li>
-              <li>AI-powered value generation through a user-configured Ollama server (opt-in; only user-provided context and schema metadata are sent), with schema-constrained, reasoning-safe output.</li>
+              <li>AI-powered value generation through a user-configured AI engine — Ollama through its native API, or any OpenAI-compatible server such as Unsloth Studio, LM Studio, vLLM or llama.cpp — (opt-in; only user-provided context and schema metadata are sent), with schema-constrained, reasoning-safe output.</li>
               <li>Live progress dialog with four bars (overall work, tables, AI columns and AI values) and cancelable generation.</li>
             </ul>
 
             <h2>Network and Privacy</h2>
             <ul>
               <li>The plugin works locally by default and stores settings in IDE-local configuration files.</li>
-              <li>Optional network actions are initiated by the user: JDBC driver downloads from Maven Central and AI calls to a user-configured Ollama server.</li>
+              <li>Optional network actions are initiated by the user: JDBC driver downloads from Maven Central and AI calls to the user-configured AI server (Ollama or an OpenAI-compatible endpoint).</li>
               <li>DBSeed4SQL does not upload database row contents. For AI generation, only metadata/context provided by the user (for example table/column names and app context text) is sent.</li>
             </ul>
         ]]>
@@ -40,6 +40,15 @@
 
     <change-notes>
         <![CDATA[
+            <h3>Version 1.3.7.4</h3>
+            <ul>
+                <li><b>Pluggable AI Engine:</b> the AI layer is now abstracted behind one client interface, so the plugin is no longer tied to Ollama. The engine is chosen with radio buttons in <i>Settings &rarr; DBSeed4SQL &rarr; AI</i>, and picking one applies its own configuration: the URL field is pre-filled with that engine's default address and the API key field is shown only for engines that use one &mdash; Ollama has no credential at all, so its row is not displayed, and for the other engines it stays disabled while AI generation is off.</li>
+                <li><b>Unsloth Studio Support:</b> Unsloth Studio (<code>http://localhost:8888</code>) is now supported out of the box — it lists models from <code>/v1/models</code>, generates through streaming <code>/v1/chat/completions</code> and sends the API key as a Bearer token. The same client serves any other OpenAI-compatible server (LM Studio, vLLM, llama.cpp, OpenRouter&hellip;).</li>
+                <li><b>Unsloth Studio Authentication:</b> Unsloth Studio answers <code>401</code> to every request that carries no credential, and its login accepts either the <code>sk-unsloth-&hellip;</code> key &mdash; created inside Unsloth Studio under <i>Settings &rarr; API</i>, where it is shown once &mdash; or a session token. The single <i>Password / API key</i> field takes both: an API key travels as it is, while the password you sign in to Unsloth Studio with is exchanged for a session token at <code>/api/auth/login</code> (the account name is read from <code>/api/auth/status</code>, and the token is reused until it expires). A refused sign-in reports the server's own reason &mdash; such as <i>Incorrect password</i> &mdash; without ever echoing the password. When the server refuses any other request, its reason (<code>{"error":{"message":&hellip;}}</code>) reaches the notification too, instead of a raw JSON dump. Thinking is turned off per request (<code>enable_thinking: false</code>), which Unsloth leaves on by default.</li>
+                <li><b>API Key Out Of The Settings File:</b> the AI credential is kept in the IDE credential store, the same keychain used for database connections, instead of the plugin's plain-text XML — one entry per engine, so switching engines shows that engine's own credential (and hides the row for Ollama, which has none) and never leaves the previous engine's secret in the field. A credential saved by an older version, when there was only one, is moved to the engine that was configured at the time.</li>
+                <li><b>Ollama Unchanged:</b> the native Ollama API behaves exactly as before — same endpoints, same JSON schema through the <code>format</code> parameter, same streaming and reasoning guards — and an existing configuration keeps its URL and model, migrated to the new setting names the first time the settings are loaded.</li>
+            </ul>
+
             <h3>Version 1.3.7.3</h3>
             <ul>
                 <li><b>AI Values Without Reasoning Leaks:</b> reasoning models (Qwen3/DeepSeek style) write their chain-of-thought inside the streamed response, and the first rows of an AI column ended up holding that thinking instead of the requested values. AI generation now requests a JSON schema through the Ollama <code>format</code> parameter, so prose cannot be emitted at all; when a server ignores that schema, the plain-text fallback still discards reasoning blocks and reasoning-only lines, values of array columns must match the requested element count, and answers that only echo a template placeholder (such as <code>value1</code> or <code>full_name_2</code>) are rejected instead of seeded.</li>

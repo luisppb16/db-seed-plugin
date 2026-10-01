@@ -8,7 +8,7 @@
 package com.luisppb16.dbseed.util;
 
 import com.intellij.ide.AppLifecycleListener;
-import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.AbstractAiClient;
 import lombok.extern.slf4j.Slf4j;
 
 /** Listener that cleans up plugin resources when the IDE is closing. */
@@ -24,9 +24,9 @@ public class PluginLifecycleListener implements AppLifecycleListener {
       log.warn("Error deregistering drivers during shutdown", e);
     }
     try {
-      OllamaClient.shutdown();
+      AbstractAiClient.shutdown();
     } catch (final Exception e) {
-      log.warn("Error shutting down Ollama client during shutdown", e);
+      log.warn("Error shutting down the AI client during shutdown", e);
     }
   }
 }

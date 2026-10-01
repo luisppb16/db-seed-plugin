@@ -250,13 +250,13 @@ class SqliteDatabaseSeedingIntegrationTest {
   @Test
   void testAiGeneration_populatesConfiguredColumnsUsingOllamaStub() throws Exception {
     settings.setUseAiGeneration(true);
-    settings.setOllamaModel("stub-model");
+    settings.setAiModel("stub-model");
     settings.setAiApplicationContext("blog platform");
     settings.setAiWordCount(2);
 
     final HttpServer server =
         startOllamaServer("ai_value_1\nai_value_2\nai_value_3\nai_value_4\nai_value_5");
-    settings.setOllamaUrl("http://127.0.0.1:" + server.getAddress().getPort());
+    settings.setAiUrl("http://127.0.0.1:" + server.getAddress().getPort());
 
     final String schemaSql =
         """
@@ -306,8 +306,8 @@ class SqliteDatabaseSeedingIntegrationTest {
   @Test
   void testAiGeneration_fallsBackToRegularGenerationWhenServerIsUnavailable() throws Exception {
     settings.setUseAiGeneration(true);
-    settings.setOllamaUrl("http://127.0.0.1:9");
-    settings.setOllamaModel("missing-model");
+    settings.setAiUrl("http://127.0.0.1:9");
+    settings.setAiModel("missing-model");
     settings.setAiApplicationContext("fallback scenario");
 
     final String schemaSql =

@@ -91,10 +91,10 @@ import org.jetbrains.annotations.NotNull;
  * and resolution for circular foreign key dependencies, ensuring that data can be generated even in
  * complex schema scenarios.
  *
- * <p>Advanced features include AI-powered data generation using external Ollama LLM servers,
- * configurable dictionary-based content generation, soft-delete column handling, and repetition
- * rule support for consistent test data. The class also provides extensive configuration options
- * for numeric precision, UUID generation, and exclusion rules.
+ * <p>Advanced features include AI-powered data generation using an external AI engine, configurable
+ * dictionary-based content generation, soft-delete column handling, and repetition rule support for
+ * consistent test data. The class also provides extensive configuration options for numeric
+ * precision, UUID generation, and exclusion rules.
  *
  * <p>Thread safety is maintained through proper use of IntelliJ's application threading model, with
  * background tasks executed through the progress manager and UI updates performed on the EDT as
@@ -139,7 +139,7 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
       NotificationHelper.notifyWarning(
           project,
           "AI generation skipped",
-          "No Ollama model is selected (Settings → DBSeed4SQL)."
+          "No AI model is selected (Settings → DBSeed4SQL)."
               + " All rows were filled with DataFaker data.");
       return;
     }
@@ -159,7 +159,7 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
               .map(DataGenerator.AiColumnStat::lastError)
               .filter(Objects::nonNull)
               .findFirst()
-              .orElse("unknown Ollama error");
+              .orElse("unknown AI engine error");
       NotificationHelper.notifyError(
           project,
           "AI generation failed for all selected columns: "
@@ -371,12 +371,12 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
 
         if (settings.isUseAiGeneration()
             && hasAnyAiColumn(aiColumns)
-            && (Objects.isNull(settings.getOllamaModel()) || settings.getOllamaModel().isBlank())) {
+            && (Objects.isNull(settings.getAiModel()) || settings.getAiModel().isBlank())) {
           Messages.showErrorDialog(
               project,
-              "AI generation is enabled but no Ollama model is selected.\n"
+              "AI generation is enabled but no AI model is selected.\n"
                   + "Please select a model in Settings → DBSeed4SQL, or disable AI generation.",
-              "Missing Ollama Model");
+              "Missing AI Model");
           return;
         }
 

@@ -8,7 +8,9 @@
 package com.luisppb16.dbseed.db;
 
 import com.intellij.openapi.progress.ProgressIndicator;
-import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.AiClient;
+import com.luisppb16.dbseed.ai.AiClientFactory;
+import com.luisppb16.dbseed.config.AiApiKeyStore;
 import com.luisppb16.dbseed.config.DbSeedSettingsState;
 import com.luisppb16.dbseed.db.generator.ConstraintParser;
 import com.luisppb16.dbseed.db.generator.DictionaryLoader;
@@ -59,7 +61,7 @@ import org.jetbrains.annotations.Nullable;
  *   <li>Orchestrating the multi-phase data generation process across all tables
  *   <li>Applying primary key UUID overrides and exclusion rules to table configurations
  *   <li>Managing dictionary loading and selection for realistic string content generation
- *   <li>Coordinating AI-powered content generation through Ollama integration
+ *   <li>Coordinating AI-powered content generation through the configured AI engine
  *   <li>Validating generated data against check constraints and numeric bounds
  *   <li>Resolving foreign key dependencies through the ForeignKeyResolver component
  *   <li>Handling soft-delete column configurations and values
@@ -91,7 +93,7 @@ import org.jetbrains.annotations.Nullable;
  * @see ValueGenerator
  * @see ForeignKeyResolver
  * @see DictionaryLoader
- * @see OllamaClient
+ * @see AiClient
  * @see ConstraintParser
  * @see GenerationParameters
  * @see GenerationResult
@@ -126,15 +128,16 @@ public class DataGenerator {
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
     final boolean modelConfigured =
-        Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isBlank();
-    final OllamaClient ollamaClient =
-        settings.isUseAiGeneration()
-                && Objects.nonNull(settings.getOllamaUrl())
-                && !settings.getOllamaUrl().isBlank()
-                && modelConfigured
-            ? new OllamaClient(
-                settings.getOllamaUrl(),
-                settings.getOllamaModel(),
+        Objects.nonNull(settings.getAiModel()) && !settings.getAiModel().isBlank();
+    // The factory accepts an empty model name (that is how the settings dialog lists the models a
+    // server offers), so generation guards on it here: without a model there is no AI phase at all.
+    final AiClient aiClient =
+        settings.isUseAiGeneration() && modelConfigured
+            ? AiClientFactory.create(
+                settings.getAiProvider(),
+                settings.getAiUrl(),
+                settings.getAiModel(),
+                AiApiKeyStore.load(settings.getAiProvider()),
                 settings.getAiRequestTimeoutSeconds())
             : null;
 
@@ -147,7 +150,7 @@ public class DataGenerator {
     final long rowWork = orderedTables.size() * (long) params.rowsPerTable();
     // 1 unit per AI-column×row (AI phase) — 0 when no AI
     final long aiWork =
-        Objects.nonNull(ollamaClient)
+        Objects.nonNull(aiClient)
             ? orderedTables.stream()
                 .mapToLong(
                     t ->
@@ -174,11 +177,11 @@ public class DataGenerator {
     // means the server/model is unreachable, so the AI phase is skipped entirely instead of
     // hammering the endpoint with retries per column against a known-broken target.
     String warmUpError = null;
-    if (Objects.nonNull(ollamaClient) && !aiColumns.isEmpty()) {
+    if (Objects.nonNull(aiClient) && !aiColumns.isEmpty()) {
       try {
         tracker.setText("Warming up AI model...");
-        tracker.setText2("Loading " + settings.getOllamaModel() + " into memory");
-        ollamaClient.warmModel().join();
+        tracker.setText2("Loading " + settings.getAiModel() + " into memory");
+        aiClient.warmModel().join();
       } catch (final Exception e) {
         warmUpError = errorMessageOf(e);
         log.warn("Model warm-up failed, skipping AI phase: {}", warmUpError);
@@ -203,7 +206,7 @@ public class DataGenerator {
             params.numericScale(),
             aiColumns,
             aiWordCount,
-            ollamaClient,
+            aiClient,
             Objects.requireNonNullElse(params.applicationContext(), EMPTY_CONTEXT),
             tracker);
 
@@ -296,7 +299,7 @@ public class DataGenerator {
       final int numericScale,
       final Map<String, Set<String>> aiColumns,
       final int aiWordCount,
-      final OllamaClient ollamaClient,
+      final AiClient aiClient,
       final String applicationContext,
       final ProgressTracker tracker) {
 
@@ -344,7 +347,7 @@ public class DataGenerator {
                       numericScale,
                       aiColumns.getOrDefault(table.name(), Set.of()),
                       aiWordCount,
-                      ollamaClient,
+                      aiClient,
                       applicationContext,
                       tracker);
 

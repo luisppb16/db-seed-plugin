@@ -10,6 +10,7 @@ package com.luisppb16.dbseed.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.luisppb16.dbseed.ai.AiProvider;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,8 +38,8 @@ class DbSeedSettingsStateTest {
     incoming.setDefaultOutputDirectory(null);
     incoming.setSoftDeleteColumns(null);
     incoming.setSoftDeleteValue(null);
-    incoming.setOllamaUrl(null);
-    incoming.setOllamaModel(null);
+    incoming.setAiUrl(null);
+    incoming.setAiModel(null);
     incoming.setAiApplicationContext(null);
 
     state.loadState(incoming);
@@ -46,8 +47,8 @@ class DbSeedSettingsStateTest {
     assertThat(state.getDefaultOutputDirectory()).isEqualTo("src/main/resources/db/seeder");
     assertThat(state.getSoftDeleteColumns()).isEqualTo("deleted_at,is_deleted");
     assertThat(state.getSoftDeleteValue()).isEqualTo("NULL");
-    assertThat(state.getOllamaUrl()).isEqualTo("http://localhost:11434");
-    assertThat(state.getOllamaModel()).isEmpty();
+    assertThat(state.getAiUrl()).isEqualTo("http://localhost:11434");
+    assertThat(state.getAiModel()).isEmpty();
     assertThat(state.getAiApplicationContext()).isEmpty();
   }
 
@@ -66,14 +67,74 @@ class DbSeedSettingsStateTest {
   }
 
   @Test
+  void newState_defaultsToOllama() {
+    assertThat(state.getAiProvider()).isEqualTo(AiProvider.OLLAMA);
+    assertThat(state.getAiUrl()).isEqualTo(AiProvider.OLLAMA.getDefaultUrl());
+    assertThat(state.getAiModel()).isEmpty();
+  }
+
+  @Test
+  void loadState_nullProvider_fallsBackToOllama() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiProvider(null);
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiProvider()).isEqualTo(AiProvider.OLLAMA);
+  }
+
+  @Test
+  void loadState_copiesProvider() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiProvider(AiProvider.UNSLOTH_STUDIO);
+    incoming.setAiUrl(AiProvider.UNSLOTH_STUDIO.getDefaultUrl());
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiProvider()).isEqualTo(AiProvider.UNSLOTH_STUDIO);
+    assertThat(state.getAiUrl()).isEqualTo("http://localhost:8888");
+  }
+
+  @Test
+  void loadState_legacyOllamaSettings_areMigratedToTheAiFields() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    // Un XML escrito antes de 1.3.7.5 solo trae estos dos campos.
+    incoming.ollamaUrl = "http://ollama:9999";
+    incoming.ollamaModel = "llama3";
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiUrl()).isEqualTo("http://ollama:9999");
+    assertThat(state.getAiModel()).isEqualTo("llama3");
+    assertThat(state.getAiProvider()).isEqualTo(AiProvider.OLLAMA);
+    // Los campos antiguos se sueltan para que el archivo no lleve dos nombres de lo mismo.
+    assertThat(incoming.ollamaUrl).isNull();
+    assertThat(incoming.ollamaModel).isNull();
+  }
+
+  @Test
+  void loadState_newFieldsWin_overLegacyOnes() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.ollamaUrl = "http://ollama:9999";
+    incoming.ollamaModel = "llama3";
+    incoming.setAiUrl("http://unsloth:8888");
+    incoming.setAiModel("qwen");
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiUrl()).isEqualTo("http://unsloth:8888");
+    assertThat(state.getAiModel()).isEqualTo("qwen");
+  }
+
+  @Test
   void loadState_validValues_areCopied() {
     final DbSeedSettingsState incoming = new DbSeedSettingsState();
     incoming.setDefaultOutputDirectory("custom/dir");
     incoming.setColumnSpinnerStep(7);
     incoming.setSoftDeleteColumns("removed_at");
     incoming.setSoftDeleteValue("current_timestamp");
-    incoming.setOllamaUrl("http://ollama:9999");
-    incoming.setOllamaModel("llama3");
+    incoming.setAiUrl("http://ollama:9999");
+    incoming.setAiModel("llama3");
     incoming.setAiApplicationContext("banking app");
     incoming.setAiWordCount(5);
     incoming.setAiRequestTimeoutSeconds(30);
@@ -84,8 +145,8 @@ class DbSeedSettingsStateTest {
     assertThat(state.getColumnSpinnerStep()).isEqualTo(7);
     assertThat(state.getSoftDeleteColumns()).isEqualTo("removed_at");
     assertThat(state.getSoftDeleteValue()).isEqualTo("current_timestamp");
-    assertThat(state.getOllamaUrl()).isEqualTo("http://ollama:9999");
-    assertThat(state.getOllamaModel()).isEqualTo("llama3");
+    assertThat(state.getAiUrl()).isEqualTo("http://ollama:9999");
+    assertThat(state.getAiModel()).isEqualTo("llama3");
     assertThat(state.getAiApplicationContext()).isEqualTo("banking app");
     assertThat(state.getAiWordCount()).isEqualTo(5);
     assertThat(state.getAiRequestTimeoutSeconds()).isEqualTo(30);

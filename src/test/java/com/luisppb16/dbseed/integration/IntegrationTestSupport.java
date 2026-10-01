@@ -84,8 +84,8 @@ final class IntegrationTestSupport {
     state.setUseEnglishDictionary(false);
     state.setUseSpanishDictionary(false);
     state.setUseAiGeneration(false);
-    state.setOllamaUrl("http://127.0.0.1:11434");
-    state.setOllamaModel("test-model");
+    state.setAiUrl("http://127.0.0.1:11434");
+    state.setAiModel("test-model");
     state.setAiApplicationContext("");
     state.setAiWordCount(2);
     state.setAiRequestTimeoutSeconds(10);

@@ -150,12 +150,12 @@ class OllamaClientHttpTest {
     }
 
     @Test
-    void serverError_failsWithOllamaException() {
+    void serverError_failsWithAiClientException() {
       respondWith(500, "{\"error\":\"boom\"}");
 
       assertThatThrownBy(() -> newClient().ping().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage("Ollama returned status code: 500 — boom");
     }
 
@@ -206,12 +206,12 @@ class OllamaClientHttpTest {
     }
 
     @Test
-    void serverError_failsWithOllamaException() {
+    void serverError_failsWithAiClientException() {
       respondWith(500, "{}");
 
       assertThatThrownBy(() -> newClient().listModels().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage("Ollama returned status code: 500 — {}");
     }
   }
@@ -244,7 +244,7 @@ class OllamaClientHttpTest {
     }
 
     @Test
-    void emptyResponse_failsWithOllamaException() {
+    void emptyResponse_failsWithAiClientException() {
       respondWith(200, "{\"response\":\"\"}");
 
       assertThatThrownBy(
@@ -253,7 +253,7 @@ class OllamaClientHttpTest {
                       .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "AI response contained no valid values for column 'city'. Model output: <empty>");
     }
@@ -268,14 +268,14 @@ class OllamaClientHttpTest {
                       .generateBatchValues("online store", "users", "tags", "text[]", 1, 3)
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "AI response contained no valid values for column 'tags'. Model output:"
                   + " Aquí están los valores:");
     }
 
     @Test
-    void serverError_failsWithOllamaException() {
+    void serverError_failsWithAiClientException() {
       respondWith(500, "{\"error\":\"model not found\"}");
 
       assertThatThrownBy(
@@ -284,7 +284,7 @@ class OllamaClientHttpTest {
                       .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage("Ollama returned status code: 500 — model not found");
     }
 
@@ -298,7 +298,7 @@ class OllamaClientHttpTest {
                       .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "Ollama returned status code: 404 — model \"test-model\" not found, try pulling it first");
     }
@@ -377,7 +377,7 @@ class OllamaClientHttpTest {
                       .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "AI response contained no valid values for column 'city'. Model output: "
                   + THINK_OPEN
@@ -612,7 +612,7 @@ class OllamaClientHttpTest {
                       .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
                       .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "AI generation stalled for column 'city' (no tokens received within 500ms)");
     }
@@ -666,12 +666,12 @@ class OllamaClientHttpTest {
     }
 
     @Test
-    void serverError_failsWithOllamaException() {
+    void serverError_failsWithAiClientException() {
       respondWith(500, "{\"error\":\"boom\"}");
 
       assertThatThrownBy(() -> newClient().warmModel().get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
-          .hasCauseInstanceOf(OllamaClient.OllamaException.class)
+          .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage("Ollama returned status code: 500 — boom");
     }
   }

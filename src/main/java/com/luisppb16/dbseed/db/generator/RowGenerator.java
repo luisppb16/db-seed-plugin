@@ -7,7 +7,8 @@
 
 package com.luisppb16.dbseed.db.generator;
 
-import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.AbstractAiClient;
+import com.luisppb16.dbseed.ai.AiClient;
 import com.luisppb16.dbseed.db.AiBatchProgress;
 import com.luisppb16.dbseed.db.ProgressTracker;
 import com.luisppb16.dbseed.db.Row;
@@ -105,7 +106,7 @@ public final class RowGenerator {
   private final Set<String> aiColumns;
   private final int aiWordCount;
   private final ValueGenerator valueGenerator;
-  private final OllamaClient ollamaClient;
+  private final AiClient ollamaClient;
   private final String applicationContext;
   private final ProgressTracker tracker;
   @Getter private final Map<String, ParsedConstraint> constraints;
@@ -134,7 +135,7 @@ public final class RowGenerator {
       final int numericScale,
       final Set<String> aiColumns,
       final int aiWordCount,
-      final OllamaClient ollamaClient,
+      final AiClient ollamaClient,
       final String applicationContext,
       final ProgressTracker tracker) {
 
@@ -612,7 +613,7 @@ public final class RowGenerator {
 
               try {
                 final List<String> batchValues =
-                    OllamaClient.awaitCancellable(
+                    AbstractAiClient.awaitCancellable(
                         ollamaClient.generateBatchValues(
                             applicationContext,
                             table.name(),
@@ -676,7 +677,7 @@ public final class RowGenerator {
                   attemptStartNanos.set(System.nanoTime());
                   try {
                     final List<String> batchValues =
-                        OllamaClient.awaitCancellable(
+                        AbstractAiClient.awaitCancellable(
                             ollamaClient.generateBatchValues(
                                 applicationContext,
                                 table.name(),

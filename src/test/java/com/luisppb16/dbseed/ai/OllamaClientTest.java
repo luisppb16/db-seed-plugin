@@ -47,6 +47,21 @@ class OllamaClientTest {
       assertThat(OllamaClient.normalizeUrl("http://localhost:11434"))
           .isEqualTo("http://localhost:11434");
     }
+
+    @Test
+    void trailingVersionSegment_removed() {
+      // Así se documenta la URL base de un servidor OpenAI-compatible, pero las rutas del cliente
+      // ya
+      // llevan su propia versión: sin quitarla se pediría /v1/v1/chat/completions.
+      assertThat(OllamaClient.normalizeUrl("http://localhost:8888/v1"))
+          .isEqualTo("http://localhost:8888");
+    }
+
+    @Test
+    void trailingVersionSegmentWithSlash_removed() {
+      assertThat(OllamaClient.normalizeUrl("http://localhost:8888/v1/"))
+          .isEqualTo("http://localhost:8888");
+    }
   }
 
   @Nested

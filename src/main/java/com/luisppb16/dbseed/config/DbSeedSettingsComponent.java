@@ -25,6 +25,7 @@ import com.intellij.ui.ToolbarDecorator;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBList;
+import com.intellij.ui.components.JBPasswordField;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTabbedPane;
 import com.intellij.ui.components.JBTextArea;
@@ -33,16 +34,24 @@ import com.intellij.util.ui.AsyncProcessIcon;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
-import com.luisppb16.dbseed.ai.OllamaClient;
+import com.luisppb16.dbseed.ai.AiClient;
+import com.luisppb16.dbseed.ai.AiClientFactory;
+import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.event.ItemEvent;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import javax.swing.ButtonGroup;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JSpinner;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
@@ -52,7 +61,7 @@ import javax.swing.SpinnerNumberModel;
  * Redesigned UI component for configuring global settings of the DBSeed plugin.
  *
  * <p>Organized with a tabbed interface grouping related settings: General, Dictionaries, Soft
- * Delete, AI/Ollama, and Advanced. Clean, minimalist design with clear visual hierarchy.
+ * Delete, AI, and Advanced. Clean, minimalist design with clear visual hierarchy.
  */
 public class DbSeedSettingsComponent {
 
@@ -79,10 +88,15 @@ public class DbSeedSettingsComponent {
   private final JBCheckBox myAiParallelGeneration =
       new JBCheckBox("Generate AI columns in parallel");
   private final JSpinner myAiGenerationThreads = new JSpinner(new SpinnerNumberModel(2, 1, 16, 1));
-  private final JBTextField myOllamaUrl = new JBTextField();
-  private final ComboBox<String> myOllamaModelDropdown = new ComboBox<>();
+  private final JBTextField myAiUrl = new JBTextField();
+  private final ComboBox<String> myAiModelDropdown = new ComboBox<>();
   private final JButton myRefreshModelsButton = new JButton("Get models");
-  private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("OllamaLoading");
+  private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("AiLoading");
+  private final Map<AiProvider, JRadioButton> myProviderButtons = new LinkedHashMap<>();
+  private final JPanel myAiProviderPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+  private final JBLabel myAiApiKeyLabel = new JBLabel("Password / API key:");
+  private final JBPasswordField myAiApiKey = new JBPasswordField();
+  private final JBLabel myAiApiKeyHint = hintLabel();
   private final Project myProject;
   private final CollectionListModel<String> myProfilesModel = new CollectionListModel<>();
   private final JBList<String> myProfilesList = new JBList<>(myProfilesModel);
@@ -112,11 +126,14 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
     myAiApplicationContext.setBorder(JBUI.Borders.empty(4));
-    myOllamaUrl.setText(settings.getOllamaUrl());
+    configureAiProviderButtons();
+    setAiProvider(settings.getAiProvider());
+    setAiUrl(settings.getAiUrl());
+    myAiApiKey.setText(AiApiKeyStore.load(getAiProvider()));
 
-    if (Objects.nonNull(settings.getOllamaModel()) && !settings.getOllamaModel().isEmpty()) {
-      myOllamaModelDropdown.addItem(settings.getOllamaModel());
-      myOllamaModelDropdown.setSelectedItem(settings.getOllamaModel());
+    if (Objects.nonNull(settings.getAiModel()) && !settings.getAiModel().isEmpty()) {
+      myAiModelDropdown.addItem(settings.getAiModel());
+      myAiModelDropdown.setSelectedItem(settings.getAiModel());
     }
 
     mySoftDeleteUseSchemaDefault.addActionListener(
@@ -147,6 +164,34 @@ public class DbSeedSettingsComponent {
     myMainPanel.add(tabbedPane, BorderLayout.CENTER);
     myMainPanel.add(ComponentUtils.createVersionLabel(), BorderLayout.SOUTH);
     myMainPanel.setPreferredSize(JBUI.size(600, 600));
+  }
+
+  /** Context help line under a field: the muted style the other descriptions in this tab use. */
+  private static JBLabel hintLabel() {
+    final JBLabel label = new JBLabel();
+    label.setForeground(UIUtil.getContextHelpForeground());
+    label.setFont(JBUI.Fonts.smallFont());
+    label.setBorder(JBUI.Borders.emptyLeft(16));
+    return label;
+  }
+
+  /**
+   * What the credential field expects from the selected engine, and where that engine hands it out.
+   * The Ollama branch is empty because that engine has no credential at all and its row is hidden;
+   * the branch stays so the switch keeps covering every engine.
+   */
+  private static String apiKeyHintFor(final AiProvider provider) {
+    return switch (provider) {
+      case OLLAMA -> "";
+      case UNSLOTH_STUDIO ->
+          "<html>Paste either the API key Unsloth Studio hands out under <i>Settings → API</i> "
+              + "(shown only once), or the password you sign in to Unsloth Studio with: a password is "
+              + "exchanged for a session token, which is what Unsloth Studio accepts. Leave this empty "
+              + "only if <i>Keyless API access</i> is enabled there.</html>";
+      case OPENAI_COMPATIBLE ->
+          "<html>Only if the server asks for one; LM Studio and llama.cpp usually accept an empty "
+              + "key.</html>";
+    };
   }
 
   private JComponent createGeneralTab() {
@@ -325,8 +370,9 @@ public class DbSeedSettingsComponent {
   private JComponent createAiTab() {
     final JBLabel description =
         new JBLabel(
-            "<html>Use a local or cloud Ollama instance to generate context-aware data."
-                + "<br/>Ensure Ollama is running and accessible at the specified URL.</html>");
+            "<html>Use a local or cloud AI engine to generate context-aware data."
+                + "<br/>Ensure the selected server is running and accessible at the specified"
+                + " URL.</html>");
     description.setForeground(UIUtil.getContextHelpForeground());
     description.setFont(JBUI.Fonts.smallFont());
     description.setBorder(JBUI.Borders.emptyBottom(12));
@@ -336,7 +382,7 @@ public class DbSeedSettingsComponent {
     buttonPanel.add(myLoadingIcon);
 
     final JPanel urlPanel = new JPanel(new BorderLayout(5, 0));
-    urlPanel.add(myOllamaUrl, BorderLayout.CENTER);
+    urlPanel.add(myAiUrl, BorderLayout.CENTER);
     urlPanel.add(buttonPanel, BorderLayout.EAST);
 
     final JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
@@ -360,17 +406,20 @@ public class DbSeedSettingsComponent {
 
     final JBLabel parallelDesc =
         new JBLabel(
-            "<html>Generate several AI columns at once. Only worth it when the Ollama server "
-                + "answers more than one request at a time (OLLAMA_NUM_PARALLEL); otherwise the "
-                + "requests just queue up.</html>");
+            "<html>Generate several AI columns at once. Only worth it when the AI server "
+                + "answers more than one request at a time; otherwise the requests just queue "
+                + "up.</html>");
     parallelDesc.setForeground(UIUtil.getContextHelpForeground());
     parallelDesc.setFont(JBUI.Fonts.smallFont());
     parallelDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
     final JPanel serverConfigPanel =
         FormBuilder.createFormBuilder()
-            .addLabeledComponent(new JBLabel("Ollama URL:"), urlPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Model:"), myOllamaModelDropdown, 1, false)
+            .addLabeledComponent(new JBLabel("Engine:"), myAiProviderPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Server URL:"), urlPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Model:"), myAiModelDropdown, 1, false)
+            .addLabeledComponent(myAiApiKeyLabel, myAiApiKey, 1, false)
+            .addComponent(myAiApiKeyHint, 0)
             .getPanel();
 
     final JPanel aiBehaviorPanel =
@@ -439,11 +488,68 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setEnabled(enabled);
     myAiWordCount.setEnabled(enabled);
     myAiRequestTimeout.setEnabled(enabled);
-    myOllamaUrl.setEnabled(enabled);
-    myOllamaModelDropdown.setEnabled(enabled);
+    myAiUrl.setEnabled(enabled);
+    myAiModelDropdown.setEnabled(enabled);
     myRefreshModelsButton.setEnabled(enabled);
     myAiParallelGeneration.setEnabled(enabled);
+    myProviderButtons.values().forEach(button -> button.setEnabled(enabled));
+    // Ollama has no authentication at all, so its credential row is taken out of the form
+    // instead of being left there disabled; the other engines keep it, because Unsloth Studio
+    // requires a credential and an OpenAI-compatible server may or may not ask for one.
+    final boolean apiKeyVisible = getAiProvider() != AiProvider.OLLAMA;
+    myAiApiKeyLabel.setVisible(apiKeyVisible);
+    myAiApiKey.setVisible(apiKeyVisible);
+    myAiApiKeyHint.setVisible(apiKeyVisible);
+    myAiApiKeyLabel.setEnabled(enabled);
+    myAiApiKey.setEnabled(enabled);
+    myAiApiKeyHint.setText(apiKeyHintFor(getAiProvider()));
+    // Hiding only invalidates, which does not schedule a relayout by itself: this is what
+    // collapses the row. It does nothing while the tab is still being built, when the field has
+    // no parent yet.
+    myAiApiKey.revalidate();
     updateAiParallelFieldsEnabled(enabled && myAiParallelGeneration.isSelected());
+  }
+
+  /**
+   * Builds one radio button per engine, all in the same group so only one can be selected. The
+   * listener is an item listener rather than an action listener because an action also fires when
+   * the engine already selected is clicked again, and that would discard a credential the user
+   * typed but has not applied yet.
+   */
+  private void configureAiProviderButtons() {
+    final ButtonGroup group = new ButtonGroup();
+    for (final AiProvider provider : AiProvider.values()) {
+      final JRadioButton button = new JRadioButton(provider.getDisplayName());
+      button.addItemListener(
+          e -> {
+            if (e.getStateChange() == ItemEvent.SELECTED) {
+              onAiProviderChanged(provider);
+            }
+          });
+      group.add(button);
+      myAiProviderPanel.add(button);
+      myProviderButtons.put(provider, button);
+    }
+  }
+
+  /**
+   * Applies the newly selected engine's configuration: the URL is replaced by that engine's default
+   * when the field is empty or still holds another engine's default, so switching away from Ollama
+   * does not leave a pointed-at-the-wrong-port URL behind, and the credential field shows what that
+   * engine has stored — empty when it has none — so one engine's secret is never left on screen for
+   * the next one. With Ollama, which carries no credential, the whole credential row is hidden
+   * instead of shown empty.
+   */
+  private void onAiProviderChanged(final AiProvider provider) {
+    final String currentUrl = myAiUrl.getText().trim();
+    final boolean holdsAnotherDefault =
+        Arrays.stream(AiProvider.values())
+            .anyMatch(other -> other != provider && other.getDefaultUrl().equals(currentUrl));
+    if (currentUrl.isEmpty() || holdsAnotherDefault) {
+      myAiUrl.setText(provider.getDefaultUrl());
+    }
+    myAiApiKey.setText(AiApiKeyStore.load(provider));
+    updateAiFieldsEnabled(myUseAiGeneration.isSelected());
   }
 
   private void updateAiParallelFieldsEnabled(final boolean enabled) {
@@ -451,20 +557,39 @@ public class DbSeedSettingsComponent {
   }
 
   private void refreshModels() {
-    final String url = myOllamaUrl.getText().trim();
+    final String url = myAiUrl.getText().trim();
+    final AiProvider provider = getAiProvider();
     if (url.isEmpty()) {
-      Messages.showErrorDialog(myMainPanel, "Please enter a valid Ollama URL.", "Invalid URL");
+      Messages.showErrorDialog(myMainPanel, "Please enter a valid server URL.", "Invalid URL");
+      return;
+    }
+
+    final AiClient client =
+        AiClientFactory.create(provider, url, getAiModel(), getAiApiKey(), getAiRequestTimeout());
+    if (Objects.isNull(client)) {
+      Messages.showErrorDialog(myMainPanel, "Please enter a valid server URL.", "Invalid URL");
       return;
     }
 
     myRefreshModelsButton.setEnabled(false);
     myLoadingIcon.setVisible(true);
     myLoadingIcon.resume();
-    myOllamaModelDropdown.setEnabled(false);
+    myAiModelDropdown.setEnabled(false);
 
     final ModalityState currentModality = ModalityState.stateForComponent(myMainPanel);
 
-    final OllamaClient client = new OllamaClient(url, "", getAiRequestTimeout());
+    // Unsloth Studio signs a password in while the request is being built, so this has to run off
+    // the
+    // EDT: ping() and listModels() both assemble their request before returning.
+    ApplicationManager.getApplication()
+        .executeOnPooledThread(() -> pingAndListModels(client, provider, url, currentModality));
+  }
+
+  private void pingAndListModels(
+      final AiClient client,
+      final AiProvider provider,
+      final String url,
+      final ModalityState currentModality) {
     client
         .ping()
         .whenComplete(
@@ -479,10 +604,12 @@ public class DbSeedSettingsComponent {
                               Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
                           Messages.showErrorDialog(
                               myMainPanel,
-                              "No Ollama server found at "
+                              "No "
+                                  + provider.getDisplayName()
+                                  + " server found at "
                                   + url
                                   + ".\n"
-                                  + "Ensure Ollama is running and the URL is correct.\n\n"
+                                  + "Ensure the server is running and the URL is correct.\n\n"
                                   + "Error: "
                                   + cause.getMessage(),
                               "Server Not Reachable");
@@ -505,7 +632,9 @@ public class DbSeedSettingsComponent {
                                         Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
                                     Messages.showErrorDialog(
                                         myMainPanel,
-                                        "Could not fetch models from Ollama at "
+                                        "Could not fetch models from "
+                                            + provider.getDisplayName()
+                                            + " at "
                                             + url
                                             + ".\n"
                                             + "Error: "
@@ -513,18 +642,20 @@ public class DbSeedSettingsComponent {
                                         "Connection Error");
                                   } else {
                                     final String currentSelection =
-                                        (String) myOllamaModelDropdown.getSelectedItem();
-                                    myOllamaModelDropdown.removeAllItems();
+                                        (String) myAiModelDropdown.getSelectedItem();
+                                    myAiModelDropdown.removeAllItems();
                                     if (models.isEmpty()) {
                                       Messages.showWarningDialog(
                                           myMainPanel,
-                                          "No models found in Ollama. Ensure you have pulled at least one model.",
+                                          "No models found on "
+                                              + provider.getDisplayName()
+                                              + ". Load or pull at least one model first.",
                                           "No Models Found");
                                     } else {
-                                      models.forEach(myOllamaModelDropdown::addItem);
+                                      models.forEach(myAiModelDropdown::addItem);
                                       if (Objects.nonNull(currentSelection)
                                           && models.contains(currentSelection)) {
-                                        myOllamaModelDropdown.setSelectedItem(currentSelection);
+                                        myAiModelDropdown.setSelectedItem(currentSelection);
                                       }
                                     }
                                   }
@@ -539,7 +670,7 @@ public class DbSeedSettingsComponent {
     myRefreshModelsButton.setEnabled(true);
     myLoadingIcon.suspend();
     myLoadingIcon.setVisible(false);
-    myOllamaModelDropdown.setEnabled(true);
+    myAiModelDropdown.setEnabled(true);
   }
 
   private void configureFolderChooser(final TextFieldWithBrowseButton field) {
@@ -686,23 +817,45 @@ public class DbSeedSettingsComponent {
     myAiGenerationThreads.setValue(threads);
   }
 
-  public String getOllamaUrl() {
-    return myOllamaUrl.getText();
+  public AiProvider getAiProvider() {
+    return myProviderButtons.entrySet().stream()
+        .filter(entry -> entry.getValue().isSelected())
+        .map(Map.Entry::getKey)
+        .findFirst()
+        .orElse(AiProvider.OLLAMA);
   }
 
-  public void setOllamaUrl(final String url) {
-    myOllamaUrl.setText(url);
+  public void setAiProvider(final AiProvider provider) {
+    myProviderButtons
+        .get(Objects.requireNonNullElse(provider, AiProvider.OLLAMA))
+        .setSelected(true);
   }
 
-  public String getOllamaModel() {
-    final Object selected = myOllamaModelDropdown.getSelectedItem();
+  public String getAiUrl() {
+    return myAiUrl.getText();
+  }
+
+  public void setAiUrl(final String url) {
+    myAiUrl.setText(url);
+  }
+
+  public String getAiModel() {
+    final Object selected = myAiModelDropdown.getSelectedItem();
     return selected instanceof String ? (String) selected : "";
   }
 
-  public void setOllamaModel(final String model) {
-    myOllamaModelDropdown.removeAllItems();
-    myOllamaModelDropdown.addItem(model);
-    myOllamaModelDropdown.setSelectedItem(model);
+  public void setAiModel(final String model) {
+    myAiModelDropdown.removeAllItems();
+    myAiModelDropdown.addItem(model);
+    myAiModelDropdown.setSelectedItem(model);
+  }
+
+  public String getAiApiKey() {
+    return new String(myAiApiKey.getPassword());
+  }
+
+  public void setAiApiKey(final String apiKey) {
+    myAiApiKey.setText(Objects.requireNonNullElse(apiKey, ""));
   }
 
   public void dispose() {

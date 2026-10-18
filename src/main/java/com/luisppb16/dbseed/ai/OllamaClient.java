@@ -16,6 +16,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -64,6 +65,17 @@ public class OllamaClient extends AbstractAiClient {
     super(ollamaUrl, modelName, requestTimeoutSeconds, inactivityOverrideMillis);
   }
 
+  /**
+   * True when a non-terminal frame carries reasoning text in the top-level {@code thinking} field,
+   * which means the model is still generating even though no value was emitted yet.
+   */
+  private static boolean hasReasoningText(final JsonObject json) {
+    final JsonElement thinking = json.get("thinking");
+    return Objects.nonNull(thinking)
+        && thinking.isJsonPrimitive()
+        && !thinking.getAsString().isEmpty();
+  }
+
   @Override
   protected String providerName() {
     return "Ollama";
@@ -86,7 +98,10 @@ public class OllamaClient extends AbstractAiClient {
 
   @Override
   protected String buildGenerateRequestBody(
-      final String prompt, final double temperature, final int numPredict) {
+      final String prompt,
+      final double temperature,
+      final int numPredict,
+      final JsonObject valuesSchema) {
     final JsonObject options = new JsonObject();
     options.addProperty("temperature", temperature);
     options.addProperty("num_predict", numPredict);
@@ -106,7 +121,7 @@ public class OllamaClient extends AbstractAiClient {
     // preambles, commentary about the request) cannot be emitted at all and therefore cannot be
     // mistaken for a value. Servers or models that ignore `format` still get the plain-text
     // extraction path as a fallback.
-    body.add("format", VALUES_SCHEMA);
+    body.add("format", valuesSchema);
     body.addProperty("keep_alive", DEFAULT_KEEP_ALIVE);
     body.add("options", options);
 
@@ -137,22 +152,29 @@ public class OllamaClient extends AbstractAiClient {
   /**
    * Reads one NDJSON line: Ollama puts the emitted text in the {@code response} field, marks the
    * terminal line with {@code done:true}, and may also carry a {@code thinking} field that is never
-   * a seed value and is therefore ignored.
+   * a seed value: a non-empty {@code thinking} frame is reported as progress so the inactivity
+   * watchdog does not abort the stream mid-thought. An {@code error} field is a fatal mid-stream
+   * error and is surfaced with the server's own message.
    */
   @Override
   protected ParsedChunk parseStreamLine(final String rawLine) {
     try {
       final JsonObject json = JsonParser.parseString(rawLine).getAsJsonObject();
+      if (json.has("error") && !json.get("error").isJsonNull()) {
+        // Fatal error mid-stream: surface the server's message instead of dropping the frame.
+        return ParsedChunk.error(errorDetail(rawLine));
+      }
       final boolean done =
           json.has("done") && json.get("done").isJsonPrimitive() && json.get("done").getAsBoolean();
-      if (!json.has("response") || json.get("response").isJsonNull()) {
-        return done ? ParsedChunk.end() : ParsedChunk.ignore();
+      final boolean hasResponse = json.has("response") && !json.get("response").isJsonNull();
+      final String chunk = hasResponse ? json.get("response").getAsString() : "";
+      if (!chunk.isEmpty()) {
+        return ParsedChunk.text(chunk);
       }
-      final String chunk = json.get("response").getAsString();
-      if (chunk.isEmpty()) {
-        return done ? ParsedChunk.end() : ParsedChunk.ignore();
+      if (done) {
+        return ParsedChunk.end();
       }
-      return ParsedChunk.text(chunk);
+      return hasReasoningText(json) ? ParsedChunk.progress() : ParsedChunk.ignore();
     } catch (final Exception e) {
       log.debug("Skipping malformed Ollama stream line: " + e.getMessage());
       return ParsedChunk.ignore();

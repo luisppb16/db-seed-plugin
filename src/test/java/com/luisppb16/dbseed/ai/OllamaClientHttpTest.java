@@ -551,6 +551,36 @@ class OllamaClientHttpTest {
     }
 
     @Test
+    void arrayColumn_nestedJsonArrays_joinedIntoLiterals() throws Exception {
+      // The array schema asks for an array of arrays: each inner array is one row's value and must
+      // be joined into a single PostgreSQL literal.
+      respondWithNdjson(
+          "{\"values\": [[\"python\",\"cli\",\"linux\"],[\"java\",\"gradle\",\"idea\"]]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 1, 2)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{python,cli,linux}", "{java,gradle,idea}");
+    }
+
+    @Test
+    void arrayColumn_flatScalarsAccepted() throws Exception {
+      // A small model ignores the nested instruction and answers with one element per string. Those
+      // are still usable array data (wrapped as single-element arrays later), so they are kept
+      // instead of leaving the whole column to DataFaker.
+      respondWithNdjson("{\"values\": [\"war\", \"battle\", \"fight\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("war", "battle", "fight");
+    }
+
+    @Test
     void ok_splitAcrossMultipleChunks_assemblesLine() throws Exception {
       respondWithNdjson("va", "lor", "1\n", "va", "lor", "2");
 
@@ -615,6 +645,40 @@ class OllamaClientHttpTest {
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "AI generation stalled for column 'city' (no tokens received within 500ms)");
+    }
+
+    @Test
+    void thinkingFramesWithoutResponse_keepTheWatchdogAlive() throws Exception {
+      HANDLER.set(
+          exchange -> {
+            try {
+              exchange.getRequestBody().readAllBytes();
+              exchange.sendResponseHeaders(200, 0);
+              final OutputStream os = exchange.getResponseBody();
+              // Reasoning-only frames arrive inside the 2s window while the phase as a whole
+              // outlasts it: the watchdog must not abort the stream mid-thought.
+              for (int i = 0; i < 4; i++) {
+                os.write(
+                    ("{\"thinking\":\"step " + i + "\",\"response\":\"\"}\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                os.flush();
+                Thread.sleep(700);
+              }
+              os.write(
+                  (chunkLine("{\"values\":[\"Madrid\"]}") + "\n").getBytes(StandardCharsets.UTF_8));
+              os.write("{\"response\":\"\",\"done\":true}\n".getBytes(StandardCharsets.UTF_8));
+              os.flush();
+            } catch (final IOException | InterruptedException ignored) {
+              // The client aborted or the test finished; nothing to recover.
+            }
+          });
+
+      final List<String> values =
+          new OllamaClient(baseUrl, MODEL_NAME, REQUEST_TIMEOUT_SECONDS, 2000L)
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 1)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("Madrid");
     }
 
     @Test

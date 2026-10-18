@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 
 class DialectTest {
 
-  private static String fmt(DatabaseDialect d, Object value) {
+  private static String fmt(AbstractDialect d, Object value) {
     StringBuilder sb = new StringBuilder();
     d.formatValue(value, sb);
     return sb.toString();
@@ -33,7 +33,7 @@ class DialectTest {
 
   @Nested
   class FormatValueTests {
-    final DatabaseDialect d = new StandardDialect();
+    final AbstractDialect d = new StandardDialect();
 
     @Test
     void null_formatsAsNULL() {
@@ -118,7 +118,7 @@ class DialectTest {
 
   @Nested
   class EscapeSqlTests {
-    final DatabaseDialect d = new StandardDialect();
+    final AbstractDialect d = new StandardDialect();
 
     @Test
     void singleQuote_escaped() {
@@ -142,25 +142,25 @@ class DialectTest {
 
     @Test
     void mysqlBackslash_escaped() {
-      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      AbstractDialect mysql = new StandardDialect("mysql.properties");
       assertThat(fmt(mysql, "C:\\path")).isEqualTo("'C:\\\\path'");
     }
 
     @Test
     void mysqlBackslashBeforeQuote_bothEscaped() {
-      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      AbstractDialect mysql = new StandardDialect("mysql.properties");
       assertThat(fmt(mysql, "a\\'b")).isEqualTo("'a\\\\''b'");
     }
 
     @Test
     void mysqlMultipleBackslashes_allEscaped() {
-      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      AbstractDialect mysql = new StandardDialect("mysql.properties");
       assertThat(fmt(mysql, "a\\\\b")).isEqualTo("'a\\\\\\\\b'");
     }
 
     @Test
     void mysqlBackslashInjection_prevented() {
-      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      AbstractDialect mysql = new StandardDialect("mysql.properties");
       String malicious = "\\'; DROP TABLE users; --";
       String result = fmt(mysql, malicious);
       assertThat(result).contains("\\\\");
@@ -181,7 +181,7 @@ class DialectTest {
 
     @Test
     void mysqlCharacterBackslash_escaped() {
-      DatabaseDialect mysql = new StandardDialect("mysql.properties");
+      AbstractDialect mysql = new StandardDialect("mysql.properties");
       assertThat(fmt(mysql, '\\')).isEqualTo("'\\\\'");
     }
   }
@@ -217,7 +217,7 @@ class DialectTest {
 
   @Nested
   class MySQLDialectTests {
-    final DatabaseDialect d = new StandardDialect("mysql.properties");
+    final AbstractDialect d = new StandardDialect("mysql.properties");
 
     @Test
     void quote_backtick() {
@@ -246,7 +246,7 @@ class DialectTest {
 
   @Nested
   class PostgreSqlDialectTests {
-    final DatabaseDialect d = new StandardDialect("postgresql.properties");
+    final AbstractDialect d = new StandardDialect("postgresql.properties");
 
     @Test
     void quote_doubleQuote() {
@@ -263,7 +263,7 @@ class DialectTest {
 
   @Nested
   class SqlServerDialectTests {
-    final DatabaseDialect d = new StandardDialect("sqlserver.properties");
+    final AbstractDialect d = new StandardDialect("sqlserver.properties");
 
     @Test
     void quote_squareBrackets() {
@@ -291,7 +291,7 @@ class DialectTest {
 
   @Nested
   class OracleDialectTests {
-    final DatabaseDialect d = new StandardDialect("oracle.properties");
+    final AbstractDialect d = new StandardDialect("oracle.properties");
 
     @Test
     void quote_uppercase() {
@@ -321,7 +321,7 @@ class DialectTest {
 
   @Nested
   class SqliteDialectTests {
-    final DatabaseDialect d = new StandardDialect("sqlite.properties");
+    final AbstractDialect d = new StandardDialect("sqlite.properties");
 
     @Test
     void batchSplittingAt100Rows() {

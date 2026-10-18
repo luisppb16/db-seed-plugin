@@ -10,7 +10,7 @@ package com.luisppb16.dbseed.db;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
-import com.luisppb16.dbseed.db.dialect.DatabaseDialect;
+import com.luisppb16.dbseed.db.dialect.AbstractDialect;
 import com.luisppb16.dbseed.db.dialect.StandardDialect;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 
 class SchemaIntrospectorTest {
 
-  private final DatabaseDialect h2Dialect = new StandardDialect("h2.properties");
+  private final AbstractDialect h2Dialect = new StandardDialect("h2.properties");
   private Connection conn;
 
   @BeforeEach

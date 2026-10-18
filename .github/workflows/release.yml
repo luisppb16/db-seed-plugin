@@ -26,25 +26,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
 
-      - name: Set up JDK 25
-        uses: actions/setup-java@v6
-        with:
-          distribution: 'temurin'
-          java-version: '25'
-          cache-jdk: true
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      - name: Grant execute permission to Gradle wrapper
-        run: chmod +x gradlew
+      - name: Setup build environment
+        uses: ./.github/actions/setup-build-env
 
       # ── Tests ──────────────────────────────────────────────────────────────
       - name: Run tests and generate JaCoCo report
-        run: ./gradlew clean test jacocoTestReport --no-daemon
+        run: ./gradlew clean test jacocoTestReport
         env:
           GRADLE_OPTS: >-
             -Dcom.mysql.cj.disableAbandonedConnectionCleanup=true
@@ -58,15 +46,15 @@ jobs:
 
       # ── Build ──────────────────────────────────────────────────────────────
       - name: Build plugin
-        run: ./gradlew buildPlugin --no-daemon
+        run: ./gradlew buildPlugin
 
       # ── Verify ────────────────────────────────────────────────────────────
       - name: Verify plugin against recommended IDEs
-        run: ./gradlew verifyPlugin --no-daemon
+        run: ./gradlew verifyPlugin
 
       # ── Sign ──────────────────────────────────────────────────────────────
       - name: Sign plugin
-        run: ./gradlew signPlugin --no-daemon
+        run: ./gradlew signPlugin
         env:
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
@@ -94,7 +82,7 @@ jobs:
 
       # ── Publish to JetBrains Marketplace ─────────────────────────────────
       - name: Publish plugin to JetBrains Marketplace
-        run: ./gradlew publishPlugin --no-daemon
+        run: ./gradlew publishPlugin
         env:
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}

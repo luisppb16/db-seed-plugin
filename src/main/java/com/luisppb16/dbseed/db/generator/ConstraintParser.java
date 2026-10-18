@@ -464,7 +464,8 @@ public final class ConstraintParser {
     }
 
     private static ColumnPatterns create(final String name) {
-      final String colPattern = "(?i)(?:\\w+\\.)*+\\s*\"?" + Pattern.quote(name) + "\"?\\s*";
+      final String colPattern =
+          "(?i)(?:\\w+\\.)*+\\s*(?<![\\w$#])\"?" + Pattern.quote(name) + "\"?\\s*";
 
       return new ColumnPatterns(
           Pattern.compile(

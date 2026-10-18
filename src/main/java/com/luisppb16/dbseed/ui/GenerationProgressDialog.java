@@ -56,6 +56,12 @@ public final class GenerationProgressDialog extends DialogWrapper {
   /** Detail slot of the header: the fixed-slot AI batch line, or the plain text line. */
   private final AiBatchDetailLine detailLine = new AiBatchDetailLine();
 
+  /**
+   * Cancel clicked while {@code indicatorRef} was still empty; the site that registers the
+   * indicator reads it and cancels right away, so the request can never be lost.
+   */
+  private volatile boolean cancelRequested;
+
   /** Balloon offering to bring the dialog back; {@code null} while the dialog is on screen. */
   private Notification backgroundNotification;
 
@@ -77,7 +83,8 @@ public final class GenerationProgressDialog extends DialogWrapper {
   /**
    * @param project project used as dialog parent/scope
    * @param indicatorRef reference to the task indicator, set on the task's first line; Cancel
-   *     clicks before it is set are safely ignored
+   *     clicks before it is set are recorded ({@link #isCancelRequested()}) so the registering site
+   *     can cancel immediately
    * @param aiExpected whether an AI phase is expected, so the AI bars pre-arm (indeterminate)
    *     during warm-up
    */
@@ -130,7 +137,9 @@ public final class GenerationProgressDialog extends DialogWrapper {
 
   /**
    * Cancel routes to the indicator (poll-based cancellation picks it up) but keeps the dialog open
-   * until the task unwinds; Esc and the window close button land here too.
+   * until the task unwinds; Esc and the window close button land here too. Before the task
+   * registers its indicator the request is only recorded — the button stays usable and the
+   * registering site reads {@link #isCancelRequested()} to honor it.
    */
   @Override
   public void doCancelAction() {
@@ -138,9 +147,11 @@ public final class GenerationProgressDialog extends DialogWrapper {
       return;
     }
     final ProgressIndicator indicator = indicatorRef.get();
-    if (Objects.nonNull(indicator)) {
-      indicator.cancel();
+    if (Objects.isNull(indicator)) {
+      cancelRequested = true;
+      return;
     }
+    indicator.cancel();
     setCancelButtonText("Cancelling...");
     final JButton button = getButton(getCancelAction());
     if (Objects.nonNull(button)) {
@@ -148,6 +159,13 @@ public final class GenerationProgressDialog extends DialogWrapper {
     }
     // Deliberately NOT calling super.doCancelAction(): the dialog stays open until the task
     // unwinds.
+  }
+
+  /**
+   * @return whether Cancel was clicked while the task indicator had not been registered yet.
+   */
+  public boolean isCancelRequested() {
+    return cancelRequested;
   }
 
   @Override
@@ -261,6 +279,9 @@ public final class GenerationProgressDialog extends DialogWrapper {
    * while the window is hidden in the background, so the same call adds it and retires it.
    */
   private void updateStatusBarWidget() {
+    if (project.isDisposed()) {
+      return;
+    }
     final StatusBarWidgetsManager widgetManager = project.getService(StatusBarWidgetsManager.class);
     if (Objects.nonNull(widgetManager)) {
       widgetManager.updateWidget(ProgressStatusBarWidgetFactory.class);

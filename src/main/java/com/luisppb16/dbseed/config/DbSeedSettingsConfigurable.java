@@ -75,7 +75,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
         || !Objects.equals(mySettingsComponent.getAiUrl(), settings.getAiUrl())
         || !Objects.equals(mySettingsComponent.getAiModel(), settings.getAiModel())
         || !Objects.equals(
-            mySettingsComponent.getAiApiKey(),
+            mySettingsComponent.getAiApiKey().trim(),
             AiApiKeyStore.load(mySettingsComponent.getAiProvider()))
         || mySettingsComponent.getAiWordCount() != settings.getAiWordCount()
         || mySettingsComponent.getAiRequestTimeout() != settings.getAiRequestTimeoutSeconds()
@@ -132,7 +132,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
     if (mySettingsComponent.getAiApiKey().isBlank()) {
       AiApiKeyStore.clear(provider);
     } else {
-      AiApiKeyStore.save(provider, mySettingsComponent.getAiApiKey());
+      AiApiKeyStore.save(provider, mySettingsComponent.getAiApiKey().trim());
     }
     settings.setAiWordCount(mySettingsComponent.getAiWordCount());
     settings.setAiRequestTimeoutSeconds(mySettingsComponent.getAiRequestTimeout());

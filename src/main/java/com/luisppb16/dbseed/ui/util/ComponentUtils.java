@@ -7,7 +7,10 @@
 
 package com.luisppb16.dbseed.ui.util;
 
+import com.intellij.util.ui.JBUI;
 import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
 import java.io.InputStream;
@@ -83,5 +86,24 @@ public class ComponentUtils {
     panel.setOpaque(false);
     panel.add(label);
     return panel;
+  }
+
+  /** List panel styled for stacking rows built with {@link #createDefaultGridBagConstraints()}. */
+  public static JPanel createConfiguredListPanel() {
+    final JPanel listPanel = new JPanel(new GridBagLayout());
+    listPanel.setBorder(JBUI.Borders.empty(8));
+    return listPanel;
+  }
+
+  /** Constraints for a row of {@link #createConfiguredListPanel()}: top-left, full width. */
+  public static GridBagConstraints createDefaultGridBagConstraints() {
+    final GridBagConstraints c = new GridBagConstraints();
+    c.gridx = 0;
+    c.gridy = 0;
+    c.anchor = GridBagConstraints.NORTHWEST;
+    c.fill = GridBagConstraints.HORIZONTAL;
+    c.insets = JBUI.insets(4);
+    c.weightx = 1.0;
+    return c;
   }
 }

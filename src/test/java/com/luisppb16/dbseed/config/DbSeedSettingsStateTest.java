@@ -67,6 +67,62 @@ class DbSeedSettingsStateTest {
   }
 
   @Test
+  void loadState_columnSpinnerStepAboveMaximum_fallBackToDefault() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setColumnSpinnerStep(15);
+
+    state.loadState(incoming);
+
+    assertThat(state.getColumnSpinnerStep()).isEqualTo(3);
+  }
+
+  @Test
+  void loadState_aiWordCountAboveMaximum_fallBackToDefault() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiWordCount(501);
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiWordCount()).isEqualTo(1);
+  }
+
+  @Test
+  void loadState_aiRequestTimeoutSecondsBelowMinimum_fallBackToDefault() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiRequestTimeoutSeconds(5);
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiRequestTimeoutSeconds()).isEqualTo(120);
+  }
+
+  @Test
+  void loadState_aiRequestTimeoutSecondsAboveMaximum_fallBackToDefault() {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setAiRequestTimeoutSeconds(700);
+
+    state.loadState(incoming);
+
+    assertThat(state.getAiRequestTimeoutSeconds()).isEqualTo(120);
+  }
+
+  @ParameterizedTest
+  @CsvSource({"1, 1, 10", "10, 500, 600"})
+  void loadState_spinnerRangeBoundaries_areKept(
+      final int step, final int wordCount, final int timeoutSeconds) {
+    final DbSeedSettingsState incoming = new DbSeedSettingsState();
+    incoming.setColumnSpinnerStep(step);
+    incoming.setAiWordCount(wordCount);
+    incoming.setAiRequestTimeoutSeconds(timeoutSeconds);
+
+    state.loadState(incoming);
+
+    assertThat(state.getColumnSpinnerStep()).isEqualTo(step);
+    assertThat(state.getAiWordCount()).isEqualTo(wordCount);
+    assertThat(state.getAiRequestTimeoutSeconds()).isEqualTo(timeoutSeconds);
+  }
+
+  @Test
   void newState_defaultsToOllama() {
     assertThat(state.getAiProvider()).isEqualTo(AiProvider.OLLAMA);
     assertThat(state.getAiUrl()).isEqualTo(AiProvider.OLLAMA.getDefaultUrl());

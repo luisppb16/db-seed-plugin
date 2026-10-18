@@ -48,6 +48,24 @@ public record AiBatchProgress(
     String tableName,
     String columnName) {
 
+  /** Caption of the values stage. */
+  public static final String CAPTION_VALUES = " · values ";
+
+  /** Caption of the retry stage, which shows the same counters as the values stage. */
+  public static final String CAPTION_RETRY = " · retry ";
+
+  /** Caption of the timing stage. */
+  public static final String CAPTION_TIMING = " · last batch ";
+
+  /** Words separating the two numbers of the timing stage. */
+  public static final String SEPARATOR_TIMING = "s · ETA ~";
+
+  /** Caption of the waiting segment, omitted while the column is not waiting on the server. */
+  public static final String WAITING_CAPTION = " · waiting ";
+
+  /** Unit of the seconds segments. */
+  public static final String UNIT_SECONDS = "s";
+
   public AiBatchProgress {
     Objects.requireNonNull(stage, "Stage cannot be null");
     Objects.requireNonNull(tableName, "Table name cannot be null");
@@ -80,11 +98,11 @@ public record AiBatchProgress(
             .append(rowsTotal);
     switch (stage) {
       case TIMING -> appendTiming(text);
-      case VALUES -> text.append(" · values ").append(done).append("/").append(total);
-      case RETRY -> text.append(" · retry ").append(done).append("/").append(total);
+      case VALUES -> text.append(CAPTION_VALUES).append(done).append("/").append(total);
+      case RETRY -> text.append(CAPTION_RETRY).append(done).append("/").append(total);
     }
     if (waitingSeconds >= 0) {
-      text.append(" · waiting ").append(waitingSeconds).append("s");
+      text.append(WAITING_CAPTION).append(waitingSeconds).append(UNIT_SECONDS);
     }
     return text.toString();
   }
@@ -92,11 +110,11 @@ public record AiBatchProgress(
   /** Appends the batch-timing segment, which is omitted while no batch has finished yet. */
   private void appendTiming(final StringBuilder text) {
     if (lastBatchSeconds >= 0) {
-      text.append(" · last batch ")
+      text.append(CAPTION_TIMING)
           .append(lastBatchSeconds)
-          .append("s · ETA ~")
+          .append(SEPARATOR_TIMING)
           .append(etaSeconds)
-          .append("s");
+          .append(UNIT_SECONDS);
     }
   }
 

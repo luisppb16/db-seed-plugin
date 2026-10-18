@@ -19,7 +19,6 @@ import com.luisppb16.dbseed.db.generator.ConstraintParser.ParsedConstraint;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
-import java.math.BigDecimal;
 import java.sql.JDBCType;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -112,7 +111,13 @@ public final class RowGenerator {
   @Getter private final Map<String, ParsedConstraint> constraints;
   private final Predicate<Column> isFkColumn;
   private final List<List<String>> relevantUniqueKeys;
-  private final List<MultiColumnConstraint> multiColumnConstraints;
+
+  /** Multi-column constraints with their column names resolved to the table's columns up front. */
+  private final List<ResolvedMultiColumnConstraint> multiColumnConstraints;
+
+  /** Constraint plus reusable allowed-values lists resolved once per column. */
+  private final Map<String, ColumnData> columnData;
+
   private final List<Row> rows = new ArrayList<>();
   private final Set<String> seenPrimaryKeys = new HashSet<>();
   private final Map<String, Set<String>> seenUniqueKeyCombinations = new HashMap<>();
@@ -185,7 +190,18 @@ public final class RowGenerator {
             .filter(uk -> table.primaryKey().isEmpty() || !table.primaryKey().equals(uk))
             .toList();
 
-    this.multiColumnConstraints = ConstraintParser.parseMultiColumnConstraints(table.checks());
+    this.multiColumnConstraints =
+        ConstraintParser.parseMultiColumnConstraints(table.checks()).stream()
+            .map(this::resolveMultiColumnConstraint)
+            .toList();
+
+    // Resolved once per column: the row loop would otherwise re-resolve the constraint and copy
+    // the immutable allowed-values sets into a fresh list on every generated row.
+    final Map<String, ColumnData> resolvedColumnData = new HashMap<>();
+    table
+        .columns()
+        .forEach(column -> resolvedColumnData.put(column.name(), resolveColumnData(column)));
+    this.columnData = resolvedColumnData;
   }
 
   /** Whole seconds elapsed since {@code startNanos}, for the detail line of the progress dialog. */
@@ -247,10 +263,9 @@ public final class RowGenerator {
 
     final Set<String> behaviorColumns = new HashSet<>();
     for (final RepetitionRule rule : repetitionRules) {
-      if (rule.fixedValues() != null) behaviorColumns.addAll(rule.fixedValues().keySet());
-      if (rule.randomConstantColumns() != null)
-        behaviorColumns.addAll(rule.randomConstantColumns());
-      if (rule.regexPatterns() != null) behaviorColumns.addAll(rule.regexPatterns().keySet());
+      behaviorColumns.addAll(rule.fixedValues().keySet());
+      behaviorColumns.addAll(rule.randomConstantColumns());
+      behaviorColumns.addAll(rule.regexPatterns().keySet());
     }
 
     return aiColumns.stream()
@@ -287,6 +302,10 @@ public final class RowGenerator {
               });
           baseValues.clear();
           baseValues.putAll(normalized);
+
+          // Skip stale repetition-rule keys: an entry whose column no longer resolves to one of
+          // the table's columns must be ignored, not crash parseValue with a null column.
+          baseValues.entrySet().removeIf(entry -> Objects.isNull(table.column(entry.getKey())));
 
           baseValues
               .entrySet()
@@ -442,23 +461,18 @@ public final class RowGenerator {
   }
 
   private boolean validateMultiColumnConstraintValues(final Map<String, Object> values) {
-    if (Objects.isNull(multiColumnConstraints) || multiColumnConstraints.isEmpty()) {
+    if (multiColumnConstraints.isEmpty()) {
       return true;
     }
 
     return multiColumnConstraints.stream()
         .allMatch(
-            mcc ->
-                mcc.allowedCombinations().stream()
-                    .anyMatch(
-                        combo ->
-                            combo.entrySet().stream()
-                                .allMatch(entry -> matchesExpectedValue(values, entry))));
+            mcc -> hasCompatibleCombination(mcc, entry -> matchesExpectedValue(values, entry)));
   }
 
   private boolean matchesExpectedValue(
       final Map<String, Object> values, final Map.Entry<String, String> entry) {
-    final String colName = resolveColumnName(entry.getKey());
+    final String colName = entry.getKey();
     final String expectedVal = entry.getValue();
     final Object actualVal = values.get(colName);
     return Objects.isNull(actualVal)
@@ -467,52 +481,30 @@ public final class RowGenerator {
   }
 
   private boolean applyMultiColumnConstraints(final Map<String, Object> values) {
-    if (Objects.isNull(multiColumnConstraints) || multiColumnConstraints.isEmpty()) {
+    if (multiColumnConstraints.isEmpty()) {
       return true;
     }
 
     boolean applied = false;
-    for (final MultiColumnConstraint mcc : multiColumnConstraints) {
-      final List<Map<String, String>> compatibleCombinations =
-          mcc.allowedCombinations().stream()
-              .filter(
-                  combo ->
-                      combo.entrySet().stream()
-                          .allMatch(
-                              entry -> {
-                                final String colName = resolveColumnName(entry.getKey());
-                                final String expectedVal = entry.getValue();
-                                if (!values.containsKey(colName)) {
-                                  return true;
-                                }
-                                final Object actualVal = values.get(colName);
-                                return Objects.isNull(actualVal)
-                                    ? "NULL".equalsIgnoreCase(expectedVal)
-                                    : String.valueOf(actualVal).equals(expectedVal);
-                              }))
-              .toList();
+    for (final ResolvedMultiColumnConstraint mcc : multiColumnConstraints) {
+      final List<List<Map.Entry<String, String>>> compatibleCombinations =
+          compatibleCombinations(
+              mcc,
+              entry -> !values.containsKey(entry.getKey()) || matchesExpectedValue(values, entry));
 
       if (compatibleCombinations.isEmpty()) {
         continue;
       }
 
-      final Map<String, String> selectedCombination =
+      final List<Map.Entry<String, String>> selectedCombination =
           compatibleCombinations.get(
               ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
 
-      for (final Map.Entry<String, String> entry : selectedCombination.entrySet()) {
-        final String colName = resolveColumnName(entry.getKey());
-        if (!values.containsKey(colName)) {
-          final Column col = table.column(colName);
-          if (col != null) {
-            values.put(colName, parseValue(entry.getValue(), col));
-            applied = true;
-          }
-        }
+      for (final Map.Entry<String, String> entry : selectedCombination) {
+        applied |= fillCombinationValue(entry, values);
       }
     }
-    return applied
-        || multiColumnConstraints.stream().allMatch(mcc -> mcc.allowedCombinations().isEmpty());
+    return applied || multiColumnConstraints.stream().allMatch(mcc -> mcc.combinations().isEmpty());
   }
 
   private void generateRemainingColumnValues(final Map<String, Object> values) {
@@ -860,8 +852,24 @@ public final class RowGenerator {
       return valueGenerator.generateSoftDeleteValue(
           column, softDeleteUseSchemaDefault, softDeleteValue);
     }
+    final ColumnData inputs = columnData.get(column.name());
     return valueGenerator.generateValue(
-        column, constraints.get(column.name()), generatedCount.get());
+        column,
+        inputs.constraint(),
+        inputs.columnAllowedValues(),
+        inputs.constraintAllowedValues(),
+        generatedCount.get());
+  }
+
+  /** Resolves, once per column, its constraint and its reusable allowed-values lists. */
+  private ColumnData resolveColumnData(final Column column) {
+    final ParsedConstraint constraint = constraints.get(column.name());
+    return new ColumnData(
+        constraint,
+        new ArrayList<>(column.allowedValues()),
+        Objects.nonNull(constraint) && Objects.nonNull(constraint.allowedValues())
+            ? new ArrayList<>(constraint.allowedValues())
+            : null);
   }
 
   private String resolveColumnName(final String constraintColName) {
@@ -875,14 +883,7 @@ public final class RowGenerator {
       if (isArrayType(column)) {
         return parseAiArray(value);
       }
-      return switch (column.jdbcType()) {
-        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
-        case Types.BIGINT -> Long.parseLong(value);
-        case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(value);
-        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
-        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
-        default -> value;
-      };
+      return ValueGenerator.parseTypedValue(value, column.jdbcType());
     } catch (final Exception ignored) {
       return null;
     }
@@ -915,72 +916,124 @@ public final class RowGenerator {
   }
 
   private boolean reconcileMultiColumnConstraints(final Map<String, Object> values) {
-    if (Objects.isNull(multiColumnConstraints) || multiColumnConstraints.isEmpty()) {
+    if (multiColumnConstraints.isEmpty()) {
       return true;
     }
 
-    final Set<String> resolvedColumns = new HashSet<>();
     boolean allResolved = true;
 
-    for (MultiColumnConstraint mcc : multiColumnConstraints) {
-      resolvedColumns.clear();
-      mcc.columns().stream().forEach(c -> resolvedColumns.add(resolveColumnName(c)));
+    for (final ResolvedMultiColumnConstraint mcc : multiColumnConstraints) {
+      final Set<String> resolvedColumns = mcc.columns();
 
-      final List<Map<String, String>> compatibleCombinations =
-          mcc.allowedCombinations().stream()
-              .filter(
-                  combo ->
-                      combo.entrySet().stream()
-                          .allMatch(
-                              entry -> {
-                                final String colName = resolveColumnName(entry.getKey());
-                                if (!resolvedColumns.contains(colName)) return true;
-                                final Object actualVal = values.get(colName);
-                                return Objects.isNull(actualVal)
-                                    || String.valueOf(actualVal).equals(entry.getValue());
-                              }))
-              .toList();
+      final List<List<Map.Entry<String, String>>> compatibleCombinations =
+          compatibleCombinations(
+              mcc,
+              entry -> {
+                final String colName = entry.getKey();
+                if (!resolvedColumns.contains(colName)) return true;
+                final Object actualVal = values.get(colName);
+                return Objects.isNull(actualVal)
+                    || String.valueOf(actualVal).equals(entry.getValue());
+              });
 
       if (compatibleCombinations.isEmpty()) {
-        if (mcc.allowedCombinations().isEmpty()) {
+        if (mcc.combinations().isEmpty()) {
           allResolved = false;
           continue;
         }
-        applyCombinationValues(mcc.allowedCombinations().getFirst(), resolvedColumns, values);
+        applyCombinationValues(mcc.combinations().getFirst(), resolvedColumns, values);
       } else {
-        final Map<String, String> selectedCombination =
+        final List<Map.Entry<String, String>> selectedCombination =
             compatibleCombinations.get(
                 ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
-        selectedCombination.entrySet().stream()
-            .forEach(
-                entry -> {
-                  final String colName = resolveColumnName(entry.getKey());
-                  if (resolvedColumns.contains(colName) && !values.containsKey(colName)) {
-                    final Column col = table.column(colName);
-                    if (col != null) {
-                      values.put(colName, parseValue(entry.getValue(), col));
-                    }
-                  }
-                });
+        selectedCombination.forEach(
+            entry -> {
+              if (resolvedColumns.contains(entry.getKey())) {
+                fillCombinationValue(entry, values);
+              }
+            });
       }
     }
     return allResolved;
   }
 
   private void applyCombinationValues(
-      final Map<String, String> combination,
+      final List<Map.Entry<String, String>> combination,
       final Set<String> resolvedColumns,
       final Map<String, Object> values) {
-    combination.entrySet().stream()
-        .forEach(
-            entry -> {
-              final String colName = resolveColumnName(entry.getKey());
-              if (resolvedColumns.contains(colName)) {
-                final Column col = table.column(colName);
-                if (col != null) {
-                  values.put(colName, parseValue(entry.getValue(), col));
-                }
-              }
-            });
+    combination.forEach(
+        entry -> {
+          final String colName = entry.getKey();
+          if (resolvedColumns.contains(colName)) {
+            final Column col = table.column(colName);
+            if (col != null) {
+              values.put(colName, parseValue(entry.getValue(), col));
+            }
+          }
+        });
   }
+
+  /**
+   * True when some combination of the constraint can coexist with the already-decided values under
+   * {@code entryPredicate}. The predicates differ per call site (a contains-key guard versus a
+   * resolved-columns guard) and keeping them per site is what preserves each behavior.
+   */
+  private boolean hasCompatibleCombination(
+      final ResolvedMultiColumnConstraint mcc,
+      final Predicate<Map.Entry<String, String>> entryPredicate) {
+    return mcc.combinations().stream()
+        .anyMatch(combination -> combination.stream().allMatch(entryPredicate));
+  }
+
+  /** All combinations of the constraint compatible with the already-decided values. */
+  private List<List<Map.Entry<String, String>>> compatibleCombinations(
+      final ResolvedMultiColumnConstraint mcc,
+      final Predicate<Map.Entry<String, String>> entryPredicate) {
+    return mcc.combinations().stream()
+        .filter(combination -> combination.stream().allMatch(entryPredicate))
+        .toList();
+  }
+
+  /**
+   * Fills {@code values} with the combination's value for its column, unless the column already has
+   * an entry or is not a real table column. Returns whether a value was written.
+   */
+  private boolean fillCombinationValue(
+      final Map.Entry<String, String> entry, final Map<String, Object> values) {
+    final String colName = entry.getKey();
+    if (values.containsKey(colName)) {
+      return false;
+    }
+    final Column col = table.column(colName);
+    if (Objects.isNull(col)) {
+      return false;
+    }
+    values.put(colName, parseValue(entry.getValue(), col));
+    return true;
+  }
+
+  /** Binds a constraint's raw column names to the table's actual column names once per run. */
+  private ResolvedMultiColumnConstraint resolveMultiColumnConstraint(
+      final MultiColumnConstraint mcc) {
+    return new ResolvedMultiColumnConstraint(
+        mcc.columns().stream().map(this::resolveColumnName).collect(Collectors.toUnmodifiableSet()),
+        mcc.allowedCombinations().stream()
+            .map(
+                combination ->
+                    combination.entrySet().stream()
+                        .map(
+                            entry -> Map.entry(resolveColumnName(entry.getKey()), entry.getValue()))
+                        .toList())
+            .toList());
+  }
+
+  /** Constraint and reusable allowed-values lists resolved once per column. */
+  private record ColumnData(
+      ParsedConstraint constraint,
+      List<String> columnAllowedValues,
+      List<String> constraintAllowedValues) {}
+
+  /** A multi-column constraint whose combination keys are pre-resolved table column names. */
+  private record ResolvedMultiColumnConstraint(
+      Set<String> columns, List<List<Map.Entry<String, String>>> combinations) {}
 }

@@ -84,7 +84,7 @@ class DialectFactoryTest {
       final String expectedQuoteStart,
       final String expectedTrue,
       final String expectedFalse) {
-    DatabaseDialect d = DialectFactory.resolve(driver(dialect));
+    AbstractDialect d = DialectFactory.resolve(driver(dialect));
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("col")).startsWith(expectedQuoteStart);
     assertThat(d.formatBoolean(true)).isEqualTo(expectedTrue);
@@ -106,13 +106,13 @@ class DialectFactoryTest {
             false,
             false,
             "oracle");
-    final DatabaseDialect d = DialectFactory.resolve(info);
+    final AbstractDialect d = DialectFactory.resolve(info);
     assertThat(d.quote("col")).isEqualTo("\"COL\"");
   }
 
   @Test
   void resolve_nullDriverInfo_returnsStandard() {
-    final DatabaseDialect d = DialectFactory.resolve(null);
+    final AbstractDialect d = DialectFactory.resolve(null);
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("t")).isEqualTo("\"t\"");
   }
@@ -131,7 +131,7 @@ class DialectFactoryTest {
   void resolve_detectsDialectFromDriverClassWhenDialectMissing() {
     final DriverInfo info = driverWithMeta("org.postgresql.Driver", null);
 
-    final DatabaseDialect d = DialectFactory.resolve(info);
+    final AbstractDialect d = DialectFactory.resolve(info);
 
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.formatBoolean(true)).isEqualTo("TRUE");
@@ -143,7 +143,7 @@ class DialectFactoryTest {
   void resolve_detectsDialectFromUrlWhenDriverClassIsNull() {
     final DriverInfo info = driverWithMeta(null, "jdbc:sqlserver://localhost:1433");
 
-    final DatabaseDialect d = DialectFactory.resolve(info);
+    final AbstractDialect d = DialectFactory.resolve(info);
 
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("col")).startsWith("[");
@@ -153,7 +153,7 @@ class DialectFactoryTest {
   void resolve_unknownDriverAndUrl_fallsBackToStandard() {
     final DriverInfo info = driverWithMeta("com.acme.CustomDriver", "jdbc:custom://host/db");
 
-    final DatabaseDialect d = DialectFactory.resolve(info);
+    final AbstractDialect d = DialectFactory.resolve(info);
 
     assertThat(d).isInstanceOf(StandardDialect.class);
     assertThat(d.quote("t")).isEqualTo("\"t\"");
@@ -164,7 +164,7 @@ class DialectFactoryTest {
   @ParameterizedTest
   @MethodSource("driverClassDetectionCases")
   void resolve_detectsDialectFromDriverClass(final String driverClass, final String expected) {
-    final DatabaseDialect detected = DialectFactory.resolve(driverWithMeta(driverClass, null));
+    final AbstractDialect detected = DialectFactory.resolve(driverWithMeta(driverClass, null));
 
     assertThat(detected).isSameAs(DialectFactory.resolve(driver(expected)));
   }
@@ -172,14 +172,14 @@ class DialectFactoryTest {
   @ParameterizedTest
   @MethodSource("urlDetectionCases")
   void resolve_detectsDialectFromUrlTemplate(final String urlTemplate, final String expected) {
-    final DatabaseDialect detected = DialectFactory.resolve(driverWithMeta(null, urlTemplate));
+    final AbstractDialect detected = DialectFactory.resolve(driverWithMeta(null, urlTemplate));
 
     assertThat(detected).isSameAs(DialectFactory.resolve(driver(expected)));
   }
 
   @Test
   void resolve_mysqlDriverClass_loadsMysqlProperties() {
-    final DatabaseDialect d =
+    final AbstractDialect d =
         DialectFactory.resolve(driverWithMeta("com.mysql.cj.jdbc.Driver", null));
 
     assertThat(d.quote("col")).isEqualTo("`col`");
@@ -188,7 +188,7 @@ class DialectFactoryTest {
 
   @Test
   void resolve_redshiftUrl_loadsPostgresqlProperties() {
-    final DatabaseDialect d =
+    final AbstractDialect d =
         DialectFactory.resolve(driverWithMeta(null, "jdbc:redshift://cluster.example.com:5439/db"));
 
     assertThat(d.getProperty("checkConstraint.query", "")).contains("pg_constraint");
@@ -198,17 +198,17 @@ class DialectFactoryTest {
 
   @Test
   void resolve_sameExplicitDialect_returnsCachedInstance() {
-    final DatabaseDialect first = DialectFactory.resolve(driver("mysql"));
-    final DatabaseDialect second = DialectFactory.resolve(driver("mysql"));
+    final AbstractDialect first = DialectFactory.resolve(driver("mysql"));
+    final AbstractDialect second = DialectFactory.resolve(driver("mysql"));
 
     assertThat(second).isSameAs(first);
   }
 
   @Test
   void resolve_equalDriverMeta_returnsCachedInstance() {
-    final DatabaseDialect first =
+    final AbstractDialect first =
         DialectFactory.resolve(driverWithMeta("org.postgresql.Driver", "jdbc:postgresql://h/db"));
-    final DatabaseDialect second =
+    final AbstractDialect second =
         DialectFactory.resolve(driverWithMeta("org.postgresql.Driver", "jdbc:postgresql://h/db"));
 
     assertThat(second).isSameAs(first);
@@ -216,7 +216,7 @@ class DialectFactoryTest {
 
   @Test
   void resolve_detectedDialect_sharesCacheWithExplicitDialect() {
-    final DatabaseDialect detected =
+    final AbstractDialect detected =
         DialectFactory.resolve(
             driverWithMeta("com.microsoft.sqlserver.jdbc.SQLServerDriver", null));
 

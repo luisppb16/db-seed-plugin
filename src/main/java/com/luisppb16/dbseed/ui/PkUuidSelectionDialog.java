@@ -105,6 +105,14 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private final Map<String, Set<String>> selectionByTable = new LinkedHashMap<>();
   private final Map<String, Set<String>> excludedColumnsByTable = new LinkedHashMap<>();
   private final Set<String> excludedTables = new LinkedHashSet<>();
+
+  /**
+   * Per-table snapshot of the column-level state, taken when the table-level exclusion box is
+   * checked and restored when it is unchecked, so the bulk check never destroys the user's
+   * per-column configuration.
+   */
+  private final Map<String, TableExclusionSnapshot> tableExclusionSnapshots = new LinkedHashMap<>();
+
   private final Map<String, Map<String, String>> uuidValuesByTable = new LinkedHashMap<>();
   private final RepetitionRulesPanel repetitionRulesPanel;
   private final CircularReferencesPanel circularReferencesPanel;
@@ -132,7 +140,7 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     this.repetitionRulesPanel = new RepetitionRulesPanel(tables);
     this.circularReferencesPanel = new CircularReferencesPanel(tables);
 
-    final int initialScale = initialConfig.numericScale() >= 0 ? initialConfig.numericScale() : 2;
+    final int initialScale = initialConfig.numericScale();
     this.scaleSpinner = new JSpinner(new SpinnerNumberModel(initialScale, 0, 10, 1));
     ComponentUtils.configureSpinnerArrowKeyControls(this.scaleSpinner);
 
@@ -171,6 +179,26 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   private static String stripFkSuffix(final String text) {
     final int idx = text.indexOf(" (FK)");
     return idx > 0 ? text.substring(0, idx) : text;
+  }
+
+  private static String effectiveColumnName(final JCheckBox columnBox) {
+    final String colName = (String) columnBox.getClientProperty("columnName");
+    return colName != null ? colName : stripFkSuffix(columnBox.getText());
+  }
+
+  /** Puts the snapshot set back, or removes the entry when the table had none at check time. */
+  private static void restoreSetEntry(
+      final Map<String, Set<String>> map, final String tableName, final Set<String> snapshotSet) {
+    if (Objects.isNull(snapshotSet)) {
+      map.remove(tableName);
+    } else {
+      map.put(tableName, new LinkedHashSet<>(snapshotSet));
+    }
+  }
+
+  /** Order-preserving copy; {@code null} when the map had no entry for the table. */
+  private static Set<String> copyOrNull(final Set<String> set) {
+    return Objects.isNull(set) ? null : new LinkedHashSet<>(set);
   }
 
   private void initDefaults() {
@@ -578,26 +606,9 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
                 }));
   }
 
-  private JPanel createConfiguredListPanel() {
-    final JPanel listPanel = new JPanel(new GridBagLayout());
-    listPanel.setBorder(JBUI.Borders.empty(8));
-    return listPanel;
-  }
-
-  private GridBagConstraints createDefaultGridBagConstraints() {
-    final GridBagConstraints c = new GridBagConstraints();
-    c.gridx = 0;
-    c.gridy = 0;
-    c.anchor = GridBagConstraints.NORTHWEST;
-    c.fill = GridBagConstraints.HORIZONTAL;
-    c.insets = JBUI.insets(4);
-    c.weightx = 1.0;
-    return c;
-  }
-
   private JComponent createPkSelectionPanel() {
-    final JPanel listPanel = createConfiguredListPanel();
-    final GridBagConstraints c = createDefaultGridBagConstraints();
+    final JPanel listPanel = ComponentUtils.createConfiguredListPanel();
+    final GridBagConstraints c = ComponentUtils.createDefaultGridBagConstraints();
     final List<JCheckBox> checkBoxes = new ArrayList<>();
 
     tables.forEach(
@@ -640,8 +651,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private JComponent createColumnExclusionPanel() {
-    final JPanel listPanel = createConfiguredListPanel();
-    final GridBagConstraints c = createDefaultGridBagConstraints();
+    final JPanel listPanel = ComponentUtils.createConfiguredListPanel();
+    final GridBagConstraints c = ComponentUtils.createDefaultGridBagConstraints();
     final List<JCheckBox> checkBoxes = new ArrayList<>();
 
     tables.forEach(
@@ -750,15 +761,16 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
       String tableName, boolean isSelected, List<JCheckBox> columnBoxes) {
     if (isSelected) {
       excludedTables.add(tableName);
+      // Snapshot the per-column state before the bulk check overwrites it, so the uncheck can
+      // restore exactly what the user had configured.
+      tableExclusionSnapshots.put(tableName, captureTableExclusionSnapshot(tableName, columnBoxes));
+      for (final JCheckBox colBox : columnBoxes) {
+        colBox.setSelected(true);
+        onExcludeBoxChanged(tableName, effectiveColumnName(colBox), true);
+      }
     } else {
       excludedTables.remove(tableName);
-    }
-
-    for (final JCheckBox colBox : columnBoxes) {
-      colBox.setSelected(isSelected);
-      final String colName = (String) colBox.getClientProperty("columnName");
-      final String effectiveColName = colName != null ? colName : stripFkSuffix(colBox.getText());
-      onExcludeBoxChanged(tableName, effectiveColName, isSelected);
+      restoreTableExclusionSnapshot(tableName, columnBoxes);
     }
 
     // Sync the AI table-level checkbox
@@ -774,6 +786,71 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
     }
 
     updateWarningLabels();
+  }
+
+  /** Captures, per column, the exclusion-related state at the moment the table box is checked. */
+  private TableExclusionSnapshot captureTableExclusionSnapshot(
+      String tableName, List<JCheckBox> columnBoxes) {
+    final Map<String, TableExclusionState> perColumn = new LinkedHashMap<>();
+    for (final JCheckBox colBox : columnBoxes) {
+      final String colName = effectiveColumnName(colBox);
+      boolean pkSelected = false;
+      boolean pkEnabled = false;
+      final JCheckBox pkBox =
+          pkCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+      if (Objects.nonNull(pkBox)) {
+        pkSelected = pkBox.isSelected();
+        pkEnabled = pkBox.isEnabled();
+      }
+      boolean aiSelected = false;
+      boolean aiEnabled = false;
+      final JCheckBox aiBox =
+          aiCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+      if (Objects.nonNull(aiBox)) {
+        aiSelected = aiBox.isSelected();
+        aiEnabled = aiBox.isEnabled();
+      }
+      perColumn.put(
+          colName,
+          new TableExclusionState(
+              colBox.isSelected(), pkSelected, pkEnabled, aiSelected, aiEnabled));
+    }
+    return new TableExclusionSnapshot(
+        perColumn,
+        copyOrNull(excludedColumnsByTable.get(tableName)),
+        copyOrNull(selectionByTable.get(tableName)),
+        copyOrNull(aiColumnsByTable.get(tableName)));
+  }
+
+  /** Restores the snapshot taken at check time: checkboxes and their backing sets. */
+  private void restoreTableExclusionSnapshot(String tableName, List<JCheckBox> columnBoxes) {
+    final TableExclusionSnapshot snapshot = tableExclusionSnapshots.remove(tableName);
+    if (Objects.isNull(snapshot)) {
+      return;
+    }
+    restoreSetEntry(excludedColumnsByTable, tableName, snapshot.excludedColumns());
+    restoreSetEntry(selectionByTable, tableName, snapshot.pkColumns());
+    restoreSetEntry(aiColumnsByTable, tableName, snapshot.aiColumns());
+    for (final JCheckBox colBox : columnBoxes) {
+      final String colName = effectiveColumnName(colBox);
+      final TableExclusionState state = snapshot.perColumn().get(colName);
+      if (Objects.isNull(state)) {
+        continue;
+      }
+      colBox.setSelected(state.excludeSelected());
+      final JCheckBox pkBox =
+          pkCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+      if (Objects.nonNull(pkBox)) {
+        pkBox.setSelected(state.pkSelected());
+        pkBox.setEnabled(state.pkEnabled());
+      }
+      final JCheckBox aiBox =
+          aiCheckBoxes.getOrDefault(tableName, Collections.emptyMap()).get(colName);
+      if (Objects.nonNull(aiBox)) {
+        aiBox.setSelected(state.aiSelected());
+        aiBox.setEnabled(state.aiEnabled());
+      }
+    }
   }
 
   private JPanel createTableHeaderPanel(final JCheckBox tableCheckBox, final JComponent accessory) {
@@ -1007,8 +1084,8 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   }
 
   private JComponent createAiColumnSelectionPanel() {
-    final JPanel listPanel = createConfiguredListPanel();
-    final GridBagConstraints c = createDefaultGridBagConstraints();
+    final JPanel listPanel = ComponentUtils.createConfiguredListPanel();
+    final GridBagConstraints c = ComponentUtils.createDefaultGridBagConstraints();
     final List<JCheckBox> checkBoxes = new ArrayList<>();
 
     tables.forEach(
@@ -1176,6 +1253,21 @@ public final class PkUuidSelectionDialog extends DialogWrapper {
   public int getNumericScale() {
     return (Integer) scaleSpinner.getValue();
   }
+
+  /** Exclusion-related state of one column when the table-level box was checked. */
+  private record TableExclusionState(
+      boolean excludeSelected,
+      boolean pkSelected,
+      boolean pkEnabled,
+      boolean aiSelected,
+      boolean aiEnabled) {}
+
+  /** Snapshot of a table's column-level state taken when its exclusion box is checked. */
+  private record TableExclusionSnapshot(
+      Map<String, TableExclusionState> perColumn,
+      Set<String> excludedColumns,
+      Set<String> pkColumns,
+      Set<String> aiColumns) {}
 
   private final class BackAction extends AbstractAction {
     private BackAction() {

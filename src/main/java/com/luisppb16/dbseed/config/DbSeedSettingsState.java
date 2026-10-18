@@ -69,6 +69,16 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   private static final String DEFAULT_AI_MODEL = "";
   private static final int DEFAULT_AI_THREADS = 2;
   private static final int MAX_AI_THREADS = 16;
+  // Ranges the settings page's spinners are built with (SpinnerNumberModel throws outside them);
+  // loadState falls back to the matching default outside each range.
+  private static final int MIN_COLUMN_SPINNER_STEP = 1;
+  private static final int MAX_COLUMN_SPINNER_STEP = 10;
+  private static final int MIN_AI_WORD_COUNT = 1;
+  private static final int MAX_AI_WORD_COUNT = 500;
+  private static final int DEFAULT_AI_WORD_COUNT = 1;
+  private static final int MIN_AI_REQUEST_TIMEOUT_SECONDS = 10;
+  private static final int MAX_AI_REQUEST_TIMEOUT_SECONDS = 600;
+  private static final int DEFAULT_AI_REQUEST_TIMEOUT_SECONDS = 120;
 
   /**
    * Settings written by versions up to 1.3.7.4, which knew a single Ollama endpoint. They are read
@@ -128,6 +138,13 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     return aiParallelGeneration ? Math.clamp(aiGenerationThreads, 1, MAX_AI_THREADS) : 1;
   }
 
+  /**
+   * @return whether an AI model name is configured: non-null and not blank
+   */
+  public boolean isAiModelConfigured() {
+    return aiModel != null && !aiModel.isBlank();
+  }
+
   @Nullable
   @Override
   public DbSeedSettingsState getState() {
@@ -139,7 +156,10 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
     this.defaultOutputDirectory =
         Objects.requireNonNullElse(state.defaultOutputDirectory, DEFAULT_OUTPUT_DIRECTORY);
     this.columnSpinnerStep =
-        state.columnSpinnerStep > 0 ? state.columnSpinnerStep : DEFAULT_COLUMN_SPINNER_STEP;
+        state.columnSpinnerStep >= MIN_COLUMN_SPINNER_STEP
+                && state.columnSpinnerStep <= MAX_COLUMN_SPINNER_STEP
+            ? state.columnSpinnerStep
+            : DEFAULT_COLUMN_SPINNER_STEP;
     this.useLatinDictionary = state.useLatinDictionary;
     this.useEnglishDictionary = state.useEnglishDictionary;
     this.useSpanishDictionary = state.useSpanishDictionary;
@@ -172,9 +192,15 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
 
     this.useAiGeneration = state.useAiGeneration;
     this.aiApplicationContext = Objects.requireNonNullElse(state.aiApplicationContext, "");
-    this.aiWordCount = state.aiWordCount > 0 ? state.aiWordCount : 1;
+    this.aiWordCount =
+        state.aiWordCount >= MIN_AI_WORD_COUNT && state.aiWordCount <= MAX_AI_WORD_COUNT
+            ? state.aiWordCount
+            : DEFAULT_AI_WORD_COUNT;
     this.aiRequestTimeoutSeconds =
-        state.aiRequestTimeoutSeconds > 0 ? state.aiRequestTimeoutSeconds : 120;
+        state.aiRequestTimeoutSeconds >= MIN_AI_REQUEST_TIMEOUT_SECONDS
+                && state.aiRequestTimeoutSeconds <= MAX_AI_REQUEST_TIMEOUT_SECONDS
+            ? state.aiRequestTimeoutSeconds
+            : DEFAULT_AI_REQUEST_TIMEOUT_SECONDS;
     this.aiParallelGeneration = state.aiParallelGeneration;
     this.aiGenerationThreads =
         state.aiGenerationThreads > 0 && state.aiGenerationThreads <= MAX_AI_THREADS

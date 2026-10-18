@@ -111,6 +111,28 @@ public record ValueGenerator(
     }
   }
 
+  /**
+   * Parses a string into the boxed value implied by {@code jdbcType}: the integer, long, boolean,
+   * decimal and double types parse into their Java types, any other type keeps the string as-is.
+   *
+   * @throws NumberFormatException when a numeric type's value fails to parse
+   */
+  static Object parseTypedValue(final String value, final int jdbcType) {
+    return switch (jdbcType) {
+      case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
+      case Types.BIGINT -> Long.parseLong(value);
+      case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
+      case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
+      case Types.BOOLEAN, Types.BIT -> parseBooleanLiteral(value);
+      default -> value;
+    };
+  }
+
+  /** Parses boolean literals where {@code 1} means true and {@code 0} means false. */
+  private static boolean parseBooleanLiteral(final String value) {
+    return "1".equals(value) || Boolean.parseBoolean(value);
+  }
+
   /** Clamps a numeric value to the nearest bound defined by the constraint. */
   public Object clampToNearestBound(final Object value, final ParsedConstraint pc) {
     if (Objects.isNull(value) || Objects.isNull(pc)) return value;
@@ -133,6 +155,27 @@ public record ValueGenerator(
 
   public Object generateValue(
       final Column column, final ParsedConstraint constraint, final int rowIndex) {
+    return generateValue(
+        column,
+        constraint,
+        new ArrayList<>(column.allowedValues()),
+        Objects.nonNull(constraint) && Objects.nonNull(constraint.allowedValues())
+            ? new ArrayList<>(constraint.allowedValues())
+            : null,
+        rowIndex);
+  }
+
+  /**
+   * Same as {@link #generateValue(Column, ParsedConstraint, int)} but receives the allowed-values
+   * lists pre-resolved once per column, so hot paths never copy the immutable sets per row. A
+   * {@code null} list stands for a source without allowed values (e.g. a null constraint).
+   */
+  Object generateValue(
+      final Column column,
+      final ParsedConstraint constraint,
+      final List<String> columnAllowedValues,
+      final List<String> constraintAllowedValues,
+      final int rowIndex) {
     // Solo permitir nulos si la columna es nullable
     if (column.nullable() && ThreadLocalRandom.current().nextDouble() < NULL_PROBABILITY) {
       return null;
@@ -148,38 +191,14 @@ public record ValueGenerator(
 
     // Valores permitidos en columna
     if (column.hasAllowedValues() && !column.allowedValues().isEmpty()) {
-      Object val = pickRandom(new ArrayList<>(column.allowedValues()), column.jdbcType());
-      if (val != null) return val;
-      // fallback: primer valor no nulo
-      Object first =
-          column.allowedValues().stream().filter(Objects::nonNull).findFirst().orElse(null);
-      if (first != null) return first;
-      // fallback: para VARCHAR, devolver "a"
-      if (column.jdbcType() == Types.VARCHAR || column.jdbcType() == Types.CHAR) return "a";
-      // fallback: para tipos numéricos, devolver 1
-      if (isNumericJdbc(column.jdbcType())) return 1;
-      // fallback: para boolean, devolver true
-      if (column.jdbcType() == Types.BOOLEAN || column.jdbcType() == Types.BIT) return true;
-      // fallback: para array, devolver array con "a"
-      if (column.jdbcType() == Types.ARRAY) return new String[] {"a"};
-      // fallback genérico
-      return rowIndex;
+      return generateFromAllowedValues(columnAllowedValues, column, rowIndex, "a");
     }
 
     // Valores permitidos en constraint
     if (Objects.nonNull(constraint)
         && Objects.nonNull(constraint.allowedValues())
         && !constraint.allowedValues().isEmpty()) {
-      Object val = pickRandom(new ArrayList<>(constraint.allowedValues()), column.jdbcType());
-      if (val != null) return val;
-      Object first =
-          constraint.allowedValues().stream().filter(Objects::nonNull).findFirst().orElse(null);
-      if (first != null) return first;
-      if (column.jdbcType() == Types.VARCHAR || column.jdbcType() == Types.CHAR) return "x";
-      if (isNumericJdbc(column.jdbcType())) return 1;
-      if (column.jdbcType() == Types.BOOLEAN || column.jdbcType() == Types.BIT) return true;
-      if (column.jdbcType() == Types.ARRAY) return new String[] {"x"};
-      return rowIndex;
+      return generateFromAllowedValues(constraintAllowedValues, column, rowIndex, "x");
     }
 
     // Restricciones numéricas
@@ -232,6 +251,35 @@ public record ValueGenerator(
       }
     }
     return def;
+  }
+
+  /**
+   * Shared fallthrough for both allowed-values sources: picks a random allowed value, then falls
+   * back through the first non-null value, the type-specific fallback and finally the row index.
+   * {@code stringFallback} backs the VARCHAR/CHAR and ARRAY fallbacks ("a" for column-level allowed
+   * values, "x" for constraint-level ones).
+   */
+  private Object generateFromAllowedValues(
+      final List<String> values,
+      final Column column,
+      final int rowIndex,
+      final String stringFallback) {
+    final Object val = pickRandom(values, column.jdbcType());
+    if (val != null) return val;
+    // fallback: primer valor no nulo
+    final Object first = values.stream().filter(Objects::nonNull).findFirst().orElse(null);
+    if (first != null) return first;
+    // fallback: para VARCHAR, devolver el fallback de texto
+    if (column.jdbcType() == Types.VARCHAR || column.jdbcType() == Types.CHAR)
+      return stringFallback;
+    // fallback: para tipos numéricos, devolver 1
+    if (isNumericJdbc(column.jdbcType())) return 1;
+    // fallback: para boolean, devolver true
+    if (column.jdbcType() == Types.BOOLEAN || column.jdbcType() == Types.BIT) return true;
+    // fallback: para array, devolver array con el fallback de texto
+    if (column.jdbcType() == Types.ARRAY) return new String[] {stringFallback};
+    // fallback genérico
+    return rowIndex;
   }
 
   public Object generateSoftDeleteValue(
@@ -309,7 +357,9 @@ public record ValueGenerator(
           Types.NCHAR,
           Types.NVARCHAR,
           Types.LONGVARCHAR,
-          Types.LONGNVARCHAR ->
+          Types.LONGNVARCHAR,
+          Types.CLOB,
+          Types.NCLOB ->
           generateString(column, maxLen, column.jdbcType());
       case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> boundedInt(column);
       case Types.BIGINT -> boundedLong(column);
@@ -337,15 +387,15 @@ public record ValueGenerator(
   @SuppressWarnings("java:S2245")
   private String generateString(final Column column, final Integer maxLen, final int jdbcType) {
     final String colName = column.name().toLowerCase(java.util.Locale.ROOT);
+    final int len = Objects.nonNull(maxLen) && maxLen > 0 ? maxLen : DEFAULT_STRING_LENGTH;
     if (colName.contains("foto")
         || colName.contains("avatar")
         || colName.contains("image")
         || colName.contains("picture")
         || colName.contains("profile")) {
-      return faker.internet().image();
+      return normalizeToLength(faker.internet().image(), len, jdbcType);
     }
 
-    final int len = Objects.nonNull(maxLen) && maxLen > 0 ? maxLen : DEFAULT_STRING_LENGTH;
     if (len == ISO_COUNTRY_CODE_2_LEN) return faker.country().countryCode2();
     if (len == ISO_COUNTRY_CODE_3_LEN) return faker.country().countryCode3();
     if (len == IBAN_ES_LEN)
@@ -428,14 +478,7 @@ public record ValueGenerator(
     final String trimmed = v.trim();
     if (trimmed.isEmpty()) return "";
     try {
-      return switch (jdbcType) {
-        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(trimmed);
-        case Types.BIGINT -> Long.parseLong(trimmed);
-        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(trimmed);
-        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(trimmed);
-        case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(trimmed);
-        default -> trimmed;
-      };
+      return parseTypedValue(trimmed, jdbcType);
     } catch (final NumberFormatException e) {
       return trimmed;
     }
@@ -457,7 +500,7 @@ public record ValueGenerator(
       return switch (column.jdbcType()) {
         case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
         case Types.BIGINT -> Long.parseLong(value);
-        case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(value);
+        case Types.BOOLEAN, Types.BIT -> parseBooleanLiteral(value);
         case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
         case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
         default -> value;
@@ -480,38 +523,43 @@ public record ValueGenerator(
     return Math.toIntExact(Math.clamp(v, Integer.MIN_VALUE, Integer.MAX_VALUE));
   }
 
-  @SuppressWarnings("java:S2245")
   private Long boundedLong(final Column column) {
-    long min = getLongMin(column);
-    long max = getLongMax(column);
-    if (min > max) {
-      final long t = min;
-      min = max;
-      max = t;
-    }
-    if (max == Long.MAX_VALUE) {
-      if (min == Long.MIN_VALUE) {
-        return ThreadLocalRandom.current().nextLong();
-      }
-      return ThreadLocalRandom.current().nextLong(min, Long.MAX_VALUE);
-    }
-    return ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
+    return boundedLongWithin(getLongMin(column), getLongMax(column));
   }
 
+  /** Random long within {@code [min, max]}, swapping inverted bounds and without a max overflow. */
   @SuppressWarnings("java:S2245")
+  private Long boundedLongWithin(final long min, final long max) {
+    long low = min;
+    long high = max;
+    if (low > high) {
+      final long t = low;
+      low = high;
+      high = t;
+    }
+    if (high == Long.MAX_VALUE) {
+      if (low == Long.MIN_VALUE) {
+        return ThreadLocalRandom.current().nextLong();
+      }
+      return ThreadLocalRandom.current().nextLong(low, Long.MAX_VALUE);
+    }
+    return ThreadLocalRandom.current().nextLong(low, Math.addExact(high, 1L));
+  }
+
   private BigDecimal boundedBigDecimal(final Column column) {
-    final double[] bounds = getNumericBounds(column);
+    return boundedBigDecimal(column, getNumericBounds(column));
+  }
+
+  /** Random decimal within {@code bounds} at the column's effective scale. */
+  @SuppressWarnings("java:S2245")
+  private BigDecimal boundedBigDecimal(final Column column, final double[] bounds) {
     final double val = generateRandomDouble(bounds[0], bounds[1]);
     final int scale = getEffectiveScale(column);
     return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
   }
 
-  @SuppressWarnings("java:S2245")
   private Double boundedDouble(final Column column) {
-    final double[] bounds = getNumericBounds(column);
-    final double val = generateRandomDouble(bounds[0], bounds[1]);
-    final int scale = getEffectiveScale(column);
-    return BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP).doubleValue();
+    return boundedBigDecimal(column).doubleValue();
   }
 
   @SuppressWarnings("java:S2245")
@@ -531,26 +579,11 @@ public record ValueGenerator(
         yield ThreadLocalRandom.current().nextInt(min, max + 1);
       }
       case Types.BIGINT -> {
-        long min = getLongMinWithConstraint(column, pc);
-        long max = getLongMaxWithConstraint(column, pc);
-        if (min > max) {
-          final long t = min;
-          min = max;
-          max = t;
-        }
-        if (max == Long.MAX_VALUE) {
-          if (min == Long.MIN_VALUE) {
-            yield ThreadLocalRandom.current().nextLong();
-          }
-          yield ThreadLocalRandom.current().nextLong(min, Long.MAX_VALUE);
-        }
-        yield ThreadLocalRandom.current().nextLong(min, Math.addExact(max, 1L));
+        yield boundedLongWithin(
+            getLongMinWithConstraint(column, pc), getLongMaxWithConstraint(column, pc));
       }
       case Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.DOUBLE, Types.REAL -> {
-        final double[] bounds = getNumericBoundsWithConstraint(column, pc);
-        final double val = generateRandomDouble(bounds[0], bounds[1]);
-        final int scale = getEffectiveScale(column);
-        yield BigDecimal.valueOf(val).setScale(scale, RoundingMode.HALF_UP);
+        yield boundedBigDecimal(column, getNumericBoundsWithConstraint(column, pc));
       }
       default -> null;
     };
@@ -566,12 +599,14 @@ public record ValueGenerator(
 
   private int getIntMinWithConstraint(final Column column, final ParsedConstraint pc) {
     final boolean hasMin = Objects.nonNull(pc) && Objects.nonNull(pc.min());
-    return hasMin ? pc.min().intValue() : getIntMin(column);
+    // Ceil: the smallest integer honouring CHECK (x >= min) even when min is fractional.
+    return hasMin ? (int) Math.ceil(pc.min()) : getIntMin(column);
   }
 
   private int getIntMaxWithConstraint(final Column column, final ParsedConstraint pc) {
     final boolean hasMax = Objects.nonNull(pc) && Objects.nonNull(pc.max());
-    return hasMax ? pc.max().intValue() : getIntMax(column);
+    // Floor: the largest integer honouring CHECK (x <= max) even when max is fractional.
+    return hasMax ? (int) Math.floor(pc.max()) : getIntMax(column);
   }
 
   private long getLongMin(final Column column) {

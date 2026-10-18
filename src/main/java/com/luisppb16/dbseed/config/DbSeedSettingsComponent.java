@@ -131,7 +131,7 @@ public class DbSeedSettingsComponent {
     setAiUrl(settings.getAiUrl());
     myAiApiKey.setText(AiApiKeyStore.load(getAiProvider()));
 
-    if (Objects.nonNull(settings.getAiModel()) && !settings.getAiModel().isEmpty()) {
+    if (settings.isAiModelConfigured()) {
       myAiModelDropdown.addItem(settings.getAiModel());
       myAiModelDropdown.setSelectedItem(settings.getAiModel());
     }
@@ -166,13 +166,27 @@ public class DbSeedSettingsComponent {
     myMainPanel.setPreferredSize(JBUI.size(600, 600));
   }
 
-  /** Context help line under a field: the muted style the other descriptions in this tab use. */
-  private static JBLabel hintLabel() {
-    final JBLabel label = new JBLabel();
+  /** Muted small-text description block that opens a tab, with spacing below. */
+  private static JBLabel createDescriptionLabel(final String html) {
+    final JBLabel label = new JBLabel(html);
+    label.setForeground(UIUtil.getContextHelpForeground());
+    label.setFont(JBUI.Fonts.smallFont());
+    label.setBorder(JBUI.Borders.emptyBottom(12));
+    return label;
+  }
+
+  /** Muted small-text continuation line under a field, indented to align with the value. */
+  private static JBLabel createIndentedDescriptionLabel(final String html) {
+    final JBLabel label = new JBLabel(html);
     label.setForeground(UIUtil.getContextHelpForeground());
     label.setFont(JBUI.Fonts.smallFont());
     label.setBorder(JBUI.Borders.emptyLeft(16));
     return label;
+  }
+
+  /** Context help line under a field: the muted style the other descriptions in this tab use. */
+  private static JBLabel hintLabel() {
+    return createIndentedDescriptionLabel("");
   }
 
   /**
@@ -246,12 +260,9 @@ public class DbSeedSettingsComponent {
             .createPanel();
 
     final JBLabel description =
-        new JBLabel(
+        createDescriptionLabel(
             "<html>Manage your saved database connection profiles for this project."
                 + "<br/>You can remove obsolete profiles here. Create new ones from the generator dialog.</html>");
-    description.setForeground(UIUtil.getContextHelpForeground());
-    description.setFont(JBUI.Fonts.smallFont());
-    description.setBorder(JBUI.Borders.emptyBottom(12));
 
     final JPanel panel =
         FormBuilder.createFormBuilder()
@@ -284,6 +295,12 @@ public class DbSeedSettingsComponent {
             .filter(ConnectionProfile::isValidName)
             .map(String::trim)
             .toList();
+    // A profile dropped here would otherwise leave its credentials in PasswordSafe: the generator
+    // dialog's own delete path wipes them, so this one must not leave them lingering behind.
+    final List<String> removedProfiles =
+        originalProfiles.stream().filter(name -> !currentList.contains(name)).toList();
+    removedProfiles.forEach(
+        removedName -> ConnectionConfigPersistence.deleteProfile(myProject, removedName));
     final List<ConnectionProfile> toKeep =
         new ArrayList<>(
             projectState.getProfiles().stream()
@@ -320,12 +337,9 @@ public class DbSeedSettingsComponent {
 
   private JComponent createDictionariesTab() {
     final JBLabel description =
-        new JBLabel(
+        createDescriptionLabel(
             "<html>Select which dictionaries to use for generating realistic string values."
                 + "<br/>Mix and match for contextually appropriate data.</html>");
-    description.setForeground(UIUtil.getContextHelpForeground());
-    description.setFont(JBUI.Fonts.smallFont());
-    description.setBorder(JBUI.Borders.emptyBottom(12));
 
     final JPanel panel =
         FormBuilder.createFormBuilder()
@@ -343,12 +357,9 @@ public class DbSeedSettingsComponent {
 
   private JComponent createSoftDeleteTab() {
     final JBLabel description =
-        new JBLabel(
+        createDescriptionLabel(
             "<html>Configure how soft-deleted records are marked in the generated data."
                 + "<br/>Typically uses a column like 'deleted_at' or 'is_deleted'.</html>");
-    description.setForeground(UIUtil.getContextHelpForeground());
-    description.setFont(JBUI.Fonts.smallFont());
-    description.setBorder(JBUI.Borders.emptyBottom(12));
 
     final JPanel panel =
         FormBuilder.createFormBuilder()
@@ -369,13 +380,10 @@ public class DbSeedSettingsComponent {
 
   private JComponent createAiTab() {
     final JBLabel description =
-        new JBLabel(
+        createDescriptionLabel(
             "<html>Use a local or cloud AI engine to generate context-aware data."
                 + "<br/>Ensure the selected server is running and accessible at the specified"
                 + " URL.</html>");
-    description.setForeground(UIUtil.getContextHelpForeground());
-    description.setFont(JBUI.Fonts.smallFont());
-    description.setBorder(JBUI.Borders.emptyBottom(12));
 
     final JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
     buttonPanel.add(myRefreshModelsButton);
@@ -390,28 +398,19 @@ public class DbSeedSettingsComponent {
     contextScrollPane.setMinimumSize(JBUI.size(0, 60));
 
     final JBLabel wordCountDesc =
-        new JBLabel(
+        createIndentedDescriptionLabel(
             "<html>Number of words the AI generates per value (1 = word, higher = sentences).</html>");
-    wordCountDesc.setForeground(UIUtil.getContextHelpForeground());
-    wordCountDesc.setFont(JBUI.Fonts.smallFont());
-    wordCountDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
     final JBLabel timeoutDesc =
-        new JBLabel(
+        createIndentedDescriptionLabel(
             "<html>Max wait per AI request. Increase for slow hardware. If exceeded, "
                 + "fallback to random values.</html>");
-    timeoutDesc.setForeground(UIUtil.getContextHelpForeground());
-    timeoutDesc.setFont(JBUI.Fonts.smallFont());
-    timeoutDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
     final JBLabel parallelDesc =
-        new JBLabel(
+        createIndentedDescriptionLabel(
             "<html>Generate several AI columns at once. Only worth it when the AI server "
                 + "answers more than one request at a time; otherwise the requests just queue "
                 + "up.</html>");
-    parallelDesc.setForeground(UIUtil.getContextHelpForeground());
-    parallelDesc.setFont(JBUI.Fonts.smallFont());
-    parallelDesc.setBorder(JBUI.Borders.emptyLeft(16));
 
     final JPanel serverConfigPanel =
         FormBuilder.createFormBuilder()

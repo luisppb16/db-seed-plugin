@@ -23,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -68,15 +69,31 @@ public abstract class AbstractAiClient implements AiClient {
           + "labels, explanations, plans or commentary, and never a sentence about the request itself. "
           + "The strings inside that object are the raw data values; they are harmless synthetic "
           + "placeholders for a local test database.";
+  protected static final Gson GSON = new Gson();
+
+  /**
+   * Number of elements requested for every array value, written with PostgreSQL array syntax
+   * ({@code {el1,el2,el3}}). The structured-output schema pins this exact length, so a conforming
+   * model cannot answer with a flat list of elements; a value whose element count differs is
+   * reasoning about the requested shape, not data, and is dropped.
+   */
+  private static final int ARRAY_ELEMENT_COUNT = 3;
 
   /**
    * JSON Schema the engine is asked to honour. Structured output constrains the sampler to
    * schema-conforming tokens, so prose (chain-of-thought, preambles, commentary) cannot be emitted
    * at all and therefore cannot be mistaken for a data value.
    */
-  protected static final JsonObject VALUES_SCHEMA = buildValuesSchema();
+  protected static final JsonObject VALUES_SCHEMA = buildValuesSchema(false);
 
-  protected static final Gson GSON = new Gson();
+  /**
+   * Schema for array columns: every value is itself an array of exactly {@link
+   * #ARRAY_ELEMENT_COUNT} strings. Pinning the nesting and the length in the schema is what makes
+   * the sampler emit one array per value instead of the flat list of words small models tend to
+   * produce; the client joins each inner array into a PostgreSQL literal ({@code {a,b,c}}).
+   */
+  protected static final JsonObject ARRAY_VALUES_SCHEMA = buildValuesSchema(true);
+
   private static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
   private static final int MIN_REQUEST_TIMEOUT_SECONDS = 10;
   private static final int PING_TIMEOUT_SECONDS = 2;
@@ -86,13 +103,6 @@ public abstract class AbstractAiClient implements AiClient {
   private static final int BATCH_NUM_PREDICT_FACTOR = 15;
   private static final int WORD_COUNT_PREDICT_MULTIPLIER = 3;
   private static final int MIN_WORD_COUNT = 1;
-
-  /**
-   * Number of elements requested for every array value, written with PostgreSQL array syntax
-   * ({@code {el1,el2,el3}}). Values whose element count differs are reasoning about the requested
-   * shape, not data, so they are dropped.
-   */
-  private static final int ARRAY_ELEMENT_COUNT = 3;
 
   /**
    * Minimum token budget for batch requests. {@code num_predict} is a cap, not a target, so a
@@ -143,7 +153,8 @@ public abstract class AbstractAiClient implements AiClient {
             return thread;
           });
 
-  private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)\\-]\\s*");
+  // The negative lookahead keeps decimals/ranges like "3.14" or "5-10" intact.
+  private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)\\-]\\s*(?![0-9])");
 
   /**
    * Matches a chain-of-thought delimiter emitted inline in the {@code response} field. Both the
@@ -256,16 +267,28 @@ public abstract class AbstractAiClient implements AiClient {
   }
 
   /**
-   * Builds the {@code {"values": [string]}} schema requested for every batch: one object holding
-   * the strings the caller consumes as seed values.
+   * Builds the {@code {"values": [...]}} schema requested for every batch. Scalar columns ask for
+   * an array of strings; array columns ask for an array of arrays, which constrains the sampler to
+   * emit one nested array per value instead of a flat list of elements.
+   *
+   * @param nested when {@code true} each value is itself an array of exactly {@link
+   *     #ARRAY_ELEMENT_COUNT} strings (array columns)
    */
-  private static JsonObject buildValuesSchema() {
-    final JsonObject items = new JsonObject();
-    items.addProperty("type", "string");
+  private static JsonObject buildValuesSchema(final boolean nested) {
+    final JsonObject stringItem = new JsonObject();
+    stringItem.addProperty("type", "string");
+
+    final JsonObject item = new JsonObject();
+    item.addProperty("type", nested ? "array" : "string");
+    if (nested) {
+      item.add("items", stringItem);
+      item.addProperty("minItems", ARRAY_ELEMENT_COUNT);
+      item.addProperty("maxItems", ARRAY_ELEMENT_COUNT);
+    }
 
     final JsonObject values = new JsonObject();
     values.addProperty("type", "array");
-    values.add("items", items);
+    values.add("items", item);
 
     final JsonObject properties = new JsonObject();
     properties.add("values", values);
@@ -581,8 +604,11 @@ public abstract class AbstractAiClient implements AiClient {
   }
 
   /**
-   * Extracts the strings of the {@code values} array from a complete answer. Returns an empty list
-   * when the answer is not the requested JSON object (truncated output, or a plain-text answer).
+   * Extracts the values of the {@code values} array from a complete answer. A string element is
+   * taken as-is (scalar columns and flat answers for array columns); an inner array is joined into
+   * a PostgreSQL literal ({@code {a,b,c}}) so array columns whose sampler honoured the nested
+   * schema are handed out in the shape the caller parses. Returns an empty list when the answer is
+   * not the requested JSON object (truncated output, or a plain-text answer).
    */
   private static List<String> extractJsonValues(final String rawText) {
     final List<String> extracted = new ArrayList<>();
@@ -597,6 +623,11 @@ public abstract class AbstractAiClient implements AiClient {
     for (final JsonElement element : array) {
       if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
         extracted.add(element.getAsString());
+      } else if (element.isJsonArray()) {
+        final String literal = joinInnerArray(element.getAsJsonArray());
+        if (Objects.nonNull(literal)) {
+          extracted.add(literal);
+        }
       }
     }
     return extracted;
@@ -607,27 +638,59 @@ public abstract class AbstractAiClient implements AiClient {
     final JsonElement declared = object.get("values");
     if (Objects.nonNull(declared)
         && declared.isJsonArray()
-        && containsOnlyStrings(declared.getAsJsonArray())) {
+        && containsOnlyStringValues(declared.getAsJsonArray())) {
       return declared.getAsJsonArray();
     }
     // The model may name the array differently: any string array in the object is taken as the
     // requested value list, which keeps the extraction working across model families.
     for (final Map.Entry<String, JsonElement> entry : object.entrySet()) {
       if (entry.getValue().isJsonArray()
-          && containsOnlyStrings(entry.getValue().getAsJsonArray())) {
+          && containsOnlyStringValues(entry.getValue().getAsJsonArray())) {
         return entry.getValue().getAsJsonArray();
       }
     }
     return null;
   }
 
-  private static boolean containsOnlyStrings(final JsonArray array) {
+  /**
+   * True when every element is a string, or an inner array of strings (the nested payload the array
+   * schema requests for array columns).
+   */
+  private static boolean containsOnlyStringValues(final JsonArray array) {
     for (final JsonElement element : array) {
-      if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
-        return false;
+      if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+        continue;
       }
+      if (element.isJsonArray() && containsOnlyStringValues(element.getAsJsonArray())) {
+        continue;
+      }
+      return false;
     }
     return true;
+  }
+
+  /**
+   * Joins an inner array of strings into the PostgreSQL literal the caller expects, or {@code
+   * null}.
+   */
+  @Nullable
+  private static String joinInnerArray(final JsonArray array) {
+    final StringBuilder literal = new StringBuilder("{");
+    boolean first = true;
+    for (final JsonElement element : array) {
+      if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+        return null;
+      }
+      if (!first) {
+        literal.append(",");
+      }
+      literal.append(element.getAsString());
+      first = false;
+    }
+    if (first) {
+      return null;
+    }
+    return literal.append("}").toString();
   }
 
   /**
@@ -667,10 +730,15 @@ public abstract class AbstractAiClient implements AiClient {
   }
 
   /**
-   * Checks the {@code {el1,el2,el3}} shape requested for array columns. A reasoning line that talks
-   * about the requested shape ({@code So each line should be like {tag1, tag2, tag3} where ...})
-   * has a different element count and is dropped here; {@code expectedArrayElements} is 0 for
-   * scalar columns, which accept any value.
+   * Checks the {@code {el1,el2,el3}} shape requested for array columns. A braced/bracketed value
+   * with a different element count is reasoning about the requested shape, so it is dropped here;
+   * {@code expectedArrayElements} is 0 for scalar columns, which accept any value.
+   *
+   * <p>A plain scalar (no braces or brackets) is accepted even for array columns: it is not the
+   * requested literal shape, but it is still usable array data, and the caller wraps it as a
+   * single-element array. Small models routinely ignore the "one array literal per string"
+   * instruction and answer with one element per string, and dropping every such value would leave
+   * the whole column to DataFaker.
    */
   private static boolean hasExpectedArrayShape(
       final String value, final int expectedArrayElements, final String columnName) {
@@ -681,7 +749,7 @@ public abstract class AbstractAiClient implements AiClient {
     final boolean braced = body.startsWith("{") && body.endsWith("}");
     final boolean bracketed = body.startsWith("[") && body.endsWith("]");
     if (!braced && !bracketed) {
-      return false;
+      return true;
     }
     final String[] elements = body.substring(1, body.length() - 1).split(",", -1);
     if (elements.length != expectedArrayElements) {
@@ -726,9 +794,14 @@ public abstract class AbstractAiClient implements AiClient {
   /** Path appended to the normalized base URL to generate one batch. */
   protected abstract String generatePath();
 
-  /** Builds the engine-specific body of one batch generation request. */
+  /**
+   * Builds the engine-specific body of one batch generation request.
+   *
+   * @param valuesSchema the structured-output schema to pin ({@link #VALUES_SCHEMA} for scalar
+   *     columns, {@link #ARRAY_VALUES_SCHEMA} for array columns)
+   */
   protected abstract String buildGenerateRequestBody(
-      String prompt, double temperature, int numPredict);
+      String prompt, double temperature, int numPredict, JsonObject valuesSchema);
 
   /** Parses the engine's model listing into sorted model names. */
   protected abstract List<String> parseModelsResponse(String responseBody);
@@ -736,9 +809,11 @@ public abstract class AbstractAiClient implements AiClient {
   /**
    * Maps one line of the streamed answer to the text it emits.
    *
-   * @return {@link ParsedChunk#text} with the emitted chunk, {@link ParsedChunk#ignore} for a line
-   *     that carries no text (heartbeat, role-only delta, malformed JSON), or {@link
-   *     ParsedChunk#end} for the engine's end-of-stream sentinel
+   * @return {@link ParsedChunk#text} with the emitted chunk, {@link ParsedChunk#progress} for a
+   *     frame that proves the model is still working but carries no value (for example a reasoning
+   *     delta), {@link ParsedChunk#ignore} for a line that carries no text (heartbeat, role-only
+   *     delta, malformed JSON), {@link ParsedChunk#error} for a fatal error payload the engine sent
+   *     mid-stream, or {@link ParsedChunk#end} for the engine's end-of-stream sentinel
    */
   protected abstract ParsedChunk parseStreamLine(String rawLine);
 
@@ -855,29 +930,46 @@ public abstract class AbstractAiClient implements AiClient {
     final boolean isArrayType = isArrayType(sqlType);
 
     try {
-      final String prompt;
-      final int numPredict;
+      final boolean singleWord = effectiveWordCount == MIN_WORD_COUNT;
 
+      // One prompt assembled from a shared base plus the fragments the column shape and word count
+      // change: the words clause right after the column's parenthetical, and the clause that
+      // describes each string of the "values" array.
+      final String wordsClause;
+      if (singleWord) {
+        wordsClause = isArrayType ? "" : ", one single word each";
+      } else {
+        wordsClause =
+            ", up to " + effectiveWordCount + " words " + (isArrayType ? "per element" : "each");
+      }
+
+      final String valueClause;
       if (isArrayType) {
-        final int elementCount = ARRAY_ELEMENT_COUNT;
-        if (effectiveWordCount == 1) {
-          prompt =
-              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s). Answer with a JSON object holding a \"values\" array of exactly %d strings; every string is a PostgreSQL array literal, that is, exactly %d single comma-separated words wrapped in curly braces. Write real words in place of the el1, el2 and el3 of this template: no placeholders, no numbering, no commentary."
-                  .formatted(
-                      contextLine, count, columnName, tableName, sqlType, count, elementCount);
-        } else {
-          prompt =
-              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s), up to %d words per element. Answer with a JSON object holding a \"values\" array of exactly %d strings; every string is a PostgreSQL array literal, that is, exactly %d comma-separated values wrapped in curly braces. Write real words in place of the el1, el2 and el3 of this template: no placeholders, no numbering, no commentary."
-                  .formatted(
-                      contextLine,
-                      count,
-                      columnName,
-                      tableName,
-                      sqlType,
-                      effectiveWordCount,
-                      count,
-                      elementCount);
-        }
+        valueClause =
+            "; every string is a PostgreSQL array literal, that is, exactly "
+                + ARRAY_ELEMENT_COUNT
+                + (singleWord ? " single comma-separated words" : " comma-separated values")
+                + " wrapped in curly braces. Write real words in place of the el1, el2 and el3 of"
+                + " this template: no placeholders, no numbering, no commentary.";
+      } else {
+        valueClause =
+            ", every one of them a real value for that column: no placeholders, no numbering, no"
+                + " labels, no commentary.";
+      }
+
+      final String prompt =
+          "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s)"
+                  .formatted(contextLine, count, columnName, tableName, sqlType)
+              + wordsClause
+              + ". Answer with a JSON object holding a \"values\" array of exactly "
+              + count
+              + " strings"
+              + valueClause;
+
+      // Scalar values are not shaped into array literals, so their element count counts as one.
+      final int elementCount = isArrayType ? ARRAY_ELEMENT_COUNT : 1;
+      final int numPredict;
+      if (isArrayType || !singleWord) {
         numPredict =
             Math.min(
                 Math.max(
@@ -889,35 +981,15 @@ public abstract class AbstractAiClient implements AiClient {
                     NUM_PREDICT_FLOOR),
                 MAX_NUM_PREDICT);
       } else {
-        if (effectiveWordCount == 1) {
-          prompt =
-              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s), one single word each. Answer with a JSON object holding a \"values\" array of exactly %d strings, every one of them a real value for that column: no placeholders, no numbering, no labels, no commentary."
-                  .formatted(contextLine, count, columnName, tableName, sqlType, count);
-          numPredict = Math.min(count * BATCH_NUM_PREDICT_FACTOR, MAX_NUM_PREDICT);
-        } else {
-          prompt =
-              "%sGenerate exactly %d unique values for column \"%s\" (table: %s, type: %s), up to %d words each. Answer with a JSON object holding a \"values\" array of exactly %d strings, every one of them a real value for that column: no placeholders, no numbering, no labels, no commentary."
-                  .formatted(
-                      contextLine,
-                      count,
-                      columnName,
-                      tableName,
-                      sqlType,
-                      effectiveWordCount,
-                      count);
-          numPredict =
-              Math.min(
-                  Math.max(
-                      count
-                          * Math.max(
-                              BATCH_NUM_PREDICT_FACTOR,
-                              effectiveWordCount * WORD_COUNT_PREDICT_MULTIPLIER),
-                      NUM_PREDICT_FLOOR),
-                  MAX_NUM_PREDICT);
-        }
+        numPredict = Math.min(count * elementCount * BATCH_NUM_PREDICT_FACTOR, MAX_NUM_PREDICT);
       }
 
-      final String requestBody = buildGenerateRequestBody(prompt, BATCH_TEMPERATURE, numPredict);
+      final String requestBody =
+          buildGenerateRequestBody(
+              prompt,
+              BATCH_TEMPERATURE,
+              numPredict,
+              isArrayType ? ARRAY_VALUES_SCHEMA : VALUES_SCHEMA);
 
       final HttpRequest request =
           addAuthHeaders(
@@ -981,7 +1053,10 @@ public abstract class AbstractAiClient implements AiClient {
     final long inactivityTimeoutMillis = inactivityWindowMillis();
 
     final CompletableFuture<List<String>> result = new CompletableFuture<>();
-    final List<String> values = new ArrayList<>();
+    // LinkedHashSet: O(1) duplicate rejection per streamed value and first-seen insertion order, so
+    // the delivered list holds exactly the values the ArrayList accumulated before, in the same
+    // order.
+    final Set<String> values = new LinkedHashSet<>();
     // Accumulates every raw token chunk so that, when the model yields no usable values, the
     // thrown error can include a snippet of what the model actually returned (diagnosability).
     final StringBuilder rawOutput = new StringBuilder();
@@ -1101,12 +1176,31 @@ public abstract class AbstractAiClient implements AiClient {
                   if (ndjsonLine.isBlank()) {
                     continue;
                   }
-                  // Mark activity: a line arrived from the server.
-                  lastTokenNanos.set(System.nanoTime());
                   final ParsedChunk parsed = parseStreamLine(ndjsonLine);
                   if (parsed.kind() == ChunkKind.END) {
                     break;
                   }
+                  if (parsed.kind() == ChunkKind.ERROR) {
+                    // The engine reported a fatal error mid-stream: record the payload for
+                    // diagnostics and fail the batch with the server's own message. Return right
+                    // away so the already-failed batch is not settled again after the loop.
+                    rawOutput.append(parsed.text());
+                    cancelWatchdog(watchdog);
+                    if (!result.isDone()) {
+                      result.completeExceptionally(new AiClientException(parsed.text()));
+                    }
+                    return null;
+                  }
+                  if (parsed.kind() == ChunkKind.IGNORE) {
+                    // Heartbeat comments, event lines and empty deltas carry no progress; they must
+                    // not reset the inactivity timer, or the watchdog never fires on a wedged
+                    // stream that only keeps the connection alive.
+                    continue;
+                  }
+                  // TEXT or PROGRESS: the server produced output, so the stream is alive. PROGRESS
+                  // covers progress frames with no consumable value (for example reasoning deltas),
+                  // which still prove the model is working and must not trip the watchdog.
+                  lastTokenNanos.set(System.nanoTime());
                   if (parsed.kind() != ChunkKind.TEXT) {
                     continue;
                   }
@@ -1149,7 +1243,7 @@ public abstract class AbstractAiClient implements AiClient {
                               + "'. Model output: "
                               + snippetOf(rawOutput.toString())));
                 } else {
-                  result.complete(values);
+                  result.complete(new ArrayList<>(values));
                 }
               }
               return null;
@@ -1187,7 +1281,7 @@ public abstract class AbstractAiClient implements AiClient {
       final StringBuilder lineBuffer,
       final StringBuilder rawOutput,
       final int expectedArrayElements,
-      final List<String> values,
+      final Set<String> values,
       @Nullable final Runnable onValueAdded) {
     rawOutput.append(chunk);
     if (!scanner.hasSeenValuesKey() && scanner.locateValuesArray()) {
@@ -1215,22 +1309,41 @@ public abstract class AbstractAiClient implements AiClient {
       final StringBuilder lineBuffer,
       final String columnName,
       final int expectedArrayElements,
-      final List<String> values,
+      final Set<String> values,
       @Nullable final Runnable onValueAdded) {
     lineBuffer.append(chunk);
     // Drop a chain-of-thought block as soon as its closing tag shows up, and hold back complete
     // lines while an opening tag is still unmatched: otherwise reasoning lines (which are long and
     // contain newlines) reach the caller as the first values of the column.
-    discardClosedThinking(lineBuffer);
-    if (isInsideThinking(lineBuffer)) {
-      return;
+    drainLineBuffer(lineBuffer, columnName, expectedArrayElements, values, onValueAdded);
+  }
+
+  /**
+   * Drains a plain-text buffer: drops a closed chain-of-thought block, delivers every complete line
+   * to {@link #addSanitizedValue} and leaves the trailing remainder in the buffer. Both the
+   * streamed plain-text path and the legacy full-text extraction drain through here, so they stay
+   * under the same chain-of-thought handling.
+   *
+   * @return {@code true} when the buffer was drained, {@code false} while it holds an unmatched
+   *     opening thinking tag, in which case nothing was delivered
+   */
+  private boolean drainLineBuffer(
+      final StringBuilder buffer,
+      final String columnName,
+      final int expectedArrayElements,
+      final Set<String> values,
+      @Nullable final Runnable onValueAdded) {
+    discardClosedThinking(buffer);
+    if (isInsideThinking(buffer)) {
+      return false;
     }
     int newlineIndex;
-    while ((newlineIndex = lineBuffer.indexOf("\n")) >= 0) {
-      final String completeLine = lineBuffer.substring(0, newlineIndex);
-      lineBuffer.delete(0, newlineIndex + 1);
+    while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+      final String completeLine = buffer.substring(0, newlineIndex);
+      buffer.delete(0, newlineIndex + 1);
       addSanitizedValue(completeLine, columnName, expectedArrayElements, values, onValueAdded);
     }
+    return true;
   }
 
   /**
@@ -1245,7 +1358,7 @@ public abstract class AbstractAiClient implements AiClient {
       final StringBuilder rawOutput,
       final String columnName,
       final int expectedArrayElements,
-      final List<String> values,
+      final Set<String> values,
       @Nullable final Runnable onValueAdded) {
     final String rawText = rawOutput.toString();
     if (!scanner.hasSeenValuesKey()) {
@@ -1265,19 +1378,12 @@ public abstract class AbstractAiClient implements AiClient {
       final String rawText,
       final String columnName,
       final int expectedArrayElements,
-      final List<String> values,
+      final Set<String> values,
       @Nullable final Runnable onValueAdded) {
     final StringBuilder buffer = new StringBuilder(rawText);
-    discardClosedThinking(buffer);
-    if (isInsideThinking(buffer)) {
+    if (!drainLineBuffer(buffer, columnName, expectedArrayElements, values, onValueAdded)) {
       // Truncated mid-thought (num_predict exhausted): the trailing text is reasoning.
       return;
-    }
-    int newlineIndex;
-    while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
-      final String completeLine = buffer.substring(0, newlineIndex);
-      buffer.delete(0, newlineIndex + 1);
-      addSanitizedValue(completeLine, columnName, expectedArrayElements, values, onValueAdded);
     }
     if (buffer.length() > 0) {
       addSanitizedValue(buffer.toString(), columnName, expectedArrayElements, values, onValueAdded);
@@ -1288,32 +1394,43 @@ public abstract class AbstractAiClient implements AiClient {
       final String rawLine,
       final String columnName,
       final int expectedArrayElements,
-      final List<String> values,
+      final Set<String> values,
       @Nullable final Runnable onValueAdded) {
     final String sanitized = sanitizeAiOutput(rawLine, columnName);
     if (Objects.isNull(sanitized)
         || sanitized.isBlank()
         || isPlaceholderValue(sanitized, columnName)
-        || !hasExpectedArrayShape(sanitized, expectedArrayElements, columnName)
-        || values.contains(sanitized)) {
+        || !hasExpectedArrayShape(sanitized, expectedArrayElements, columnName)) {
       return;
     }
-    values.add(sanitized);
+    if (!values.add(sanitized)) {
+      // Already collected: a duplicate is neither delivered twice nor made to advance the progress.
+      return;
+    }
     if (Objects.nonNull(onValueAdded)) {
       onValueAdded.run();
     }
   }
 
-  /** What one streamed line means: text to consume, nothing to consume, or end of stream. */
+  /**
+   * What one streamed line means: text to consume, progress without a value, nothing to consume, a
+   * fatal error, or end of stream.
+   */
   protected enum ChunkKind {
     TEXT,
+    PROGRESS,
     IGNORE,
-    END
+    END,
+    ERROR
   }
 
   /**
-   * One parsed line of a streamed answer. {@code END} is what lets an engine stop reading on its
-   * own sentinel (the SSE {@code data: [DONE]} line) instead of waiting for the socket to close.
+   * One parsed line of a streamed answer. {@code TEXT} carries a consumable chunk; {@code PROGRESS}
+   * marks a frame that proves the model is still working but yields no value (for example a
+   * reasoning delta), so it only refreshes the inactivity timer. {@code END} is what lets an engine
+   * stop reading on its own sentinel (the SSE {@code data: [DONE]} line) instead of waiting for the
+   * socket to close. {@code ERROR} carries the server's error message: the stream loop records it
+   * in the raw output and fails the batch with it.
    */
   protected record ParsedChunk(ChunkKind kind, String text) {
 
@@ -1321,8 +1438,16 @@ public abstract class AbstractAiClient implements AiClient {
       return new ParsedChunk(ChunkKind.TEXT, value);
     }
 
+    static ParsedChunk progress() {
+      return new ParsedChunk(ChunkKind.PROGRESS, null);
+    }
+
     static ParsedChunk ignore() {
       return new ParsedChunk(ChunkKind.IGNORE, null);
+    }
+
+    static ParsedChunk error(final String errorMessage) {
+      return new ParsedChunk(ChunkKind.ERROR, errorMessage);
     }
 
     static ParsedChunk end() {
@@ -1351,6 +1476,9 @@ public abstract class AbstractAiClient implements AiClient {
 
     private final StringBuilder text;
 
+    /** Decoded elements of the inner array being read; joined into a literal when it closes. */
+    private final StringBuilder innerElements = new StringBuilder();
+
     /** Position from which the {@code "values"} key is searched on the next chunk. */
     private int searchFrom;
 
@@ -1364,6 +1492,16 @@ public abstract class AbstractAiClient implements AiClient {
     private boolean insideString;
     private boolean escaped;
     private boolean valuesKeySeen;
+
+    /**
+     * Nesting depth of the value being read: {@code 0} when the {@code values} array holds strings
+     * directly, {@code 1} while reading an inner array (array columns ask the sampler for an array
+     * of arrays). Deeper nesting is flattened into depth 1 so nothing is lost.
+     */
+    private int arrayDepth;
+
+    /** Whether {@link #innerElements} already holds an element (separator handling). */
+    private boolean innerHasElement;
 
     JsonValueScanner(final StringBuilder text) {
       this.text = text;
@@ -1409,7 +1547,12 @@ public abstract class AbstractAiClient implements AiClient {
       return true;
     }
 
-    /** Walks the array elements, emitting the text between each pair of unescaped quotes. */
+    /**
+     * Walks the array elements, emitting each value once its JSON literal closes. A string element
+     * is handed out as-is (scalar columns, and flat answers for array columns that ignore the
+     * nested schema); the elements of an inner array are joined into a PostgreSQL literal ({@code
+     * {a,b,c}}) and handed out as one value when the inner array closes.
+     */
     private void scanElements(final Consumer<String> onElement) {
       while (cursor < text.length()) {
         final char current = text.charAt(cursor);
@@ -1426,7 +1569,14 @@ public abstract class AbstractAiClient implements AiClient {
         if (current == '"') {
           if (insideString) {
             insideString = false;
-            emit(stringStart, cursor, onElement);
+            final String decoded = decode(stringStart, cursor);
+            if (Objects.nonNull(decoded)) {
+              if (arrayDepth > 0) {
+                appendInnerElement(decoded);
+              } else {
+                onElement.accept(decoded);
+              }
+            }
             stringStart = -1;
           } else {
             insideString = true;
@@ -1435,8 +1585,32 @@ public abstract class AbstractAiClient implements AiClient {
           cursor++;
           continue;
         }
+        if (!insideString && current == '[') {
+          if (arrayDepth == 0) {
+            // Nested payload: the value being read is itself an array of elements.
+            arrayDepth = 1;
+            resetInnerElements();
+          } else {
+            // Deeper nesting is outside the requested contract; flatten it into the inner array.
+            arrayDepth++;
+          }
+          cursor++;
+          continue;
+        }
         if (!insideString && current == ']') {
-          // The array closed: everything the model adds afterwards is not a value.
+          if (arrayDepth > 1) {
+            arrayDepth--;
+            cursor++;
+            continue;
+          }
+          if (arrayDepth == 1) {
+            // Inner array closed: hand out the joined literal and keep scanning values.
+            emitInnerArray(onElement);
+            arrayDepth = 0;
+            cursor++;
+            continue;
+          }
+          // The values array closed: everything the model adds afterwards is not a value.
           insideValuesArray = false;
           cursor++;
           return;
@@ -1445,20 +1619,39 @@ public abstract class AbstractAiClient implements AiClient {
       }
     }
 
-    /** Decodes the JSON escapes of a literal and hands the resulting value to the caller. */
-    private void emit(final int start, final int end, final Consumer<String> onElement) {
+    /** Decodes the JSON escapes of a literal, or {@code null} when it is not a valid string. */
+    @Nullable
+    private String decode(final int start, final int end) {
       if (start < 0 || end < start) {
-        return;
+        return null;
       }
       try {
-        final String decoded =
-            GSON.fromJson("\"" + text.substring(start, end) + "\"", String.class);
-        if (Objects.nonNull(decoded)) {
-          onElement.accept(decoded);
-        }
+        return GSON.fromJson("\"" + text.substring(start, end) + "\"", String.class);
       } catch (final Exception e) {
         log.debug("Skipping malformed JSON string in engine response: " + e.getMessage());
+        return null;
       }
+    }
+
+    private void resetInnerElements() {
+      innerElements.setLength(0);
+      innerHasElement = false;
+    }
+
+    private void appendInnerElement(final String element) {
+      if (innerHasElement) {
+        innerElements.append(",");
+      }
+      innerElements.append(element);
+      innerHasElement = true;
+    }
+
+    /** Emits the elements gathered for the inner array as one PostgreSQL literal. */
+    private void emitInnerArray(final Consumer<String> onElement) {
+      if (innerHasElement) {
+        onElement.accept("{" + innerElements + "}");
+      }
+      resetInnerElements();
     }
   }
 }

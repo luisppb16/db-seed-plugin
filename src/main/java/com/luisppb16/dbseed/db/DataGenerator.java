@@ -110,8 +110,12 @@ public class DataGenerator {
     ConstraintParser.clearCache();
     final List<Table> orderedTables =
         applyPkUuidOverrides(params.tables(), params.pkUuidOverrides());
-    final Map<String, Table> tableMap =
-        orderedTables.stream().collect(Collectors.toUnmodifiableMap(Table::name, t -> t));
+    // Iteration order drives FK resolution: topological, parents first. A hash-ordered map
+    // can process children before parents and violate FKs on cycles/unique-FK paths.
+    final Map<String, Table> tableMap = new LinkedHashMap<>();
+    for (final Table table : orderedTables) {
+      tableMap.put(table.name(), table);
+    }
 
     final List<String> dictionaryWords =
         DictionaryLoader.loadWords(params.useEnglishDictionary(), params.useSpanishDictionary());
@@ -127,8 +131,7 @@ public class DataGenerator {
             .collect(Collectors.toMap(Map.Entry::getKey, e -> new HashSet<>(e.getValue())));
 
     final DbSeedSettingsState settings = DbSeedSettingsState.getInstance();
-    final boolean modelConfigured =
-        Objects.nonNull(settings.getAiModel()) && !settings.getAiModel().isBlank();
+    final boolean modelConfigured = settings.isAiModelConfigured();
     // The factory accepts an empty model name (that is how the settings dialog lists the models a
     // server offers), so generation guards on it here: without a model there is no AI phase at all.
     final AiClient aiClient =
@@ -190,20 +193,15 @@ public class DataGenerator {
 
     final List<RowGenerator> generators =
         generateTableRows(
+            params,
             orderedTables,
-            params.rowsPerTable(),
             excludedColumnsSet,
-            params.repetitionRules(),
             faker,
             usedUuids,
             tableConstraints,
             data,
             dictionaryWords,
-            params.useLatinDictionary(),
             softDeleteCols,
-            params.softDeleteUseSchemaDefault(),
-            params.softDeleteValue(),
-            params.numericScale(),
             aiColumns,
             aiWordCount,
             aiClient,
@@ -283,25 +281,27 @@ public class DataGenerator {
   }
 
   private static List<RowGenerator> generateTableRows(
+      final GenerationParameters params,
       final List<Table> orderedTables,
-      final int rowsPerTable,
       final Map<String, Set<String>> excludedColumns,
-      final Map<String, List<RepetitionRule>> repetitionRules,
       final Faker faker,
       final Set<UUID> usedUuids,
       final Map<String, Map<String, ConstraintParser.ParsedConstraint>> tableConstraints,
       final Map<Table, List<Row>> data,
       final List<String> dictionaryWords,
-      final boolean useLatinDictionary,
       final Set<String> softDeleteCols,
-      final boolean softDeleteUseSchemaDefault,
-      final String softDeleteValue,
-      final int numericScale,
       final Map<String, Set<String>> aiColumns,
       final int aiWordCount,
       final AiClient aiClient,
       final String applicationContext,
       final ProgressTracker tracker) {
+
+    final int rowsPerTable = params.rowsPerTable();
+    final Map<String, List<RepetitionRule>> repetitionRules = params.repetitionRules();
+    final boolean useLatinDictionary = params.useLatinDictionary();
+    final boolean softDeleteUseSchemaDefault = params.softDeleteUseSchemaDefault();
+    final String softDeleteValue = params.softDeleteValue();
+    final int numericScale = params.numericScale();
 
     final int totalTables = orderedTables.size();
     final long startTime = System.currentTimeMillis();

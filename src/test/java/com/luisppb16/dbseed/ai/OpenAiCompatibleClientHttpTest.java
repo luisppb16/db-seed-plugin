@@ -350,6 +350,23 @@ class OpenAiCompatibleClientHttpTest {
     }
 
     @Test
+    void reasoningWithoutContent_reportsProgress() {
+      final OpenAiCompatibleClient client = newClient();
+
+      assertThat(
+              client
+                  .parseStreamLine(
+                      "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking\"}}]}")
+                  .kind())
+          .isEqualTo(AbstractAiClient.ChunkKind.PROGRESS);
+      assertThat(
+              client
+                  .parseStreamLine("data: {\"choices\":[{\"delta\":{\"reasoning\":\"thinking\"}}]}")
+                  .kind())
+          .isEqualTo(AbstractAiClient.ChunkKind.PROGRESS);
+    }
+
+    @Test
     void messageContent_usedWhenTheServerAnswersInOnePiece() {
       final AbstractAiClient.ParsedChunk parsed =
           newClient()
@@ -430,6 +447,39 @@ class OpenAiCompatibleClientHttpTest {
       // Unsloth define este campo y su pensamiento viene activado por defecto, así que se apaga: la
       // cadena de pensamiento no es un valor sembrable y gasta el presupuesto de tokens.
       assertThat(body.get("enable_thinking").getAsBoolean()).isFalse();
+    }
+
+    @Test
+    void requestBody_arrayColumnPinsNestedSchema() throws Exception {
+      respondWithSse("{\"values\":[[\"python\",\"cli\",\"linux\"]]}");
+
+      newClient()
+          .generateBatchValues("blog", "articles", "tags", "text[]", 1, 1)
+          .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      final JsonObject schema =
+          lastRequestBody()
+              .getAsJsonObject("response_format")
+              .getAsJsonObject("json_schema")
+              .getAsJsonObject("schema");
+      final JsonObject item =
+          schema.getAsJsonObject("properties").getAsJsonObject("values").getAsJsonObject("items");
+      assertThat(item.get("type").getAsString()).isEqualTo("array");
+      assertThat(item.get("minItems").getAsInt()).isEqualTo(3);
+      assertThat(item.get("maxItems").getAsInt()).isEqualTo(3);
+    }
+
+    @Test
+    void arrayColumn_nestedArraysJoinedIntoLiterals() throws Exception {
+      respondWithSse(
+          "{\"values\":[[\"python\",\"cli\",\"linux\"],[\"java\",\"gradle\",\"idea\"]]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "tags", "text[]", 1, 2)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{python,cli,linux}", "{java,gradle,idea}");
     }
 
     @Test
@@ -529,6 +579,49 @@ class OpenAiCompatibleClientHttpTest {
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
               "AI generation stalled for column 'city' (no tokens received within 500ms)");
+    }
+
+    @Test
+    void reasoningFramesWithoutContent_keepTheWatchdogAlive() throws Exception {
+      HANDLER.set(
+          exchange -> {
+            try {
+              capture(exchange);
+              exchange.sendResponseHeaders(200, 0);
+              final OutputStream os = exchange.getResponseBody();
+              // Reasoning deltas carry no value, but each arrives well inside the 2s window while
+              // the whole reasoning phase outlasts it: the watchdog must not abort the stream.
+              for (int i = 0; i < 4; i++) {
+                os.write(
+                    ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"step "
+                            + i
+                            + "\"}}]}\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                os.flush();
+                Thread.sleep(700);
+              }
+              os.write(
+                  (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n")
+                      .getBytes(StandardCharsets.UTF_8));
+              os.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+              os.flush();
+            } catch (final IOException | InterruptedException ignored) {
+              // The client aborted or the test finished; nothing to recover.
+            }
+          });
+
+      final List<String> values =
+          new OpenAiCompatibleClient(
+                  AiProvider.UNSLOTH_STUDIO,
+                  baseUrl,
+                  MODEL_NAME,
+                  API_KEY,
+                  REQUEST_TIMEOUT_SECONDS,
+                  2000L)
+              .generateBatchValues("tienda online", "users", "city", "varchar", 1, 1)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("Madrid");
     }
 
     @Test

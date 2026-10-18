@@ -8,7 +8,6 @@
 package com.luisppb16.dbseed.config;
 
 import com.intellij.credentialStore.CredentialAttributes;
-import com.intellij.credentialStore.CredentialAttributesKt;
 import com.intellij.credentialStore.Credentials;
 import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.openapi.project.Project;
@@ -36,7 +35,7 @@ public class ConnectionConfigPersistence {
     }
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
+    state.sanitizeProfiles();
 
     // Update the existing profile in place (keeps list order) or append a new one.
     final ConnectionProfile profile =
@@ -83,7 +82,7 @@ public class ConnectionConfigPersistence {
     }
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    state.getProfiles().removeIf(p -> p == null || !p.hasValidName());
+    state.sanitizeProfiles();
     final Optional<ConnectionProfile> profileOpt =
         state.getProfiles().stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
@@ -150,10 +149,6 @@ public class ConnectionConfigPersistence {
 
   private static CredentialAttributes createCredentialAttributes(
       @NotNull final Project project, @NotNull final String profileName) {
-    // Kotlin extension function from IntelliJ Platform credential store API.
-    // May require updates if the IntelliJ Platform changes this API.
-    return new CredentialAttributes(
-        CredentialAttributesKt.generateServiceName(
-            "DBSeed", project.getName() + "-" + profileName));
+    return AiApiKeyStore.createCredentialAttributes(project.getName() + "-" + profileName);
   }
 }

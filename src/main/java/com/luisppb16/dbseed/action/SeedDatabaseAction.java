@@ -131,6 +131,9 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
       final Project project,
       final DataGenerator.AiGenerationReport report,
       final Map<String, Set<String>> aiColumns) {
+    if (project.isDisposed()) {
+      return;
+    }
     if (!hasAnyAiColumn(aiColumns)) {
       return;
     }
@@ -273,6 +276,9 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
 
               @Override
               public void onSuccess() {
+                if (project.isDisposed()) {
+                  return;
+                }
                 if (Objects.nonNull(errorRef.get())) {
                   handleException(project, "Error introspecting schema: ", errorRef.get());
                   return;
@@ -398,6 +404,14 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
               @Override
               public void run(@NotNull final ProgressIndicator indicator) {
                 indicatorRef.set(indicator);
+                if (progressDialog.isCancelRequested()) {
+                  // Cancel was clicked before the task had an indicator: honor it now, so the
+                  // request recorded by the dialog is never lost.
+                  indicator.cancel();
+                  ApplicationManager.getApplication()
+                      .invokeLater(progressDialog::closeSafely, ModalityState.any());
+                  return;
+                }
                 try {
                   indicator.setIndeterminate(false);
                   indicator.setFraction(0.0);
@@ -475,11 +489,15 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
                   } else {
                     ApplicationManager.getApplication()
                         .invokeLater(
-                            () ->
-                                Messages.showErrorDialog(
-                                    project,
-                                    "Could not write the generated SQL file. See the IDE log for details.",
-                                    "DBSeed Error"),
+                            () -> {
+                              if (project.isDisposed()) {
+                                return;
+                              }
+                              Messages.showErrorDialog(
+                                  project,
+                                  "Could not write the generated SQL file. See the IDE log for details.",
+                                  "DBSeed Error");
+                            },
                             ModalityState.defaultModalityState());
                   }
                 } catch (final Exception ex) {
@@ -534,6 +552,9 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
   }
 
   private void openFileInEditor(final Project project, final Path path) {
+    if (project.isDisposed()) {
+      return;
+    }
     final VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path);
     if (Objects.nonNull(virtualFile)) {
       FileEditorManager.getInstance(project).openFile(virtualFile, true);
@@ -546,6 +567,9 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
 
   private void handleException(final Project project, final String message, final Exception ex) {
     log.error(message, ex);
+    if (project.isDisposed()) {
+      return;
+    }
     final String detail = Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
     final String fullMessage = message + detail;
     ApplicationManager.getApplication()

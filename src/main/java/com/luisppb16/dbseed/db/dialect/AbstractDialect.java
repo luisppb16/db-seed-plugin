@@ -47,10 +47,26 @@ import lombok.extern.slf4j.Slf4j;
  * </ul>
  */
 @Slf4j
-public sealed class AbstractDialect implements DatabaseDialect permits StandardDialect {
+public sealed class AbstractDialect permits StandardDialect {
 
   private static final String NULL_STR = "NULL";
   protected final Properties props = new Properties();
+
+  private final boolean escapeBackslash;
+  private final String booleanTrue;
+  private final String booleanFalse;
+  private final String quoteOpen;
+  private final String quoteClose;
+  private final String quoteEscape;
+  private final boolean uppercaseIdentifiers;
+  private final int maxBatchSize;
+  private final boolean supportsMultiRowInsert;
+  private final String batchHeader;
+  private final String batchRowPrefix;
+  private final String batchRowSuffix;
+  private final String batchRowSeparator;
+  private final String batchFooter;
+  private final String statementSeparator;
 
   protected AbstractDialect(String resourceName) {
     if (Objects.nonNull(resourceName)) {
@@ -64,59 +80,62 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
         log.error("Failed to load dialect properties: /dialects/{}", resourceName, e);
       }
     }
+    escapeBackslash = Boolean.parseBoolean(props.getProperty("escapeBackslash", "false"));
+    booleanTrue = props.getProperty("booleanTrue", "TRUE");
+    booleanFalse = props.getProperty("booleanFalse", "FALSE");
+    quoteOpen = props.getProperty("quoteChar", "\"");
+    quoteClose = props.getProperty("closeQuoteChar", quoteOpen);
+    quoteEscape = props.getProperty("quoteEscape", "");
+    uppercaseIdentifiers = Boolean.parseBoolean(props.getProperty("uppercaseIdentifiers", "false"));
+    final int parsedBatchSize = Integer.parseInt(props.getProperty("maxBatchSize", "1000"));
+    maxBatchSize = parsedBatchSize <= 0 ? 1000 : parsedBatchSize;
+    supportsMultiRowInsert =
+        Boolean.parseBoolean(props.getProperty("supportsMultiRowInsert", "true"));
+    batchHeader = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
+    batchRowPrefix = props.getProperty("batchRowPrefix", "(");
+    batchRowSuffix = props.getProperty("batchRowSuffix", ")");
+    batchRowSeparator = props.getProperty("batchRowSeparator", ",\n");
+    batchFooter = props.getProperty("batchFooter", ";\n");
+    statementSeparator = props.getProperty("statementSeparator", ";\n");
   }
 
-  @Override
   public String getProperty(String key, String defaultValue) {
     return props.getProperty(key, defaultValue);
   }
 
-  @Override
   public String quote(String identifier) {
-    String openQuote = props.getProperty("quoteChar", "\"");
-    String closeQuote = props.getProperty("closeQuoteChar", openQuote);
-    String quoteEscape = props.getProperty("quoteEscape", "");
-    boolean uppercase = Boolean.parseBoolean(props.getProperty("uppercaseIdentifiers", "false"));
-    String id = uppercase ? identifier.toUpperCase(Locale.ROOT) : identifier;
+    String id = uppercaseIdentifiers ? identifier.toUpperCase(Locale.ROOT) : identifier;
     // For symmetric quotes (e.g. "), escape the quote char inside the identifier
     // For asymmetric quotes (e.g. [ ]), escape the close char inside the identifier
-    String charToEscape = closeQuote;
-    String escapeWith = quoteEscape.isEmpty() ? closeQuote + closeQuote : quoteEscape;
-    if (openQuote.equals(closeQuote)) {
-      charToEscape = openQuote;
-      escapeWith = quoteEscape.isEmpty() ? openQuote + openQuote : quoteEscape;
+    String charToEscape = quoteClose;
+    String escapeWith = quoteEscape.isEmpty() ? quoteClose + quoteClose : quoteEscape;
+    if (quoteOpen.equals(quoteClose)) {
+      charToEscape = quoteOpen;
+      escapeWith = quoteEscape.isEmpty() ? quoteOpen + quoteOpen : quoteEscape;
     }
-    return openQuote + id.replace(charToEscape, escapeWith) + closeQuote;
+    return quoteOpen + id.replace(charToEscape, escapeWith) + quoteClose;
   }
 
-  @Override
   public String formatBoolean(boolean b) {
-    return b
-        ? props.getProperty("booleanTrue", "TRUE")
-        : props.getProperty("booleanFalse", "FALSE");
+    return b ? booleanTrue : booleanFalse;
   }
 
-  @Override
   public String beginTransaction() {
     return props.getProperty("beginTransaction", "BEGIN;\n");
   }
 
-  @Override
   public String commitTransaction() {
     return props.getProperty("commitTransaction", "COMMIT;\n");
   }
 
-  @Override
   public String disableConstraints() {
     return props.getProperty("disableConstraints", "");
   }
 
-  @Override
   public String enableConstraints() {
     return props.getProperty("enableConstraints", "");
   }
 
-  @Override
   public void formatValue(Object value, StringBuilder sb) {
     if (Objects.isNull(value)) {
       sb.append(NULL_STR);
@@ -176,7 +195,7 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
 
   protected String escapeSql(String s) {
     String result = s;
-    if (Boolean.parseBoolean(props.getProperty("escapeBackslash", "false"))) {
+    if (escapeBackslash) {
       result = result.replace("\\", "\\\\");
     }
     result = result.replace("\0", "");
@@ -186,7 +205,6 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
     return result.replace("'", "''");
   }
 
-  @Override
   public void appendBatch(
       StringBuilder sb,
       String tableName,
@@ -194,35 +212,25 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
       List<Row> rows,
       List<String> columnOrder) {
 
-    int maxBatch = Integer.parseInt(props.getProperty("maxBatchSize", "1000"));
-    if (maxBatch <= 0) maxBatch = 1000;
-    boolean multiRow = Boolean.parseBoolean(props.getProperty("supportsMultiRowInsert", "true"));
-
-    String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
-    String prefix = props.getProperty("batchRowPrefix", "(");
-    String suffix = props.getProperty("batchRowSuffix", ")");
-    String separator = props.getProperty("batchRowSeparator", ",\n");
-    String footer = props.getProperty("batchFooter", ";\n");
-
-    if (!multiRow) {
+    if (!supportsMultiRowInsert) {
       appendSingleRowInserts(sb, tableName, columnList, rows, columnOrder);
       return;
     }
 
-    for (int i = 0; i < rows.size(); i += maxBatch) {
-      List<Row> batch = rows.subList(i, Math.min(i + maxBatch, rows.size()));
+    for (int i = 0; i < rows.size(); i += maxBatchSize) {
+      List<Row> batch = rows.subList(i, Math.min(i + maxBatchSize, rows.size()));
 
-      sb.append(header.replace("${table}", tableName).replace("${columns}", columnList));
+      sb.append(batchHeader.replace("${table}", tableName).replace("${columns}", columnList));
 
       for (int j = 0; j < batch.size(); j++) {
-        sb.append(prefix.replace("${table}", tableName).replace("${columns}", columnList));
+        sb.append(batchRowPrefix.replace("${table}", tableName).replace("${columns}", columnList));
         appendRowValues(sb, batch.get(j), columnOrder);
-        sb.append(suffix);
+        sb.append(batchRowSuffix);
         if (j < batch.size() - 1) {
-          sb.append(separator);
+          sb.append(batchRowSeparator);
         }
       }
-      sb.append(footer);
+      sb.append(batchFooter);
     }
   }
 
@@ -233,21 +241,15 @@ public sealed class AbstractDialect implements DatabaseDialect permits StandardD
       List<Row> rows,
       List<String> columnOrder) {
 
-    String header = props.getProperty("batchHeader", "INSERT INTO ${table} (${columns}) VALUES\n");
-    String prefix = props.getProperty("batchRowPrefix", "(");
-    String suffix = props.getProperty("batchRowSuffix", ")");
-    String footer = props.getProperty("batchFooter", ";\n");
-    String stmtSep = props.getProperty("statementSeparator", ";\n");
-
     for (Row row : rows) {
-      sb.append(header.replace("${table}", tableName).replace("${columns}", columnList));
-      sb.append(prefix.replace("${table}", tableName).replace("${columns}", columnList));
+      sb.append(batchHeader.replace("${table}", tableName).replace("${columns}", columnList));
+      sb.append(batchRowPrefix.replace("${table}", tableName).replace("${columns}", columnList));
       appendRowValues(sb, row, columnOrder);
-      sb.append(suffix);
+      sb.append(batchRowSuffix);
       sb.append(
-          footer.isEmpty()
-              ? stmtSep
-              : footer.replace("${table}", tableName).replace("${columns}", columnList));
+          batchFooter.isEmpty()
+              ? statementSeparator
+              : batchFooter.replace("${table}", tableName).replace("${columns}", columnList));
     }
   }
 

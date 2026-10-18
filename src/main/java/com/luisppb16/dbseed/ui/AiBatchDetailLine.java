@@ -53,26 +53,8 @@ final class AiBatchDetailLine {
    */
   private static final int DIGIT_GAP = 5;
 
-  /** Caption of the values stage. */
-  private static final String CAPTION_VALUES = " · values ";
-
-  /** Caption of the retry stage, which shows the same counters as the values stage. */
-  private static final String CAPTION_RETRY = " · retry ";
-
-  /** Caption of the timing stage. */
-  private static final String CAPTION_TIMING = " · last batch ";
-
   /** Separator between the two numbers of the streaming stages. */
   private static final String SEPARATOR_STREAMING = "/";
-
-  /** Words separating the two numbers of the timing stage. */
-  private static final String SEPARATOR_TIMING = "s · ETA ~";
-
-  /** Caption of the waiting segment, the longest it can ever be (it is blank when not waiting). */
-  private static final String WAITING_CAPTION = " · waiting ";
-
-  /** Unit of the seconds segments. */
-  private static final String UNIT_SECONDS = "s";
 
   private final JPanel cardPanel = new JPanel(new CardLayout());
   private final JPanel slots = new JPanel();
@@ -85,9 +67,9 @@ final class AiBatchDetailLine {
   private final JBLabel stageSeparator = stageLabel();
   private final JBLabel stageTotal = numericLabel();
   private final JBLabel stageUnit = stageLabel();
-  private final JBLabel waitingCaption = wordLabel(WAITING_CAPTION);
+  private final JBLabel waitingCaption = wordLabel(AiBatchProgress.WAITING_CAPTION);
   private final JBLabel waitingSeconds = numericLabel();
-  private final JBLabel waitingUnit = wordLabel(UNIT_SECONDS);
+  private final JBLabel waitingUnit = wordLabel(AiBatchProgress.UNIT_SECONDS);
 
   /** The number-holding slots, in display order. */
   private final List<JBLabel> numericSlots =
@@ -231,12 +213,12 @@ final class AiBatchDetailLine {
     setSlot(rowsTotal, progress.rowsTotal());
     switch (progress.stage()) {
       case TIMING -> renderTiming(progress);
-      case VALUES -> renderStage(CAPTION_VALUES, progress);
-      case RETRY -> renderStage(CAPTION_RETRY, progress);
+      case VALUES -> renderStage(AiBatchProgress.CAPTION_VALUES, progress);
+      case RETRY -> renderStage(AiBatchProgress.CAPTION_RETRY, progress);
     }
     final boolean waiting = progress.waitingSeconds() >= 0;
-    waitingCaption.setText(waiting ? WAITING_CAPTION : "");
-    waitingUnit.setText(waiting ? UNIT_SECONDS : "");
+    waitingCaption.setText(waiting ? AiBatchProgress.WAITING_CAPTION : "");
+    waitingUnit.setText(waiting ? AiBatchProgress.UNIT_SECONDS : "");
     if (waiting) {
       setSlot(waitingSeconds, progress.waitingSeconds());
     } else {
@@ -265,9 +247,9 @@ final class AiBatchDetailLine {
       blankStage();
       return;
     }
-    stageCaption.setText(CAPTION_TIMING);
-    stageSeparator.setText(SEPARATOR_TIMING);
-    stageUnit.setText(UNIT_SECONDS);
+    stageCaption.setText(AiBatchProgress.CAPTION_TIMING);
+    stageSeparator.setText(AiBatchProgress.SEPARATOR_TIMING);
+    stageUnit.setText(AiBatchProgress.UNIT_SECONDS);
     setSlot(stageDone, progress.lastBatchSeconds());
     setSlot(stageTotal, progress.etaSeconds());
   }
@@ -311,12 +293,12 @@ final class AiBatchDetailLine {
    */
   private void refreshWords(final AiBatchProgress.Stage stage) {
     if (stage == AiBatchProgress.Stage.TIMING) {
-      freezeWords(stageCaption, CAPTION_TIMING);
-      freezeWords(stageSeparator, SEPARATOR_TIMING);
-      freezeWords(stageUnit, UNIT_SECONDS);
+      freezeWords(stageCaption, AiBatchProgress.CAPTION_TIMING);
+      freezeWords(stageSeparator, AiBatchProgress.SEPARATOR_TIMING);
+      freezeWords(stageUnit, AiBatchProgress.UNIT_SECONDS);
       return;
     }
-    freezeWords(stageCaption, CAPTION_VALUES, CAPTION_RETRY);
+    freezeWords(stageCaption, AiBatchProgress.CAPTION_VALUES, AiBatchProgress.CAPTION_RETRY);
     freezeWords(stageSeparator, SEPARATOR_STREAMING);
     freezeWords(stageUnit, "");
   }

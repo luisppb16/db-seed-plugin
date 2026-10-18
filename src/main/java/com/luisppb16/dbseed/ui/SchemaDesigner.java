@@ -161,6 +161,8 @@ public final class SchemaDesigner extends AnAction implements DumbAware {
     }
 
     private void generateSql() {
+      // Immutable snapshot taken on the EDT: the worker must not read the live model off-thread.
+      final List<UiTable> tables = List.copyOf(Collections.list(model.elements()));
       final JDialog progressDialog = new JDialog();
       progressDialog.setTitle("Generating SQL");
       progressDialog.setModal(true);
@@ -176,14 +178,14 @@ public final class SchemaDesigner extends AnAction implements DumbAware {
           new SwingWorker<>() {
             @Override
             protected String doInBackground() {
-              final SchemaDsl.Table[] tables =
-                  Collections.list(model.elements()).stream()
+              final SchemaDsl.Table[] tablesArray =
+                  tables.stream()
                       .map(
                           t ->
                               SchemaDsl.table(
                                   t.name(), t.columns().toArray(SchemaDsl.Column[]::new)))
                       .toArray(SchemaDsl.Table[]::new);
-              final SchemaDsl.Schema schema = SchemaDsl.schema(tables);
+              final SchemaDsl.Schema schema = SchemaDsl.schema(tablesArray);
               return SchemaDsl.toSql(schema);
             }
 

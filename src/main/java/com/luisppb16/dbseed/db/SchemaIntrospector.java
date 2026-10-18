@@ -7,7 +7,7 @@
 
 package com.luisppb16.dbseed.db;
 
-import com.luisppb16.dbseed.db.dialect.DatabaseDialect;
+import com.luisppb16.dbseed.db.dialect.AbstractDialect;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
@@ -113,11 +113,13 @@ public class SchemaIntrospector {
       Pattern.compile("(?i)CHECK\\s*\\((.*)\\)", Pattern.DOTALL);
 
   private static String columnPrefixRegex(final String columnName) {
-    return "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*\"?".concat(Pattern.quote(columnName)).concat("\"?\\s*");
+    return "(?i)(?:[A-Za-z0-9_]+\\.)*\\s*(?<![\\w$#])\"?"
+        .concat(Pattern.quote(columnName))
+        .concat("\"?\\s*");
   }
 
   public static List<Table> introspect(
-      final Connection conn, final String schema, final DatabaseDialect dialect)
+      final Connection conn, final String schema, final AbstractDialect dialect)
       throws SQLException {
     Objects.requireNonNull(conn, "Connection cannot be null");
     Objects.requireNonNull(dialect, "Dialect cannot be null");
@@ -194,18 +196,27 @@ public class SchemaIntrospector {
       final List<String> checkConstraints) {
     final List<Column> columns = new ArrayList<>();
     final Set<String> pkSet = new LinkedHashSet<>(pkCols);
+    final List<String> strippedChecks =
+        checkConstraints.stream()
+            .map(
+                check ->
+                    Objects.isNull(check) || check.isBlank()
+                        ? check
+                        : stripParensOutsideStrings(check))
+            .toList();
 
     for (final ColumnRawData raw : rawColumns) {
       Double minValue = null;
       Double maxValue = null;
 
-      final double[] bounds = inferBoundsFromChecks(checkConstraints, raw.name());
+      final double[] bounds = inferBoundsFromChecks(strippedChecks, raw.name());
       if (bounds.length == 2) {
         minValue = bounds[0];
         maxValue = bounds[1];
       }
 
-      final Set<String> allowedValues = inferAllowedValuesFromChecks(checkConstraints, raw.name());
+      final Set<String> allowedValues =
+          inferAllowedValuesFromChecks(checkConstraints, strippedChecks, raw.name());
       final boolean isPk = pkSet.contains(raw.name());
       final boolean isUuid =
           raw.name().toLowerCase(Locale.ROOT).endsWith("guid")
@@ -385,7 +396,7 @@ public class SchemaIntrospector {
   }
 
   private static Set<String> inferAllowedValuesFromChecks(
-      final List<String> checks, final String columnName) {
+      final List<String> checks, final List<String> strippedChecks, final String columnName) {
     final Set<String> allowed = new HashSet<>();
 
     final String cp = columnPrefixRegex(columnName);
@@ -401,7 +412,8 @@ public class SchemaIntrospector {
             cp.concat(CAST_PATTERN).concat("\\s*=\\s*(?!ANY\\b)('.*?'|\".*?\"|[0-9A-Za-z_+-]+)"),
             Pattern.CASE_INSENSITIVE);
 
-    for (final String check : checks) {
+    for (int i = 0; i < checks.size(); i++) {
+      final String check = checks.get(i);
       if (Objects.isNull(check) || check.isBlank()) continue;
 
       final Matcher mi = inPattern.matcher(check);
@@ -421,7 +433,7 @@ public class SchemaIntrospector {
             .forEach(allowed::add);
       }
 
-      final String exprNoParens = stripParensOutsideStrings(check);
+      final String exprNoParens = strippedChecks.get(i);
       final Matcher ma = anyArrayPattern.matcher(exprNoParens);
       while (ma.find()) {
         final String inside = ma.group(1);
@@ -458,7 +470,7 @@ public class SchemaIntrospector {
       final String schema,
       final List<TableRawData> tables,
       final Map<TableKey, List<ColumnRawData>> columns,
-      final DatabaseDialect dialect)
+      final AbstractDialect dialect)
       throws SQLException {
 
     final Map<TableKey, List<String>> checks = new HashMap<>();
@@ -497,7 +509,7 @@ public class SchemaIntrospector {
       final Connection conn,
       final String schema,
       final Map<TableKey, List<String>> checks,
-      final DatabaseDialect dialect,
+      final AbstractDialect dialect,
       final String baseQuery)
       throws SQLException {
 
@@ -607,7 +619,7 @@ public class SchemaIntrospector {
   }
 
   private static double[] inferBoundsFromChecks(
-      final List<String> checks, final String columnName) {
+      final List<String> strippedChecks, final String columnName) {
     final String cp = columnPrefixRegex(columnName);
     final Pattern betweenPattern =
         Pattern.compile(
@@ -622,10 +634,8 @@ public class SchemaIntrospector {
                 .concat(CAST_PATTERN)
                 .concat("\\s*<=?\\s*([-+]?[0-9]+(?:\\.[0-9]+)?)"));
 
-    for (final String check : checks) {
-      if (Objects.isNull(check) || check.isBlank()) continue;
-      final String exprNoParens = stripParensOutsideStrings(check);
-
+    for (final String exprNoParens : strippedChecks) {
+      if (Objects.isNull(exprNoParens) || exprNoParens.isBlank()) continue;
       final double[] betweenBounds = parseBounds(exprNoParens, betweenPattern);
       if (betweenBounds.length == 2) return betweenBounds;
 

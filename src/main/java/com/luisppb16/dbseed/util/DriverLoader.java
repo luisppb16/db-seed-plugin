@@ -36,6 +36,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -430,15 +431,26 @@ public class DriverLoader {
   }
 
   public static void deregisterAll() {
-    // Collect all DriverShim instances that match our loaded drivers in a single pass
-    final List<DriverShim> toDeregister = new ArrayList<>();
+    // Drivers to deregister: our DriverShim wrappers, plus any raw driver that its own static
+    // initializer registered with DriverManager from inside one of our cached classloaders —
+    // those loaders are closed below, and a registered driver backed by a closed loader breaks
+    // later DriverManager.getConnection calls.
+    final List<Driver> toDeregister = new ArrayList<>();
     try {
-      var drivers = DriverManager.getDrivers();
+      final Enumeration<Driver> drivers = DriverManager.getDrivers();
       while (drivers.hasMoreElements()) {
-        var d = drivers.nextElement();
-        if (d instanceof DriverShim shim
-            && LOADED_DRIVERS.contains(shim.driver().getClass().getName())) {
-          toDeregister.add(shim);
+        final Driver candidate = drivers.nextElement();
+        try {
+          if (candidate instanceof DriverShim shim
+              && LOADED_DRIVERS.contains(shim.driver().getClass().getName())) {
+            toDeregister.add(shim);
+          } else if (isBackedByCachedClassloader(candidate)) {
+            toDeregister.add(candidate);
+          }
+        } catch (final Exception e) {
+          // Inspecting a driver can throw while its classloader is being torn down; skip that
+          // driver and keep going.
+          log.warn("Could not inspect registered driver: {}", e.getMessage());
         }
       }
     } catch (final Exception e) {
@@ -446,9 +458,9 @@ public class DriverLoader {
     }
 
     // Deregister outside the enumeration to avoid ConcurrentModificationException
-    for (final DriverShim shim : toDeregister) {
+    for (final Driver driver : toDeregister) {
       try {
-        DriverManager.deregisterDriver(shim);
+        DriverManager.deregisterDriver(driver);
       } catch (final SQLException e) {
         log.warn("Could not deregister driver: {}", e.getMessage());
       }
@@ -466,6 +478,17 @@ public class DriverLoader {
               }
             });
     LOADED_CLASSLOADERS.clear();
+  }
+
+  /** True when the driver's class was loaded by one of our cached (to-be-closed) classloaders. */
+  private static boolean isBackedByCachedClassloader(final Driver driver) {
+    final ClassLoader driverLoader = driver.getClass().getClassLoader();
+    for (final URLClassLoader cached : LOADED_CLASSLOADERS.values()) {
+      if (cached == driverLoader) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Signals that the user canceled a driver download; not an error condition. */

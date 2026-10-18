@@ -115,7 +115,8 @@ public class AiApiKeyStore {
     return KEY_NAME_PREFIX + "-" + provider.name();
   }
 
-  private static CredentialAttributes createCredentialAttributes(@NotNull final String keyName) {
+  /** Builds the credential-store entry under the plugin's shared "DBSeed" service name. */
+  static CredentialAttributes createCredentialAttributes(@NotNull final String keyName) {
     // Kotlin extension function from IntelliJ Platform credential store API.
     // May require updates if the IntelliJ Platform changes this API.
     return new CredentialAttributes(

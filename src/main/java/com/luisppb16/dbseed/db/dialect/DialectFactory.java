@@ -64,7 +64,7 @@ import lombok.experimental.UtilityClass;
  * embedded databases, and unusual connection configurations while maintaining reliable dialect
  * resolution.
  *
- * @see DatabaseDialect
+ * @see AbstractDialect
  * @see StandardDialect
  * @see DriverInfo
  * @see java.util.Locale
@@ -74,7 +74,7 @@ public class DialectFactory {
 
   private static final Map<String, StandardDialect> DIALECT_CACHE = new ConcurrentHashMap<>();
 
-  public static DatabaseDialect resolve(DriverInfo driver) {
+  public static AbstractDialect resolve(DriverInfo driver) {
     if (Objects.isNull(driver)) {
       return DIALECT_CACHE.computeIfAbsent("standard", k -> new StandardDialect());
     }

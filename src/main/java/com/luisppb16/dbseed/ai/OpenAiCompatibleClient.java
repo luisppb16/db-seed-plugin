@@ -109,11 +109,31 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
   }
 
   private static String contentOf(final JsonObject carrier, final String field) {
-    if (!carrier.has(field) || !carrier.get(field).isJsonObject()) {
+    return fieldOf(carrier, field, "content");
+  }
+
+  /**
+   * Reads a nested string member ({@code carrier[objectField][field]}), or {@code ""} when absent.
+   */
+  private static String fieldOf(
+      final JsonObject carrier, final String objectField, final String field) {
+    if (!carrier.has(objectField) || !carrier.get(objectField).isJsonObject()) {
       return "";
     }
-    final JsonElement content = carrier.getAsJsonObject(field).get("content");
-    return Objects.nonNull(content) && content.isJsonPrimitive() ? content.getAsString() : "";
+    final JsonElement value = carrier.getAsJsonObject(objectField).get(field);
+    return Objects.nonNull(value) && value.isJsonPrimitive() ? value.getAsString() : "";
+  }
+
+  /**
+   * True when the choice carries reasoning text (DeepSeek/OpenRouter style {@code
+   * reasoning_content} or the {@code reasoning} alias). Such a frame has no content yet but the
+   * model is generating, so it must keep the inactivity watchdog from firing mid-reasoning.
+   */
+  private static boolean hasReasoningText(final JsonObject choice) {
+    return !fieldOf(choice, "delta", "reasoning_content").isEmpty()
+        || !fieldOf(choice, "delta", "reasoning").isEmpty()
+        || !fieldOf(choice, "message", "reasoning_content").isEmpty()
+        || !fieldOf(choice, "message", "reasoning").isEmpty();
   }
 
   @Override
@@ -146,7 +166,10 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
 
   @Override
   protected String buildGenerateRequestBody(
-      final String prompt, final double temperature, final int numPredict) {
+      final String prompt,
+      final double temperature,
+      final int numPredict,
+      final JsonObject valuesSchema) {
     final JsonObject systemMessage = new JsonObject();
     systemMessage.addProperty("role", "system");
     systemMessage.addProperty("content", SYSTEM_ROLE);
@@ -162,7 +185,7 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
     final JsonObject jsonSchema = new JsonObject();
     jsonSchema.addProperty("name", SCHEMA_NAME);
     jsonSchema.addProperty("strict", true);
-    jsonSchema.add("schema", VALUES_SCHEMA);
+    jsonSchema.add("schema", valuesSchema);
 
     final JsonObject responseFormat = new JsonObject();
     responseFormat.addProperty("type", "json_schema");
@@ -216,7 +239,8 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
    * Reads one server-sent event: heartbeat comments and other event fields carry no text, {@code
    * data: [DONE]} closes the stream and a JSON frame contributes its first choice's delta. The
    * {@code message} content is read as well, because a server may answer in one piece despite
-   * {@code stream:true}.
+   * {@code stream:true}. A frame with an error payload instead of choices is a fatal mid-stream
+   * error and is surfaced with the server's own message.
    */
   @Override
   protected ParsedChunk parseStreamLine(final String rawLine) {
@@ -229,6 +253,11 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
     }
     try {
       final JsonObject json = JsonParser.parseString(payload).getAsJsonObject();
+      if (json.has("error") && !json.get("error").isJsonNull()) {
+        // Fatal error mid-stream (an error payload arrives with no choices): surface the server's
+        // message instead of dropping the frame.
+        return ParsedChunk.error(errorDetail(payload));
+      }
       if (!json.has("choices") || !json.get("choices").isJsonArray()) {
         return ParsedChunk.ignore();
       }
@@ -239,7 +268,12 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
       final JsonObject choice = choices.get(0).getAsJsonObject();
       final String delta = contentOf(choice, "delta");
       final String chunk = delta.isEmpty() ? contentOf(choice, "message") : delta;
-      return chunk.isEmpty() ? ParsedChunk.ignore() : ParsedChunk.text(chunk);
+      if (!chunk.isEmpty()) {
+        return ParsedChunk.text(chunk);
+      }
+      // No content yet, but a reasoning frame proves the model is generating: report progress so
+      // the stream is not mistaken for stalled.
+      return hasReasoningText(choice) ? ParsedChunk.progress() : ParsedChunk.ignore();
     } catch (final Exception e) {
       log.debug("Skipping malformed {} stream line: {}", provider.getDisplayName(), e.getMessage());
       return ParsedChunk.ignore();

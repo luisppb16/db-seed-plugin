@@ -414,6 +414,50 @@ class RowGeneratorTest {
     assertThat(matchingHexColors).isGreaterThanOrEqualTo(3);
   }
 
+  @Test
+  void repetitionRules_staleColumnKeyIgnored() {
+    // Given a table whose repetition rule references a column that no longer exists,
+    // when the rows are generated,
+    // then the stale key is skipped without crashing and the valid fixed values still apply.
+    final Table t =
+        new Table(
+            "t",
+            List.of(intCol("id"), varcharCol("type")),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of());
+    final RepetitionRule rule =
+        new RepetitionRule(3, Map.of("type", "fixed", "gone", "fixed"), Set.of(), Map.of());
+    final RowGenerator gen =
+        new RowGenerator(
+            t,
+            10,
+            Set.of(),
+            List.of(rule),
+            new Faker(),
+            new HashSet<>(),
+            List.of(),
+            false,
+            Set.of(),
+            false,
+            null,
+            2,
+            Set.of(),
+            1,
+            null,
+            null,
+            new ProgressTracker(null, 0));
+    final List<Row> rows = gen.generate();
+    assertThat(rows).hasSize(10);
+    final long fixedCount =
+        rows.stream().filter(r -> "fixed".equals(r.values().get("type"))).count();
+    assertThat(fixedCount).isGreaterThanOrEqualTo(3);
+    for (final Row row : rows) {
+      assertThat(row.values()).doesNotContainKey("gone");
+    }
+  }
+
   // ── getConstraints ──
 
   @Test

@@ -15,6 +15,7 @@ import com.luisppb16.dbseed.model.CircularReferenceTerminationMode;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.ForeignKey;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.Font;
@@ -63,15 +64,8 @@ public class CircularReferencesPanel extends JPanel {
   }
 
   private void initPanel() {
-    final JPanel listPanel = new JPanel(new GridBagLayout());
-    listPanel.setBorder(JBUI.Borders.empty(8));
-    final GridBagConstraints c = new GridBagConstraints();
-    c.gridx = 0;
-    c.gridy = 0;
-    c.anchor = GridBagConstraints.NORTHWEST;
-    c.fill = GridBagConstraints.HORIZONTAL;
-    c.insets = JBUI.insets(4);
-    c.weightx = 1.0;
+    final JPanel listPanel = ComponentUtils.createConfiguredListPanel();
+    final GridBagConstraints c = ComponentUtils.createDefaultGridBagConstraints();
 
     for (final Table table : tables) {
       final List<ForeignKey> selfReferencingFks = getSelfReferencingFks(table);
@@ -258,29 +252,6 @@ public class CircularReferencesPanel extends JPanel {
   public void apply() {
     DbSeedSettingsState.getInstance().setCircularReferences(config);
     DbSeedSettingsState.getInstance().setCircularReferenceTerminationModes(terminationModes);
-  }
-
-  /** Resets the panel to the persisted configuration. */
-  public void reset() {
-    config.clear();
-    terminationModes.clear();
-    final Map<String, Map<String, Integer>> persistedConfig =
-        DbSeedSettingsState.getInstance().getCircularReferences();
-    final Map<String, Map<String, String>> persistedTerminationModes =
-        DbSeedSettingsState.getInstance().getCircularReferenceTerminationModes();
-    // Deep-copy so later edits in this panel never mutate the settings state directly.
-    if (persistedConfig != null) {
-      persistedConfig.forEach((table, fks) -> config.put(table, new HashMap<>(fks)));
-    }
-    if (persistedTerminationModes != null) {
-      persistedTerminationModes.forEach(
-          (table, fks) -> terminationModes.put(table, new HashMap<>(fks)));
-    }
-    // Rebuild the UI to reflect the reset state
-    removeAll();
-    initPanel();
-    revalidate();
-    repaint();
   }
 
   public Map<String, Map<String, Integer>> getCircularReferences() {

@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 
 class AbstractDialectTest {
 
-  private static String fmt(final DatabaseDialect d, final Object value) {
+  private static String fmt(final AbstractDialect d, final Object value) {
     final StringBuilder sb = new StringBuilder();
     d.formatValue(value, sb);
     return sb.toString();
@@ -39,7 +39,7 @@ class AbstractDialectTest {
     return result;
   }
 
-  private static String batch(final DatabaseDialect d, final int rowCount) {
+  private static String batch(final AbstractDialect d, final int rowCount) {
     final StringBuilder sb = new StringBuilder();
     d.appendBatch(sb, "\"t\"", "\"id\"", rows(rowCount), List.of("id"));
     return sb.toString();
@@ -53,7 +53,7 @@ class AbstractDialectTest {
 
   @Nested
   class FormatValueTests {
-    final DatabaseDialect d = new StandardDialect();
+    final AbstractDialect d = new StandardDialect();
 
     @Test
     void nullValue_formatsAsNull() {
@@ -182,49 +182,49 @@ class AbstractDialectTest {
 
     @Test
     void standard_wrapsInDoubleQuotes() {
-      final DatabaseDialect d = new StandardDialect();
+      final AbstractDialect d = new StandardDialect();
       assertThat(d.quote("users")).isEqualTo("\"users\"");
     }
 
     @Test
     void standard_embeddedQuoteChar_escapedByDoubling() {
-      final DatabaseDialect d = new StandardDialect();
+      final AbstractDialect d = new StandardDialect();
       assertThat(d.quote("my\"col")).isEqualTo("\"my\"\"col\"");
     }
 
     @Test
     void mysql_wrapsInBackticks() {
-      final DatabaseDialect d = new StandardDialect("mysql.properties");
+      final AbstractDialect d = new StandardDialect("mysql.properties");
       assertThat(d.quote("users")).isEqualTo("`users`");
     }
 
     @Test
     void mysql_embeddedBacktick_escapedByDoubling() {
-      final DatabaseDialect d = new StandardDialect("mysql.properties");
+      final AbstractDialect d = new StandardDialect("mysql.properties");
       assertThat(d.quote("a`b")).isEqualTo("`a``b`");
     }
 
     @Test
     void sqlserver_usesAsymmetricBrackets() {
-      final DatabaseDialect d = new StandardDialect("sqlserver.properties");
+      final AbstractDialect d = new StandardDialect("sqlserver.properties");
       assertThat(d.quote("order")).isEqualTo("[order]");
     }
 
     @Test
     void sqlserver_embeddedClosingBracket_escapedByDoubling() {
-      final DatabaseDialect d = new StandardDialect("sqlserver.properties");
+      final AbstractDialect d = new StandardDialect("sqlserver.properties");
       assertThat(d.quote("a]b")).isEqualTo("[a]]b]");
     }
 
     @Test
     void sqlserver_openingBracket_notEscaped() {
-      final DatabaseDialect d = new StandardDialect("sqlserver.properties");
+      final AbstractDialect d = new StandardDialect("sqlserver.properties");
       assertThat(d.quote("a[b")).isEqualTo("[a[b]");
     }
 
     @Test
     void oracle_uppercasesIdentifiers() {
-      final DatabaseDialect d = new StandardDialect("oracle.properties");
+      final AbstractDialect d = new StandardDialect("oracle.properties");
       assertThat(d.quote("myCol")).isEqualTo("\"MYCOL\"");
     }
   }
@@ -242,7 +242,7 @@ class AbstractDialectTest {
 
     @Test
     void multiRow_rowsWithinMaxBatchSize_singleInsert() {
-      final DatabaseDialect sqlite = new StandardDialect("sqlite.properties");
+      final AbstractDialect sqlite = new StandardDialect("sqlite.properties");
       final String sql = batch(sqlite, 100);
       assertThat(count(sql, "INSERT INTO")).isEqualTo(1);
     }
@@ -250,7 +250,7 @@ class AbstractDialectTest {
     @Test
     void multiRow_splitsIntoMultipleInserts_whenRowsExceedMaxBatchSize() {
       // sqlite.properties defines maxBatchSize=100 → 250 rows = 100 + 100 + 50
-      final DatabaseDialect sqlite = new StandardDialect("sqlite.properties");
+      final AbstractDialect sqlite = new StandardDialect("sqlite.properties");
       final String sql = batch(sqlite, 250);
       assertThat(count(sql, "INSERT INTO")).isEqualTo(3);
       assertThat(sql).contains("(249)").endsWith(";\n");
@@ -258,7 +258,7 @@ class AbstractDialectTest {
 
     @Test
     void multiRow_exactMultipleOfMaxBatchSize_noEmptyTrailingBatch() {
-      final DatabaseDialect sqlite = new StandardDialect("sqlite.properties");
+      final AbstractDialect sqlite = new StandardDialect("sqlite.properties");
       final String sql = batch(sqlite, 200);
       assertThat(count(sql, "INSERT INTO")).isEqualTo(2);
     }
@@ -266,7 +266,7 @@ class AbstractDialectTest {
     @Test
     void singleRow_whenMultiRowInsertNotSupported_oneInsertPerRow() {
       // derby.properties defines supportsMultiRowInsert=false
-      final DatabaseDialect derby = new StandardDialect("derby.properties");
+      final AbstractDialect derby = new StandardDialect("derby.properties");
       final String sql = batch(derby, 2);
       assertThat(sql)
           .isEqualTo(
@@ -276,7 +276,7 @@ class AbstractDialectTest {
     @Test
     void singleRow_oracle_emitsInsertAllPerRow() {
       // oracle.properties defines supportsMultiRowInsert=false with INSERT ALL templates
-      final DatabaseDialect oracle = new StandardDialect("oracle.properties");
+      final AbstractDialect oracle = new StandardDialect("oracle.properties");
       final String sql = batch(oracle, 2);
       assertThat(count(sql, "INSERT ALL")).isEqualTo(2);
       assertThat(count(sql, "SELECT * FROM dual")).isEqualTo(2);
@@ -292,13 +292,13 @@ class AbstractDialectTest {
 
     @Test
     void getProperty_returnsConfiguredValue() {
-      final DatabaseDialect d = new StandardDialect();
+      final AbstractDialect d = new StandardDialect();
       assertThat(d.getProperty("booleanTrue", "X")).isEqualTo("TRUE");
     }
 
     @Test
     void getProperty_returnsDefault_whenKeyMissing() {
-      final DatabaseDialect d = new StandardDialect();
+      final AbstractDialect d = new StandardDialect();
       assertThat(d.getProperty("no.such.key", "fallback")).isEqualTo("fallback");
     }
 
@@ -309,7 +309,7 @@ class AbstractDialectTest {
 
     @Test
     void missingResource_fallsBackToBuiltInDefaults() {
-      final DatabaseDialect d = new StandardDialect("noexiste.properties");
+      final AbstractDialect d = new StandardDialect("noexiste.properties");
       assertThat(d.getProperty("quoteChar", "?")).isEqualTo("?");
       assertThat(d.quote("t")).isEqualTo("\"t\"");
       assertThat(d.formatBoolean(true)).isEqualTo("TRUE");

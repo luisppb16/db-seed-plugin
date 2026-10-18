@@ -398,4 +398,51 @@ class ValueGeneratorTest {
       }
     }
   }
+
+  // ── CLOB / NCLOB ──
+
+  @Test
+  void clob_generatesString() {
+    assertThat(gen.generateValue(col(Types.CLOB), noConstraint(), 0)).isInstanceOf(String.class);
+  }
+
+  @Test
+  void nclob_generatesString() {
+    assertThat(gen.generateValue(col(Types.NCLOB), noConstraint(), 0)).isInstanceOf(String.class);
+  }
+
+  // ── Image columns ──
+
+  @Test
+  void imageColumn_urlClampedToColumnLength() {
+    final Column c =
+        new Column("avatar", Types.VARCHAR, null, false, false, false, 8, 0, null, null, Set.of());
+    for (int i = 0; i < 20; i++) {
+      final Object val = gen.generateValue(c, noConstraint(), i);
+      assertThat(val).isInstanceOf(String.class);
+      assertThat(((String) val).length()).isLessThanOrEqualTo(8);
+    }
+  }
+
+  // ── Fractional CHECK bounds ──
+
+  @Test
+  void fractionalCheckMin_ceilsUpToNextWholeNumber() {
+    // CHECK (x >= 0.5): the smallest legal integer is 1; truncating toward zero produced 0.
+    final ParsedConstraint pc = new ParsedConstraint(0.5, null, Set.of(), null);
+    for (int i = 0; i < 50; i++) {
+      final Object val = gen.generateValue(col(Types.INTEGER), pc, i);
+      assertThat((Integer) val).isGreaterThanOrEqualTo(1);
+    }
+  }
+
+  @Test
+  void fractionalCheckMax_floorsDownToPreviousWholeNumber() {
+    // CHECK (x <= -0.5): the largest legal integer is -1; truncating toward zero produced 0.
+    final ParsedConstraint pc = new ParsedConstraint(-10.5, -0.5, Set.of(), null);
+    for (int i = 0; i < 50; i++) {
+      final Object val = gen.generateValue(col(Types.INTEGER), pc, i);
+      assertThat((Integer) val).isLessThanOrEqualTo(-1);
+    }
+  }
 }

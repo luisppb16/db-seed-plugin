@@ -396,22 +396,14 @@ public class RepetitionRulesPanel extends JPanel {
           }
 
           final String trimmedPattern = dialog.getPattern().trim();
+          // doOKAction() has already refused invalid patterns, so the pattern is valid or empty.
           if (trimmedPattern.isEmpty()) {
             overrideModel.regexPattern = "";
-            updateRegexPresentation(regexButton, overrideModel.regexPattern);
-            syncRowState.run();
-            return;
-          }
-
-          try {
-            Pattern.compile(trimmedPattern);
+          } else {
             overrideModel.regexPattern = trimmedPattern;
-            updateRegexPresentation(regexButton, overrideModel.regexPattern);
-            syncRowState.run();
-          } catch (final PatternSyntaxException ex) {
-            Messages.showErrorDialog(
-                this, "Invalid regex pattern: " + ex.getDescription(), "Regex Validation Error");
           }
+          updateRegexPresentation(regexButton, overrideModel.regexPattern);
+          syncRowState.run();
         });
 
     updateRegexPresentation(regexButton, overrideModel.regexPattern);

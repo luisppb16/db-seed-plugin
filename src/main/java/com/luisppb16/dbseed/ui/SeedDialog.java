@@ -29,8 +29,6 @@ import java.awt.FlowLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -74,6 +72,7 @@ public final class SeedDialog extends DialogWrapper {
   private boolean loadedSoftDeleteUseSchemaDefault;
   private String loadedSoftDeleteValue;
   private int loadedNumericScale = 2;
+  private boolean suppressProfileSelectionEvents;
 
   public SeedDialog(@NotNull final Project project, @NotNull final DriverInfo driverInfo) {
     super(true);
@@ -226,14 +225,14 @@ public final class SeedDialog extends DialogWrapper {
     loadedSoftDeleteColumns = config.softDeleteColumns();
     loadedSoftDeleteUseSchemaDefault = config.softDeleteUseSchemaDefault();
     loadedSoftDeleteValue = config.softDeleteValue();
-    loadedNumericScale = config.numericScale() >= 0 ? config.numericScale() : 2;
+    loadedNumericScale = config.numericScale();
   }
 
   private void populateFieldsWithDefaults(final GenerationConfig config) {
     userField.setText(DEFAULT_POSTGRES_USER);
     passwordField.setText("");
     schemaField.setText(DEFAULT_SCHEMA);
-    rowsSpinner.setValue(config.rowsPerTable() > 0 ? config.rowsPerTable() : 10);
+    rowsSpinner.setValue(config.rowsPerTable());
     deferredBox.setSelected(config.deferred());
 
     final DbSeedSettingsState globalSettings = DbSeedSettingsState.getInstance();
@@ -286,6 +285,9 @@ public final class SeedDialog extends DialogWrapper {
           if (selected != null) {
             final Project project = this.project;
             if (project != null) {
+              if (suppressProfileSelectionEvents) {
+                return;
+              }
               final GenerationConfig config =
                   ConnectionConfigPersistence.loadProfile(project, selected);
               populateFields(config, true);
@@ -333,32 +335,30 @@ public final class SeedDialog extends DialogWrapper {
     final Project project = this.project;
     if (project == null) return;
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
-    final List<ConnectionProfile> validProfiles =
-        new ArrayList<>(
-            state.getProfiles().stream()
-                .filter(Objects::nonNull)
-                .filter(ConnectionProfile::hasValidName)
-                .peek(p -> p.setName(p.getName().trim()))
-                .toList());
-    if (validProfiles.size() != state.getProfiles().size()) {
-      state.setProfiles(validProfiles);
-    }
+    state.sanitizeProfiles();
 
-    profileComboBox.removeAllItems();
-    validProfiles.forEach(profile -> profileComboBox.addItem(profile.getName()));
-    final String active = state.getActiveProfileName();
-    if (ConnectionProfile.isValidName(active)) {
-      final String normalizedActive = active.trim();
-      final boolean activeExists =
-          validProfiles.stream().anyMatch(p -> normalizedActive.equals(p.getName()));
-      if (activeExists) {
-        state.setActiveProfileName(normalizedActive);
-        profileComboBox.setSelectedItem(normalizedActive);
-      } else {
-        state.setActiveProfileName("");
+    suppressProfileSelectionEvents = true;
+    try {
+      profileComboBox.removeAllItems();
+      state.getProfiles().forEach(profile -> profileComboBox.addItem(profile.getName()));
+      final String active = state.getActiveProfileName();
+      if (ConnectionProfile.isValidName(active)) {
+        profileComboBox.setSelectedItem(active);
       }
-    } else {
-      state.setActiveProfileName("");
+    } finally {
+      suppressProfileSelectionEvents = false;
+    }
+    if (profileComboBox.getItemCount() > 0) {
+      final String selected = (String) profileComboBox.getSelectedItem();
+      if (selected != null) {
+        final Project project2 = this.project;
+        if (project2 != null) {
+          final GenerationConfig config =
+              ConnectionConfigPersistence.loadProfile(project2, selected);
+          populateFields(config, true);
+          prefillUrlFields(config.url(), true);
+        }
+      }
     }
   }
 

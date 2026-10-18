@@ -189,7 +189,10 @@ columns.
   `response_format.json_schema` — so the sampler can only produce the `{"values": [...]}` object and
   chain-of-thought prose (Qwen3/DeepSeek style) cannot turn into a value. If a server or model ignores the schema, the
   plain-text path still drops reasoning
-  blocks and reasoning-only lines, and values of array columns must carry exactly the requested element count.
+  blocks and reasoning-only lines. For array columns the schema pins one nested array of the
+  requested element count per value, so the sampler cannot answer with a flat list of words; a
+  model that ignores it and returns plain scalars is still accepted (each becomes a single-element
+  array) instead of leaving the column to DataFaker.
   Prompts carry no copyable sample values, and placeholder-shaped answers (`value1`, `full_name_2`, `...`) are
   rejected, so a model that just echoes the template falls back to DataFaker instead of seeding them.
 - **Configurable Word Count**: Control output length from a single word up to full paragraphs.

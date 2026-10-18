@@ -8,16 +8,13 @@
 package com.luisppb16.dbseed.db;
 
 import com.luisppb16.dbseed.config.DriverInfo;
-import com.luisppb16.dbseed.db.dialect.DatabaseDialect;
+import com.luisppb16.dbseed.db.dialect.AbstractDialect;
 import com.luisppb16.dbseed.db.dialect.DialectFactory;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.Table;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -56,7 +53,7 @@ import org.jetbrains.annotations.Nullable;
  * with appropriate formatting and escaping for the target SQL dialect.
  *
  * <p>Thread safety is maintained through StringBuilder-based construction and immutable input
- * parameters. The class leverages the DialectFactory and DatabaseDialect implementations to provide
+ * parameters. The class leverages the DialectFactory and AbstractDialect implementations to provide
  * vendor-specific SQL generation capabilities. Memory efficiency is achieved through direct string
  * building without intermediate collections, and the implementation includes optimizations for
  * large datasets through batch processing.
@@ -70,7 +67,7 @@ import org.jetbrains.annotations.Nullable;
  * null values, empty datasets, and malformed identifiers. The implementation is resilient to schema
  * changes and adapts to varying table structures dynamically.
  *
- * @see DatabaseDialect
+ * @see AbstractDialect
  * @see DialectFactory
  * @see PendingUpdate
  * @see Row
@@ -81,8 +78,6 @@ import org.jetbrains.annotations.Nullable;
 @Slf4j
 public class SqlGenerator {
 
-  private static final Pattern UNQUOTED = Pattern.compile("[A-Za-z_]\\w*");
-
   private static final String SQL_UPDATE = "UPDATE ";
   private static final String SQL_SET = " SET ";
   private static final String SQL_WHERE = " WHERE ";
@@ -90,161 +85,6 @@ public class SqlGenerator {
   private static final String SQL_EQUALS = "=";
   private static final String SQL_COMMA_SPACE = ", ";
   private static final String SQL_STATEMENT_END = ";\n";
-
-  private static final Set<String> RESERVED_KEYWORDS =
-      Set.of(
-          "abort",
-          "access",
-          "action",
-          "add",
-          "after",
-          "aggregate",
-          "alias",
-          "all",
-          "alter",
-          "analyze",
-          "and",
-          "as",
-          "asc",
-          "authorization",
-          "between",
-          "binary",
-          "by",
-          "cache",
-          "cascade",
-          "case",
-          "cast",
-          "check",
-          "cluster",
-          "collate",
-          "column",
-          "comment",
-          "commit",
-          "constraint",
-          "copy",
-          "create",
-          "cross",
-          "current",
-          "cursor",
-          "database",
-          "date",
-          "deallocate",
-          "debug",
-          "declare",
-          "default",
-          "deferred",
-          "delete",
-          "desc",
-          "distinct",
-          "do",
-          "double",
-          "drop",
-          "each",
-          "else",
-          "end",
-          "escape",
-          "except",
-          "execute",
-          "exists",
-          "explain",
-          "external",
-          "extract",
-          "false",
-          "fetch",
-          "first",
-          "float",
-          "for",
-          "force",
-          "foreign",
-          "from",
-          "full",
-          "function",
-          "grant",
-          "group",
-          "having",
-          "if",
-          "in",
-          "index",
-          "inner",
-          "insert",
-          "integer",
-          "intersect",
-          "into",
-          "is",
-          "join",
-          "key",
-          "last",
-          "left",
-          "like",
-          "limit",
-          "lock",
-          "match",
-          "max",
-          "merge",
-          "min",
-          "natural",
-          "no",
-          "not",
-          "null",
-          "of",
-          "offset",
-          "on",
-          "only",
-          "option",
-          "or",
-          "order",
-          "outer",
-          "over",
-          "partition",
-          "position",
-          "precision",
-          "primary",
-          "privilege",
-          "public",
-          "range",
-          "read",
-          "real",
-          "recursive",
-          "references",
-          "rename",
-          "restrict",
-          "revoke",
-          "right",
-          "role",
-          "rollback",
-          "row",
-          "rows",
-          "schema",
-          "select",
-          "session",
-          "set",
-          "size",
-          "some",
-          "start",
-          "status",
-          "table",
-          "temporary",
-          "than",
-          "then",
-          "time",
-          "to",
-          "transaction",
-          "trigger",
-          "true",
-          "truncate",
-          "type",
-          "union",
-          "unique",
-          "update",
-          "user",
-          "using",
-          "value",
-          "values",
-          "varchar",
-          "when",
-          "where",
-          "with",
-          "write");
 
   public static String generate(
       Map<Table, List<Row>> data, List<PendingUpdate> updates, boolean deferred) {
@@ -279,8 +119,7 @@ public class SqlGenerator {
       return "";
     }
     final StringBuilder sb = new StringBuilder();
-    final DatabaseDialect dialect = DialectFactory.resolve(driverInfo);
-    final SqlOptions opts = new SqlOptions(true);
+    final AbstractDialect dialect = DialectFactory.resolve(driverInfo);
 
     if (deferred) {
       sb.append(dialect.beginTransaction());
@@ -288,9 +127,9 @@ public class SqlGenerator {
     }
 
     if (hasData) {
-      generateInsertStatements(sb, data, opts, dialect, tracker);
+      generateInsertStatements(sb, data, dialect, tracker);
     }
-    generateUpdateStatements(sb, updates, opts, dialect, tracker);
+    generateUpdateStatements(sb, updates, dialect, tracker);
 
     if (deferred) {
       sb.append(dialect.enableConstraints());
@@ -303,8 +142,7 @@ public class SqlGenerator {
   private static void generateInsertStatements(
       final StringBuilder sb,
       final Map<Table, List<Row>> data,
-      final SqlOptions opts,
-      final DatabaseDialect dialect,
+      final AbstractDialect dialect,
       @Nullable final ProgressTracker tracker) {
     data.forEach(
         (table, rows) -> {
@@ -317,10 +155,10 @@ public class SqlGenerator {
           }
 
           final List<String> columnOrder = table.columns().stream().map(Column::name).toList();
-          final String tableName = qualified(opts, table.name(), dialect);
+          final String tableName = qualified(table.name(), dialect);
           final String columnList =
               columnOrder.stream()
-                  .map(col -> qualified(opts, col, dialect))
+                  .map(col -> qualified(col, dialect))
                   .collect(Collectors.joining(SQL_COMMA_SPACE));
 
           dialect.appendBatch(sb, tableName, columnList, rows, columnOrder);
@@ -330,8 +168,7 @@ public class SqlGenerator {
   private static void generateUpdateStatements(
       final StringBuilder sb,
       final List<PendingUpdate> updates,
-      final SqlOptions opts,
-      final DatabaseDialect dialect,
+      final AbstractDialect dialect,
       @Nullable final ProgressTracker tracker) {
     if (updates == null || updates.isEmpty()) {
       return;
@@ -345,7 +182,7 @@ public class SqlGenerator {
           if (update.fkValues().isEmpty() || update.pkValues().isEmpty()) {
             return;
           }
-          final String tableName = qualified(opts, update.table(), dialect);
+          final String tableName = qualified(update.table(), dialect);
 
           final String setPart =
               update.fkValues().entrySet().stream()
@@ -353,7 +190,7 @@ public class SqlGenerator {
                       e -> {
                         StringBuilder valSb = new StringBuilder();
                         dialect.formatValue(e.getValue(), valSb);
-                        return qualified(opts, e.getKey(), dialect)
+                        return qualified(e.getKey(), dialect)
                             .concat(SQL_EQUALS)
                             .concat(valSb.toString());
                       })
@@ -365,7 +202,7 @@ public class SqlGenerator {
                       e -> {
                         StringBuilder valSb = new StringBuilder();
                         dialect.formatValue(e.getValue(), valSb);
-                        return qualified(opts, e.getKey(), dialect)
+                        return qualified(e.getKey(), dialect)
                             .concat(SQL_EQUALS)
                             .concat(valSb.toString());
                       })
@@ -381,19 +218,10 @@ public class SqlGenerator {
         });
   }
 
-  private static String qualified(
-      final SqlOptions opts, final String identifier, final DatabaseDialect dialect) {
+  private static String qualified(final String identifier, final AbstractDialect dialect) {
     if (Objects.isNull(identifier)) {
       throw new IllegalArgumentException("Identifier cannot be null.");
     }
-
-    final boolean needed =
-        !UNQUOTED.matcher(identifier).matches()
-            || RESERVED_KEYWORDS.contains(identifier.toLowerCase(Locale.ROOT));
-    final String quoted = dialect.quote(identifier);
-
-    return (opts.quoteIdentifiers() || needed) ? quoted : identifier;
+    return dialect.quote(identifier);
   }
-
-  private record SqlOptions(boolean quoteIdentifiers) {}
 }

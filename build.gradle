@@ -97,8 +97,8 @@ dependencies {
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
     testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.testcontainers:mysql:1.21.4'
-    testRuntimeOnly 'org.postgresql:postgresql:42.7.13'
-    testRuntimeOnly 'com.mysql:mysql-connector-j:9.7.0'
+    testRuntimeOnly 'org.postgresql:postgresql:42.7.14'
+    testRuntimeOnly 'com.mysql:mysql-connector-j:26.7.0'
     testImplementation 'org.xerial:sqlite-jdbc:3.53.2.0'
 }
 

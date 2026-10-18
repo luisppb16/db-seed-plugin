@@ -213,6 +213,27 @@ class OllamaClientTest {
       assertThat(OllamaClient.sanitizeAiOutput("Each tag was reviewed by hand", "tags"))
           .isEqualTo("Each tag was reviewed by hand");
     }
+
+    @Test
+    void dataStartingWithTheUser_isKept() {
+      // Reported false positive: a bio value that opens with "The user" is data, not reasoning.
+      assertThat(
+              OllamaClient.sanitizeAiOutput(
+                  "The user profile contains sensitive military data.", "bio"))
+          .isEqualTo("The user profile contains sensitive military data.");
+    }
+
+    @Test
+    void dataStartingWithElUsuario_isKept() {
+      assertThat(OllamaClient.sanitizeAiOutput("El usuario reside en Madrid.", "bio"))
+          .isEqualTo("El usuario reside en Madrid.");
+    }
+
+    @Test
+    void theUserTaskReportingLine_isDropped() {
+      assertThat(OllamaClient.sanitizeAiOutput("The user wants 3 unique city names.", "city"))
+          .isNull();
+    }
   }
 
   @Nested
@@ -310,6 +331,22 @@ class OllamaClientTest {
     @Test
     void blank_isNotPreamble() {
       assertThat(OllamaClient.isAiPreamble("")).isFalse();
+    }
+
+    @Test
+    void theUserWants_isPreamble() {
+      assertThat(OllamaClient.isAiPreamble("The user wants 3 unique values")).isTrue();
+    }
+
+    @Test
+    void elUsuarioQuiere_isPreamble() {
+      assertThat(OllamaClient.isAiPreamble("El usuario quiere tres valores")).isTrue();
+    }
+
+    @Test
+    void theUserProfile_isNotPreamble() {
+      // A data value that opens with "The user" must not be mistaken for reasoning.
+      assertThat(OllamaClient.isAiPreamble("The user profile contains sensitive data.")).isFalse();
     }
   }
 

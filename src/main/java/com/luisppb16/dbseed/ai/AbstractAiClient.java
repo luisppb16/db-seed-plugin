@@ -12,6 +12,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.luisppb16.dbseed.util.ArrayLiterals;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -72,14 +73,6 @@ public abstract class AbstractAiClient implements AiClient {
   protected static final Gson GSON = new Gson();
 
   /**
-   * Number of elements requested for every array value, written with PostgreSQL array syntax
-   * ({@code {el1,el2,el3}}). The structured-output schema pins this exact length, so a conforming
-   * model cannot answer with a flat list of elements; a value whose element count differs is
-   * reasoning about the requested shape, not data, and is dropped.
-   */
-  private static final int ARRAY_ELEMENT_COUNT = 3;
-
-  /**
    * JSON Schema the engine is asked to honour. Structured output constrains the sampler to
    * schema-conforming tokens, so prose (chain-of-thought, preambles, commentary) cannot be emitted
    * at all and therefore cannot be mistaken for a data value.
@@ -87,12 +80,25 @@ public abstract class AbstractAiClient implements AiClient {
   protected static final JsonObject VALUES_SCHEMA = buildValuesSchema(false);
 
   /**
-   * Schema for array columns: every value is itself an array of exactly {@link
-   * #ARRAY_ELEMENT_COUNT} strings. Pinning the nesting and the length in the schema is what makes
-   * the sampler emit one array per value instead of the flat list of words small models tend to
-   * produce; the client joins each inner array into a PostgreSQL literal ({@code {a,b,c}}).
+   * Schema for array columns: every value is itself an array of strings. Pinning the nesting in the
+   * schema is what makes the sampler emit one array per value instead of the flat list of words
+   * small models tend to produce; the client joins each inner array into a PostgreSQL literal
+   * ({@code {a,b,c}}).
+   *
+   * <p>The element count is deliberately not pinned with {@code minItems}/{@code maxItems}: the
+   * extra grammar constraints made small local models resolve the request by returning an empty
+   * {@code {"values": []}} instead of data. The count is validated (tolerantly) on the client
+   * instead, so a short inner array still yields usable values.
    */
   protected static final JsonObject ARRAY_VALUES_SCHEMA = buildValuesSchema(true);
+
+  /**
+   * Number of elements requested for every array value, written with PostgreSQL array syntax
+   * ({@code {el1,el2,el3}}). The structured-output schema pins this exact length, so a conforming
+   * model cannot answer with a flat list of elements; a value whose element count differs is
+   * reasoning about the requested shape, not data, and is dropped.
+   */
+  private static final int ARRAY_ELEMENT_COUNT = 3;
 
   private static final int DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
   private static final int MIN_REQUEST_TIMEOUT_SECONDS = 10;
@@ -271,8 +277,7 @@ public abstract class AbstractAiClient implements AiClient {
    * an array of strings; array columns ask for an array of arrays, which constrains the sampler to
    * emit one nested array per value instead of a flat list of elements.
    *
-   * @param nested when {@code true} each value is itself an array of exactly {@link
-   *     #ARRAY_ELEMENT_COUNT} strings (array columns)
+   * @param nested when {@code true} each value is itself an array of strings (array columns)
    */
   private static JsonObject buildValuesSchema(final boolean nested) {
     final JsonObject stringItem = new JsonObject();
@@ -282,8 +287,6 @@ public abstract class AbstractAiClient implements AiClient {
     item.addProperty("type", nested ? "array" : "string");
     if (nested) {
       item.add("items", stringItem);
-      item.addProperty("minItems", ARRAY_ELEMENT_COUNT);
-      item.addProperty("maxItems", ARRAY_ELEMENT_COUNT);
     }
 
     final JsonObject values = new JsonObject();
@@ -385,9 +388,27 @@ public abstract class AbstractAiClient implements AiClient {
         || lower.startsWith("estos son")
         || lower.startsWith("estas son")
         // Chain-of-thought restating the instruction, leaked as a value when the model emits its
-        // reasoning untagged (see discardClosedThinking).
-        || lower.startsWith("the user ")
-        || lower.startsWith("el usuario ")
+        // reasoning untagged (see discardClosedThinking). Only the task-reporting shapes are
+        // matched: a data value can legitimately start with "The user ..." (a bio, a description),
+        // so the open prefix alone must not be a trigger.
+        || lower.startsWith("the user wants")
+        || lower.startsWith("the user wanted")
+        || lower.startsWith("the user asked")
+        || lower.startsWith("the user is asking")
+        || lower.startsWith("the user requests")
+        || lower.startsWith("the user requested")
+        || lower.startsWith("the user has requested")
+        || lower.startsWith("the user needs")
+        || lower.startsWith("the user is requesting")
+        || lower.startsWith("the user is looking for")
+        || lower.startsWith("the user would like")
+        || lower.startsWith("el usuario quiere")
+        || lower.startsWith("el usuario necesita")
+        || lower.startsWith("el usuario pide")
+        || lower.startsWith("el usuario solicita")
+        || lower.startsWith("el usuario desea")
+        || lower.startsWith("el usuario está pidiendo")
+        || lower.startsWith("el usuario esta pidiendo")
         || lower.startsWith("the task is")
         || lower.startsWith("thinking:")
         || lower.contains("chain of thought")
@@ -730,29 +751,37 @@ public abstract class AbstractAiClient implements AiClient {
   }
 
   /**
-   * Checks the {@code {el1,el2,el3}} shape requested for array columns. A braced/bracketed value
-   * with a different element count is reasoning about the requested shape, so it is dropped here;
-   * {@code expectedArrayElements} is 0 for scalar columns, which accept any value.
+   * Checks the {@code {el1,el2,el3}} shape requested for array columns. {@code
+   * expectedArrayElements} is 0 for scalar columns, which accept any value.
    *
    * <p>A plain scalar (no braces or brackets) is accepted even for array columns: it is not the
    * requested literal shape, but it is still usable array data, and the caller wraps it as a
    * single-element array. Small models routinely ignore the "one array literal per string"
    * instruction and answer with one element per string, and dropping every such value would leave
    * the whole column to DataFaker.
+   *
+   * <p>The element count is enforced only for values that did <em>not</em> come from the structured
+   * {@code values} array ({@code fromJsonContract = false}), where a mismatched count is reasoning
+   * about the requested shape chopped into pieces. A value delivered by the JSON scanner is
+   * inherently data — even when the model nested or repeated the elements — so its count is not
+   * used to reject it; the pipeline normalizes it into a flat literal instead.
    */
   private static boolean hasExpectedArrayShape(
-      final String value, final int expectedArrayElements, final String columnName) {
+      final String value,
+      final int expectedArrayElements,
+      final String columnName,
+      final boolean fromJsonContract) {
     if (expectedArrayElements <= 0) {
       return true;
     }
-    final String body = value.trim();
-    final boolean braced = body.startsWith("{") && body.endsWith("}");
-    final boolean bracketed = body.startsWith("[") && body.endsWith("]");
-    if (!braced && !bracketed) {
+    if (!ArrayLiterals.isWrapped(value)) {
       return true;
     }
-    final String[] elements = body.substring(1, body.length() - 1).split(",", -1);
-    if (elements.length != expectedArrayElements) {
+    final List<String> elements = ArrayLiterals.topLevelElements(value);
+    if (elements.isEmpty()) {
+      return false;
+    }
+    if (!fromJsonContract && elements.size() != expectedArrayElements) {
       return false;
     }
     for (final String element : elements) {
@@ -946,11 +975,11 @@ public abstract class AbstractAiClient implements AiClient {
       final String valueClause;
       if (isArrayType) {
         valueClause =
-            "; every string is a PostgreSQL array literal, that is, exactly "
+            "; every one of them is itself a JSON array of exactly "
                 + ARRAY_ELEMENT_COUNT
-                + (singleWord ? " single comma-separated words" : " comma-separated values")
-                + " wrapped in curly braces. Write real words in place of the el1, el2 and el3 of"
-                + " this template: no placeholders, no numbering, no commentary.";
+                + (singleWord ? " single words" : " short values")
+                + ". Write the bare words directly inside each inner array: no curly braces, no"
+                + " quotes, no placeholders, no numbering, no commentary.";
       } else {
         valueClause =
             ", every one of them a real value for that column: no placeholders, no numbering, no"
@@ -963,7 +992,7 @@ public abstract class AbstractAiClient implements AiClient {
               + wordsClause
               + ". Answer with a JSON object holding a \"values\" array of exactly "
               + count
-              + " strings"
+              + (isArrayType ? " entries" : " strings")
               + valueClause;
 
       // Scalar values are not shaped into array literals, so their element count counts as one.
@@ -1293,7 +1322,8 @@ public abstract class AbstractAiClient implements AiClient {
     if (scanner.hasSeenValuesKey()) {
       scanner.scan(
           value ->
-              addSanitizedValue(value, columnName, expectedArrayElements, values, onValueAdded));
+              addSanitizedValue(
+                  value, columnName, expectedArrayElements, values, true, onValueAdded));
       return;
     }
     appendPlainTextChunk(
@@ -1341,7 +1371,8 @@ public abstract class AbstractAiClient implements AiClient {
     while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
       final String completeLine = buffer.substring(0, newlineIndex);
       buffer.delete(0, newlineIndex + 1);
-      addSanitizedValue(completeLine, columnName, expectedArrayElements, values, onValueAdded);
+      addSanitizedValue(
+          completeLine, columnName, expectedArrayElements, values, false, onValueAdded);
     }
     return true;
   }
@@ -1366,7 +1397,7 @@ public abstract class AbstractAiClient implements AiClient {
       return;
     }
     for (final String jsonValue : extractJsonValues(rawText)) {
-      addSanitizedValue(jsonValue, columnName, expectedArrayElements, values, onValueAdded);
+      addSanitizedValue(jsonValue, columnName, expectedArrayElements, values, true, onValueAdded);
     }
   }
 
@@ -1386,7 +1417,8 @@ public abstract class AbstractAiClient implements AiClient {
       return;
     }
     if (buffer.length() > 0) {
-      addSanitizedValue(buffer.toString(), columnName, expectedArrayElements, values, onValueAdded);
+      addSanitizedValue(
+          buffer.toString(), columnName, expectedArrayElements, values, false, onValueAdded);
     }
   }
 
@@ -1395,15 +1427,24 @@ public abstract class AbstractAiClient implements AiClient {
       final String columnName,
       final int expectedArrayElements,
       final Set<String> values,
+      final boolean fromJsonContract,
       @Nullable final Runnable onValueAdded) {
     final String sanitized = sanitizeAiOutput(rawLine, columnName);
     if (Objects.isNull(sanitized)
         || sanitized.isBlank()
         || isPlaceholderValue(sanitized, columnName)
-        || !hasExpectedArrayShape(sanitized, expectedArrayElements, columnName)) {
+        || !hasExpectedArrayShape(sanitized, expectedArrayElements, columnName, fromJsonContract)) {
       return;
     }
-    if (!values.add(sanitized)) {
+    // A nested or double-braced literal ({{a,b},{c,d}}) is collapsed into a flat literal so the
+    // quotes and commas the model added cannot be read back as extra elements. Scalars are left
+    // untouched: only array columns ({@code expectedArrayElements > 0}) are reshaped here.
+    final String normalized =
+        expectedArrayElements > 0 ? ArrayLiterals.normalize(sanitized) : sanitized;
+    if (Objects.isNull(normalized) || normalized.isBlank()) {
+      return;
+    }
+    if (!values.add(normalized)) {
       // Already collected: a duplicate is neither delivered twice nor made to advance the progress.
       return;
     }

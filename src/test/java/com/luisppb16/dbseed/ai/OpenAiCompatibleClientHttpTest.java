@@ -465,8 +465,11 @@ class OpenAiCompatibleClientHttpTest {
       final JsonObject item =
           schema.getAsJsonObject("properties").getAsJsonObject("values").getAsJsonObject("items");
       assertThat(item.get("type").getAsString()).isEqualTo("array");
-      assertThat(item.get("minItems").getAsInt()).isEqualTo(3);
-      assertThat(item.get("maxItems").getAsInt()).isEqualTo(3);
+      assertThat(item.getAsJsonObject("items").get("type").getAsString()).isEqualTo("string");
+      // The element count is no longer pinned in the schema: the extra grammar constraints made
+      // small local models answer with an empty values array. It is validated on the client.
+      assertThat(item.has("minItems")).isFalse();
+      assertThat(item.has("maxItems")).isFalse();
     }
 
     @Test

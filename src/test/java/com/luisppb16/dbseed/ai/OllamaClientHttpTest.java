@@ -367,6 +367,34 @@ class OllamaClientHttpTest {
     }
 
     @Test
+    void bioValueStartingWithTheUser_isKept() throws Exception {
+      // Reported false positive: a JSON value that opens with "The user" is data (a bio), not
+      // reasoning, and must survive the sanitizer.
+      respondWithNdjson(
+          "{\"values\":[\"The user profile contains sensitive military data.\",\"Madrid\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "user_profiles", "bio", "text", 10, 2)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values)
+          .containsExactly("The user profile contains sensitive military data.", "Madrid");
+    }
+
+    @Test
+    void theUserPreambleLine_droppedWhileValuesSurvive() throws Exception {
+      respondWithNdjson("The user wants 3 unique city names.\n", "Madrid\n", "Bilbao\n");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("Madrid", "Bilbao");
+    }
+
+    @Test
     void thinkingTruncatedAtStreamEnd_failsWithoutLeakingIt() {
       respondWithNdjson(
           THINK_OPEN + "The user wants twelve city names but the token budget ran out");
@@ -578,6 +606,39 @@ class OllamaClientHttpTest {
               .get(AWAIT_SECONDS, TimeUnit.SECONDS);
 
       assertThat(values).containsExactly("war", "battle", "fight");
+    }
+
+    @Test
+    void arrayColumn_nestedLiteralStrings_flattened() throws Exception {
+      // Reported shape (categories text[]): the model honoured the nesting but wrote each inner
+      // element as a full PostgreSQL literal with quotes and spaces. The commas inside those
+      // elements must not be counted as separators, and the value must be flattened for the SQL
+      // layer instead of being dropped as a wrong element count.
+      respondWithNdjson(
+          "{\"values\": [[\"{ 'intelligence', 'reports', 'classified' }\","
+              + "\"{ 'tactical', 'analysis', 'field' }\","
+              + "\"{ 'enemy', 'positions', 'mapped' }\"]]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "categories", "text[]", 1, 1)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values)
+          .containsExactly(
+              "{intelligence,reports,classified,tactical,analysis,field,enemy,positions,mapped}");
+    }
+
+    @Test
+    void arrayColumn_quotedSpacedLiteral_normalizedToFlat() throws Exception {
+      respondWithNdjson("{\"values\": [\"{ 'intelligence', 'reports', 'classified' }\"]}");
+
+      final List<String> values =
+          newClient()
+              .generateBatchValues("blog", "articles", "categories", "text[]", 1, 1)
+              .get(AWAIT_SECONDS, TimeUnit.SECONDS);
+
+      assertThat(values).containsExactly("{intelligence,reports,classified}");
     }
 
     @Test

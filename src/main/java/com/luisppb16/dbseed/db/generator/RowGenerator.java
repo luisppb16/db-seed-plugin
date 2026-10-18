@@ -19,10 +19,10 @@ import com.luisppb16.dbseed.db.generator.ConstraintParser.ParsedConstraint;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.util.ArrayLiterals;
 import java.sql.JDBCType;
 import java.sql.Types;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -808,26 +808,10 @@ public final class RowGenerator {
   }
 
   private Object[] parseAiArray(final String val) {
-    String cleaned = val.trim();
-    if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
-      cleaned = cleaned.substring(1, cleaned.length() - 1);
-    } else if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
-      cleaned = cleaned.substring(1, cleaned.length() - 1);
-    }
-
-    if (cleaned.isEmpty()) {
-      return new Object[0];
-    }
-
-    return Arrays.stream(cleaned.split(","))
-        .map(String::trim)
-        .map(
-            s -> {
-              if (s.startsWith("\"") && s.endsWith("\"")) return s.substring(1, s.length() - 1);
-              if (s.startsWith("'") && s.endsWith("'")) return s.substring(1, s.length() - 1);
-              return s;
-            })
-        .toArray(String[]::new);
+    // The client already emits flat literals, but a hand-edited or legacy value may still carry
+    // nesting, quotes and spacing; the shared parser flattens all of it into plain elements, so a
+    // comma inside a quoted element is never mistaken for an element separator.
+    return ArrayLiterals.flatten(val).toArray();
   }
 
   private String getSqlTypeName(final Column column) {

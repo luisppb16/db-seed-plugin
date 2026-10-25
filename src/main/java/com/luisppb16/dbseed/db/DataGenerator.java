@@ -20,6 +20,7 @@ import com.luisppb16.dbseed.db.generator.ValueGenerator;
 import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
+import com.luisppb16.dbseed.util.Errors;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,9 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -186,7 +185,7 @@ public class DataGenerator {
         tracker.setText2("Loading " + settings.getAiModel() + " into memory");
         aiClient.warmModel().join();
       } catch (final Exception e) {
-        warmUpError = errorMessageOf(e);
+        warmUpError = Errors.messageOf(e);
         log.warn("Model warm-up failed, skipping AI phase: {}", warmUpError);
       }
     }
@@ -512,18 +511,6 @@ public class DataGenerator {
                                         : warmUpError)))
             .toList();
     return new AiGenerationReport(modelConfigured, warmUpError, stats);
-  }
-
-  /** Unwraps future-completion wrappers so the report shows the real cause message. */
-  private static String errorMessageOf(final Exception ex) {
-    Throwable cause = ex;
-    while (cause instanceof CompletionException || cause instanceof ExecutionException) {
-      cause = cause.getCause();
-    }
-    if (Objects.isNull(cause)) {
-      return ex.getClass().getSimpleName();
-    }
-    return Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName());
   }
 
   private static void validateNumericConstraints(

@@ -14,6 +14,7 @@ import com.intellij.openapi.project.Project;
 import com.luisppb16.dbseed.ai.AiClient;
 import com.luisppb16.dbseed.ai.AiClientFactory;
 import com.luisppb16.dbseed.ai.AiProvider;
+import com.luisppb16.dbseed.util.Errors;
 import com.luisppb16.dbseed.util.NotificationHelper;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -168,11 +169,8 @@ public class DbSeedSettingsConfigurable implements Configurable {
                 false,
                 myProject);
 
-        if (Objects.nonNull(pingError.get())) {
-          Throwable cause =
-              Objects.nonNull(pingError.get().getCause())
-                  ? pingError.get().getCause()
-                  : pingError.get();
+        final Exception pingFailure = pingError.get();
+        if (Objects.nonNull(pingFailure)) {
           NotificationHelper.notifyWarning(
               myProject,
               provider.getDisplayName() + " server not reachable",
@@ -181,8 +179,7 @@ public class DbSeedSettingsConfigurable implements Configurable {
                   + " server found at "
                   + url.trim()
                   + ". AI generation may not work until it is available. Error: "
-                  + Objects.requireNonNullElse(
-                      cause.getMessage(), cause.getClass().getSimpleName()));
+                  + Errors.messageOf(pingFailure));
         }
       }
     }

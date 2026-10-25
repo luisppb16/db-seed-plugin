@@ -123,12 +123,11 @@ public class DriverLoader {
         return Optional.empty();
       }
 
-      final Optional<DriverInfo> chosenDriverOpt = driverDialog.getSelectedDriver();
-      if (chosenDriverOpt.isEmpty()) {
+      final DriverInfo chosenDriver = driverDialog.getSelectedDriver().orElse(null);
+      if (Objects.isNull(chosenDriver)) {
         log.debug("No driver selected.");
         return Optional.empty();
       }
-      final DriverInfo chosenDriver = chosenDriverOpt.get();
       props.setValue(PREF_LAST_DRIVER, chosenDriver.name());
 
       ensureDriverPresent(project, chosenDriver);
@@ -138,7 +137,7 @@ public class DriverLoader {
       return Optional.empty();
     } catch (final Exception ex) {
       log.error("Error selecting/loading driver", ex);
-      final String msg = Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
+      final String msg = Errors.messageOf(ex);
       NotificationHelper.notifyError(project, "Error loading driver: " + msg);
       return Optional.empty();
     }

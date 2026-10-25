@@ -39,6 +39,7 @@ import com.luisppb16.dbseed.ui.GenerationProgressDialog;
 import com.luisppb16.dbseed.ui.PkUuidSelectionDialog;
 import com.luisppb16.dbseed.ui.SeedDialog;
 import com.luisppb16.dbseed.util.DriverLoader;
+import com.luisppb16.dbseed.util.Errors;
 import com.luisppb16.dbseed.util.NotificationHelper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -216,34 +217,32 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
   }
 
   private void openSeedDialogFlow(final Project project, final DriverInfo initialDriver) {
-    Optional<DriverInfo> chosenDriverOpt = Optional.of(initialDriver);
-    boolean continueLoop = true;
+    DriverInfo chosenDriver = initialDriver;
 
-    while (continueLoop) {
-      final DriverInfo chosenDriver = chosenDriverOpt.get();
+    while (true) {
       final SeedDialog seedDialog = new SeedDialog(project, chosenDriver);
       seedDialog.show();
 
-      final int exitCode = seedDialog.getExitCode();
-      switch (exitCode) {
+      switch (seedDialog.getExitCode()) {
         case DialogWrapper.OK_EXIT_CODE -> {
           runSeedGeneration(project, seedDialog.getConfiguration(), chosenDriver);
-          continueLoop = false;
+          return;
         }
         case SeedDialog.BACK_EXIT_CODE -> {
           try {
-            chosenDriverOpt = DriverLoader.selectAndLoadDriver(project);
-            if (chosenDriverOpt.isEmpty()) {
-              continueLoop = false;
+            final DriverInfo nextDriver = DriverLoader.selectAndLoadDriver(project).orElse(null);
+            if (Objects.isNull(nextDriver)) {
+              return;
             }
+            chosenDriver = nextDriver;
           } catch (final Exception ex) {
             handleException(project, "Error re-selecting driver: ", ex);
-            continueLoop = false;
+            return;
           }
         }
         default -> {
           log.debug("Seed generation dialog canceled.");
-          continueLoop = false;
+          return;
         }
       }
     }
@@ -570,7 +569,7 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
     if (project.isDisposed()) {
       return;
     }
-    final String detail = Objects.toString(ex.getMessage(), ex.getClass().getSimpleName());
+    final String detail = Errors.messageOf(ex);
     final String fullMessage = message + detail;
     ApplicationManager.getApplication()
         .invokeLater(

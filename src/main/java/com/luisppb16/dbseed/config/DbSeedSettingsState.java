@@ -12,7 +12,6 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.luisppb16.dbseed.ai.AiProvider;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -218,7 +217,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public Map<String, Map<String, Integer>> getCircularReferences() {
-    return Collections.unmodifiableMap(circularReferences);
+    return Map.copyOf(circularReferences);
   }
 
   public void setCircularReferences(final Map<String, Map<String, Integer>> circularReferences) {
@@ -226,7 +225,7 @@ public class DbSeedSettingsState implements PersistentStateComponent<DbSeedSetti
   }
 
   public Map<String, Map<String, String>> getCircularReferenceTerminationModes() {
-    return Collections.unmodifiableMap(circularReferenceTerminationModes);
+    return Map.copyOf(circularReferenceTerminationModes);
   }
 
   public void setCircularReferenceTerminationModes(

@@ -9,6 +9,7 @@ package com.luisppb16.dbseed.ai;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.luisppb16.dbseed.util.ArrayLiterals;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -271,32 +272,32 @@ class OllamaClientTest {
 
     @Test
     void doubleQuotes_stripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"hello\"")).isEqualTo("hello");
+      assertThat(ArrayLiterals.stripQuotes("\"hello\"")).isEqualTo("hello");
     }
 
     @Test
     void singleQuotes_stripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("'hello'")).isEqualTo("hello");
+      assertThat(ArrayLiterals.stripQuotes("'hello'")).isEqualTo("hello");
     }
 
     @Test
     void mismatchedQuotes_notStripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"hello'")).isEqualTo("\"hello'");
+      assertThat(ArrayLiterals.stripQuotes("\"hello'")).isEqualTo("\"hello'");
     }
 
     @Test
     void noQuotes_unmodified() {
-      assertThat(OllamaClient.stripSurroundingQuotes("hello")).isEqualTo("hello");
+      assertThat(ArrayLiterals.stripQuotes("hello")).isEqualTo("hello");
     }
 
     @Test
     void emptyQuotes_returnsEmpty() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"\"")).isEmpty();
+      assertThat(ArrayLiterals.stripQuotes("\"\"")).isEmpty();
     }
 
     @Test
     void singleChar_quotesStripped() {
-      assertThat(OllamaClient.stripSurroundingQuotes("\"a\"")).isEqualTo("a");
+      assertThat(ArrayLiterals.stripQuotes("\"a\"")).isEqualTo("a");
     }
   }
 

@@ -20,6 +20,7 @@ import com.luisppb16.dbseed.model.Column;
 import com.luisppb16.dbseed.model.RepetitionRule;
 import com.luisppb16.dbseed.model.Table;
 import com.luisppb16.dbseed.util.ArrayLiterals;
+import com.luisppb16.dbseed.util.Errors;
 import java.sql.JDBCType;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -34,9 +35,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -209,18 +208,6 @@ public final class RowGenerator {
     return (System.nanoTime() - startNanos) / 1_000_000_000L;
   }
 
-  /** Unwraps future-completion wrappers so the notification shows the real cause message. */
-  private static String errorMessageOf(final Exception ex) {
-    Throwable cause = ex;
-    while (cause instanceof CompletionException || cause instanceof ExecutionException) {
-      cause = cause.getCause();
-    }
-    if (Objects.isNull(cause)) {
-      return ex.getClass().getSimpleName();
-    }
-    return Objects.requireNonNullElse(cause.getMessage(), cause.getClass().getSimpleName());
-  }
-
   /**
    * Detects whether an AI request failure was caused by the streaming inactivity watchdog (the
    * model stalled mid-generation). Used to trigger batch-splitting on retry: a stall means the
@@ -386,18 +373,7 @@ public final class RowGenerator {
   }
 
   private boolean supportsRegexGeneration(final Column column) {
-    return switch (column.jdbcType()) {
-      case Types.CHAR,
-          Types.VARCHAR,
-          Types.NCHAR,
-          Types.NVARCHAR,
-          Types.LONGVARCHAR,
-          Types.LONGNVARCHAR,
-          Types.CLOB,
-          Types.NCLOB ->
-          true;
-      default -> false;
-    };
+    return Column.isStringJdbcType(column.jdbcType()) && column.jdbcType() != Types.ARRAY;
   }
 
   private void fillRemainingRows() {
@@ -641,8 +617,8 @@ public final class RowGenerator {
                         + "."
                         + colName
                         + ": "
-                        + errorMessageOf(ex));
-                aiColumnErrors.put(colName, errorMessageOf(ex));
+                        + Errors.messageOf(ex));
+                aiColumnErrors.put(colName, Errors.messageOf(ex));
                 retries.incrementAndGet();
               }
 
@@ -716,8 +692,8 @@ public final class RowGenerator {
                             + "."
                             + colName
                             + ": "
-                            + errorMessageOf(ex));
-                    aiColumnErrors.put(colName, errorMessageOf(ex));
+                            + Errors.messageOf(ex));
+                    aiColumnErrors.put(colName, Errors.messageOf(ex));
                     retries.incrementAndGet();
                     if (isStreamStall(ex)) {
                       stallSplitFactor = Math.min(stallSplitFactor * 2, batchCount);

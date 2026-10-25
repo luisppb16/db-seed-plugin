@@ -179,7 +179,7 @@ public class ArrayLiterals {
   }
 
   /** Strips a single pair of matching surrounding quotes, trimming the result. */
-  static String stripQuotes(final String token) {
+  public static String stripQuotes(final String token) {
     if (token.length() >= 2) {
       final char first = token.charAt(0);
       final char last = token.charAt(token.length() - 1);

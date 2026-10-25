@@ -28,6 +28,7 @@ public class DriverRegistry {
 
   private static final List<DriverInfo> DRIVERS;
   private static final String DRIVERS_JSON_PATH = "/drivers.json";
+  private static final Gson GSON = new Gson();
 
   static {
     List<DriverInfo> tempDrivers;
@@ -39,7 +40,7 @@ public class DriverRegistry {
       }
       try (final Reader reader = new InputStreamReader(in, StandardCharsets.UTF_8)) {
         final List<DriverInfo> parsed =
-            new Gson().fromJson(reader, new TypeToken<List<DriverInfo>>() {}.getType());
+            GSON.fromJson(reader, new TypeToken<List<DriverInfo>>() {}.getType());
         tempDrivers = Objects.requireNonNullElse(parsed, Collections.emptyList());
       }
       log.info("Loaded {} drivers from {}", tempDrivers.size(), DRIVERS_JSON_PATH);

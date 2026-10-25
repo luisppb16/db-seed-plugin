@@ -24,8 +24,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import net.datafaker.Faker;
@@ -218,37 +216,22 @@ public record ValueGenerator(
     // Si la columna no es nullable, nunca devolver null
     if (def == null && !column.nullable()) {
       // fallback por tipo
-      switch (column.jdbcType()) {
-        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> {
-          return 1;
-        }
-        case Types.BIGINT -> {
-          return 1L;
-        }
-        case Types.DECIMAL, Types.NUMERIC -> {
-          return BigDecimal.ONE;
-        }
-        case Types.FLOAT, Types.DOUBLE, Types.REAL -> {
-          return 1.0;
-        }
-        case Types.BOOLEAN, Types.BIT -> {
-          return true;
-        }
+      return switch (column.jdbcType()) {
+        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> 1;
+        case Types.BIGINT -> 1L;
+        case Types.DECIMAL, Types.NUMERIC -> BigDecimal.ONE;
+        case Types.FLOAT, Types.DOUBLE, Types.REAL -> 1.0;
+        case Types.BOOLEAN, Types.BIT -> true;
         case Types.VARCHAR,
             Types.CHAR,
             Types.LONGVARCHAR,
             Types.NVARCHAR,
             Types.NCHAR,
-            Types.LONGNVARCHAR -> {
-          return "default";
-        }
-        case Types.ARRAY -> {
-          return new String[] {"default"};
-        }
-        default -> {
-          return rowIndex;
-        }
-      }
+            Types.LONGNVARCHAR ->
+            "default";
+        case Types.ARRAY -> new String[] {"default"};
+        default -> rowIndex;
+      };
     }
     return def;
   }
@@ -444,12 +427,6 @@ public record ValueGenerator(
       return null;
     }
 
-    try {
-      Pattern.compile(regexPattern);
-    } catch (final PatternSyntaxException ex) {
-      return null;
-    }
-
     final int attempts = 50;
     for (int i = 0; i < attempts; i++) {
       try {
@@ -497,14 +474,7 @@ public record ValueGenerator(
   private Object convertStringValue(final String value, final Column column) {
     if (Objects.isNull(value) || "NULL".equalsIgnoreCase(value)) return null;
     try {
-      return switch (column.jdbcType()) {
-        case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value);
-        case Types.BIGINT -> Long.parseLong(value);
-        case Types.BOOLEAN, Types.BIT -> parseBooleanLiteral(value);
-        case Types.DECIMAL, Types.NUMERIC -> new BigDecimal(value);
-        case Types.FLOAT, Types.DOUBLE, Types.REAL -> Double.parseDouble(value);
-        default -> value;
-      };
+      return parseTypedValue(value, column.jdbcType());
     } catch (final Exception e) {
       return null;
     }

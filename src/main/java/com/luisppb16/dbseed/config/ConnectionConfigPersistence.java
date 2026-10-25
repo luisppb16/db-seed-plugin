@@ -23,6 +23,9 @@ import org.jetbrains.annotations.Nullable;
 @UtilityClass
 public class ConnectionConfigPersistence {
 
+  private static final GenerationConfig DEFAULT_CONFIG =
+      new GenerationConfig("", "", "", "", 10, false, null, true, null, 2);
+
   public static void saveProfile(
       @NotNull final Project project,
       @NotNull final String profileName,
@@ -78,7 +81,7 @@ public class ConnectionConfigPersistence {
       @NotNull final Project project, @Nullable final String profileName) {
     final String normalizedProfileName = profileName == null ? "" : profileName.trim();
     if (!ConnectionProfile.isValidName(normalizedProfileName)) {
-      return new GenerationConfig("", "", "", "", 10, false, null, true, null, 2);
+      return DEFAULT_CONFIG;
     }
 
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
@@ -89,7 +92,7 @@ public class ConnectionConfigPersistence {
             .findFirst();
 
     if (profileOpt.isEmpty()) {
-      return new GenerationConfig("", "", "", "", 10, false, null, true, null, 2);
+      return DEFAULT_CONFIG;
     }
 
     final ConnectionProfile profile = profileOpt.get();
@@ -97,10 +100,10 @@ public class ConnectionConfigPersistence {
     final CredentialAttributes credAttributes =
         createCredentialAttributes(project, normalizedProfileName);
     final Credentials credentials = PasswordSafe.getInstance().get(credAttributes);
-    String password = "";
-    if (Objects.nonNull(credentials)) {
-      password = Objects.requireNonNullElse(credentials.getPasswordAsString(), "");
-    }
+    final String password =
+        Objects.isNull(credentials)
+            ? ""
+            : Objects.requireNonNullElse(credentials.getPasswordAsString(), "");
 
     return new GenerationConfig(
         profile.getUrl(),

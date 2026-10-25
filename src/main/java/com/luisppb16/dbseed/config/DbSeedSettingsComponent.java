@@ -840,7 +840,7 @@ public class DbSeedSettingsComponent {
 
   public String getAiModel() {
     final Object selected = myAiModelDropdown.getSelectedItem();
-    return selected instanceof String ? (String) selected : "";
+    return selected instanceof String s ? s : "";
   }
 
   public void setAiModel(final String model) {

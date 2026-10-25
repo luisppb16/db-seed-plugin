@@ -25,24 +25,24 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.mysql.MySQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @Testcontainers(disabledWithoutDocker = true)
 class DatabaseSeedingIntegrationTest {
 
   @Container
-  static final PostgreSQLContainer<?> POSTGRES =
-      new PostgreSQLContainer<>("postgres:16-alpine")
+  static final PostgreSQLContainer POSTGRES =
+      new PostgreSQLContainer("postgres:16-alpine")
           .withDatabaseName("dbseed")
           .withUsername("dbseed")
           .withPassword("dbseed");
 
   @Container
-  static final MySQLContainer<?> MYSQL =
-      new MySQLContainer<>("mysql:8.4.0")
+  static final MySQLContainer MYSQL =
+      new MySQLContainer("mysql:8.4.0")
           .withDatabaseName("dbseed")
           .withUsername("dbseed")
           .withPassword("dbseed");

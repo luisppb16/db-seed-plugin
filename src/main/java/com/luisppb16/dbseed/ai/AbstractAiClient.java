@@ -313,7 +313,7 @@ public abstract class AbstractAiClient implements AiClient {
     String cleaned = value.lines().findFirst().orElse("").trim();
 
     cleaned = stripCodeFences(cleaned);
-    cleaned = stripSurroundingQuotes(cleaned);
+    cleaned = ArrayLiterals.stripQuotes(cleaned);
     cleaned = NUMBERED_PREFIX.matcher(cleaned).replaceFirst("").trim();
 
     if (cleaned.startsWith("- ") || cleaned.startsWith("* ")) {
@@ -352,15 +352,6 @@ public abstract class AbstractAiClient implements AiClient {
       result = result.substring(0, result.length() - 3).trim();
     }
     return result;
-  }
-
-  static String stripSurroundingQuotes(final String text) {
-    if (text.length() >= 2
-        && ((text.startsWith("\"") && text.endsWith("\""))
-            || (text.startsWith("'") && text.endsWith("'")))) {
-      return text.substring(1, text.length() - 1).trim();
-    }
-    return text;
   }
 
   static boolean isAiPreamble(final String text) {
@@ -463,7 +454,7 @@ public abstract class AbstractAiClient implements AiClient {
     if (lower.startsWith(colLower)) {
       final String rest = text.substring(columnName.length()).trim();
       if (rest.startsWith(":") || rest.startsWith("=")) {
-        return stripSurroundingQuotes(rest.substring(1).trim());
+        return ArrayLiterals.stripQuotes(rest.substring(1).trim());
       }
       // No separator follows the column name, so the prefix match is a partial word
       // (e.g. column "name" vs value "named: John") — keep the original value intact.

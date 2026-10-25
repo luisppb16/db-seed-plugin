@@ -10,6 +10,7 @@ package com.luisppb16.dbseed.ai;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.luisppb16.dbseed.util.Errors;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -144,7 +145,7 @@ class UnslothStudioAuth {
           "Could not reach Unsloth Studio at "
               + normalizedUrl
               + " to sign in: "
-              + Objects.requireNonNullElse(e.getMessage(), e.getClass().getSimpleName()),
+              + Errors.messageOf(e),
           e);
     }
     if (response.statusCode() != 200) {

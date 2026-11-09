@@ -9,7 +9,7 @@ import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLeve
 
 plugins {
     id 'java'
-    id 'org.jetbrains.intellij.platform' version '2.19.0'
+    id 'org.jetbrains.intellij.platform' version '2.20.1'
     id 'jacoco'
     id 'pmd'
     id 'com.diffplug.spotless' version '8.1.0'
@@ -43,16 +43,12 @@ tasks.named('processResources') {
 }
 
 jacoco {
-    toolVersion = '0.8.15'
+    toolVersion = '0.8.16'
 }
 
 intellijPlatform {
     buildSearchableOptions = false
-    pluginConfiguration {
-        ideaVersion {
-            sinceBuild = '262'
-        }
-    }
+
     signing.certificateChain.set(providers.environmentVariable("CERTIFICATE_CHAIN"))
     signing.privateKey.set(providers.environmentVariable("PRIVATE_KEY"))
     signing.password.set(providers.environmentVariable("PRIVATE_KEY_PASSWORD"))
@@ -88,7 +84,7 @@ repositories {
 
 dependencies {
     intellijPlatform {
-        intellijIdea '2026.2'
+        intellijIdea '2026.3'
     }
 
     constraints {
@@ -118,7 +114,7 @@ dependencies {
     testImplementation 'org.testcontainers:testcontainers-mysql:2.0.5'
     testRuntimeOnly 'org.postgresql:postgresql:42.7.14'
     testRuntimeOnly 'com.mysql:mysql-connector-j:26.10.0'
-    testImplementation 'org.xerial:sqlite-jdbc:3.53.4.0'
+    testImplementation 'org.xerial:sqlite-jdbc:3.54.1.0'
 }
 
 test {

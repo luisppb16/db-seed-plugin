@@ -40,6 +40,11 @@
 
     <change-notes>
         <![CDATA[
+            <h3>Version 1.3.7.7</h3>
+            <ul>
+                <li><b>Build/compatibility release:</b> minimum supported build raised to 263 (IntelliJ IDEA 2026.3); all dependencies at the latest stable versions (IntelliJ Platform Gradle Plugin 2.20.1, sqlite-jdbc 3.54.1.0, JaCoCo 0.8.16); PMD and formatting checks wired into the build, strict plugin verification (no deprecated platform APIs).</li>
+            </ul>
+
             <h3>Version 1.3.7.4</h3>
             <ul>
                 <li><b>Pluggable AI Engine:</b> the AI layer is now abstracted behind one client interface, so the plugin is no longer tied to Ollama. The engine is chosen with radio buttons in <i>Settings &rarr; DBSeed4SQL &rarr; AI</i>, and picking one applies its own configuration: the URL field is pre-filled with that engine's default address and the API key field is shown only for engines that use one &mdash; Ollama has no credential at all, so its row is not displayed, and for the other engines it stays disabled while AI generation is off.</li>

@@ -7,7 +7,7 @@ foreign keys, uniqueness constraints, and complex cycles. It is ideal for develo
 seeds for testing,
 demos, QA, or development environments.
 
-This project is developed in **Java 25** with **Gradle 9.7.1**, applying a modern programming style: `record`, `switch`
+This project is developed in **Java 25** with **Gradle 9.8.2**, applying a modern programming style: `record`, `switch`
 with `yield`,
 pattern matching, functional programming with Streams, `Optional` to avoid nulls, extensive use of **Lombok** (
 `@Builder`, `@Slf4j`,
@@ -269,9 +269,9 @@ Generated scripts preserve referential integrity while reducing manual post-proc
 
 ### ✅ Compatibility and Requirements
 
-- **IntelliJ Platform**: builds `262` and later.
+- **IntelliJ Platform**: builds `263` and later.
 - **Java**: Java 25.
-- **Build Tool**: Gradle wrapper `9.7.1`.
+- **Build Tool**: Gradle wrapper `9.8.2`.
 - **Optional AI Runtime**: a reachable AI server if you enable AI generation — Ollama, Unsloth Studio or any other
   OpenAI-compatible endpoint.
 - **Optional Docker**: useful for local database smoke testing and integration scenarios.
@@ -378,7 +378,7 @@ The file is automatically opened in an editor within IntelliJ, ready to be execu
 ### 📝 Changelog
 
 The release history is available in the plugin's change notes on
-the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version is **`1.3.7.4`**.
+the [JetBrains Marketplace](https://plugins.jetbrains.com/). The latest version is **`1.3.7.7`**.
 
 ---
 

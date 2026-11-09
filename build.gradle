@@ -16,7 +16,7 @@ plugins {
 }
 
 group = 'com.LuisPPB16'
-version = '1.3.7.6'
+version = '1.3.7.7'
 
 java {
     toolchain {

@@ -32,7 +32,7 @@ pattern matching, functional programming with Streams, `Optional` to avoid nulls
 
 To align with current JetBrains Marketplace approval criteria:
 
-- Plugin metadata declares explicit compatibility (`since-build=262`) and the required Java module
+- Plugin metadata declares explicit compatibility (`since-build=263`) and the required Java module
   dependency.
 - JDBC driver download is **explicitly confirmed by the user** before any external artifact is fetched, and every
   downloaded or cached driver is verified against the SHA-256 checksum published by Maven Central.

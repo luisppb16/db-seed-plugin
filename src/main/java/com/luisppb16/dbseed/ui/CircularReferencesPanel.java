@@ -162,41 +162,38 @@ public class CircularReferencesPanel extends JPanel {
           .put(fk.name(), savedMode.name());
     }
 
-    box.addActionListener(
-        e -> {
-          spinner.setEnabled(box.isSelected());
-          terminationModeBox.setEnabled(box.isSelected() && supportsNullTermination);
-          updateConfig(
-              table.name(),
-              fk.name(),
-              box.isSelected(),
-              (Integer) spinner.getValue(),
-              (CircularReferenceTerminationMode) terminationModeBox.getSelectedItem());
-        });
+    box.addActionListener(e -> {
+      spinner.setEnabled(box.isSelected());
+      terminationModeBox.setEnabled(box.isSelected() && supportsNullTermination);
+      updateConfig(
+          table.name(),
+          fk.name(),
+          box.isSelected(),
+          (Integer) spinner.getValue(),
+          (CircularReferenceTerminationMode) terminationModeBox.getSelectedItem());
+    });
 
-    spinner.addChangeListener(
-        e -> {
-          if (box.isSelected()) {
-            updateConfig(
-                table.name(),
-                fk.name(),
-                true,
-                (Integer) spinner.getValue(),
-                (CircularReferenceTerminationMode) terminationModeBox.getSelectedItem());
-          }
-        });
+    spinner.addChangeListener(e -> {
+      if (box.isSelected()) {
+        updateConfig(
+            table.name(),
+            fk.name(),
+            true,
+            (Integer) spinner.getValue(),
+            (CircularReferenceTerminationMode) terminationModeBox.getSelectedItem());
+      }
+    });
 
-    terminationModeBox.addActionListener(
-        e -> {
-          if (box.isSelected()) {
-            updateConfig(
-                table.name(),
-                fk.name(),
-                true,
-                (Integer) spinner.getValue(),
-                (CircularReferenceTerminationMode) terminationModeBox.getSelectedItem());
-          }
-        });
+    terminationModeBox.addActionListener(e -> {
+      if (box.isSelected()) {
+        updateConfig(
+            table.name(),
+            fk.name(),
+            true,
+            (Integer) spinner.getValue(),
+            (CircularReferenceTerminationMode) terminationModeBox.getSelectedItem());
+      }
+    });
 
     final JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
     row.setOpaque(false);

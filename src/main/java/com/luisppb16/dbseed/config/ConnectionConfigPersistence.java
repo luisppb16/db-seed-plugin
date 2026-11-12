@@ -45,13 +45,12 @@ public class ConnectionConfigPersistence {
         state.getProfiles().stream()
             .filter(p -> normalizedProfileName.equals(p.getName().trim()))
             .findFirst()
-            .orElseGet(
-                () -> {
-                  final ConnectionProfile newProfile = new ConnectionProfile();
-                  newProfile.setName(normalizedProfileName);
-                  state.getProfiles().add(newProfile);
-                  return newProfile;
-                });
+            .orElseGet(() -> {
+              final ConnectionProfile newProfile = new ConnectionProfile();
+              newProfile.setName(normalizedProfileName);
+              state.getProfiles().add(newProfile);
+              return newProfile;
+            });
 
     profile.setUrl(config.url());
     profile.setUser(config.user());
@@ -135,9 +134,8 @@ public class ConnectionConfigPersistence {
     final DbSeedProjectState state = DbSeedProjectState.getInstance(project);
     state
         .getProfiles()
-        .removeIf(
-            p ->
-                p == null || !p.hasValidName() || normalizedProfileName.equals(p.getName().trim()));
+        .removeIf(p ->
+            p == null || !p.hasValidName() || normalizedProfileName.equals(p.getName().trim()));
     if (normalizedProfileName.equals(state.getActiveProfileName())) {
       state.setActiveProfileName("");
     }

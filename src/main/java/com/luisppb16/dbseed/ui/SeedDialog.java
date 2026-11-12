@@ -279,56 +279,53 @@ public final class SeedDialog extends DialogWrapper {
   }
 
   private void setupProfileActions() {
-    profileComboBox.addActionListener(
-        e -> {
-          final String selected = (String) profileComboBox.getSelectedItem();
-          if (selected != null) {
-            final Project project = this.project;
-            if (project != null) {
-              if (suppressProfileSelectionEvents) {
-                return;
-              }
-              final GenerationConfig config =
-                  ConnectionConfigPersistence.loadProfile(project, selected);
-              populateFields(config, true);
-              prefillUrlFields(config.url(), true);
-              DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
-            }
+    profileComboBox.addActionListener(e -> {
+      final String selected = (String) profileComboBox.getSelectedItem();
+      if (selected != null) {
+        final Project project = this.project;
+        if (project != null) {
+          if (suppressProfileSelectionEvents) {
+            return;
           }
-        });
+          final GenerationConfig config =
+              ConnectionConfigPersistence.loadProfile(project, selected);
+          populateFields(config, true);
+          prefillUrlFields(config.url(), true);
+          DbSeedProjectState.getInstance(project).setActiveProfileName(selected);
+        }
+      }
+    });
 
-    saveProfileBtn.addActionListener(
-        e -> {
-          String name =
-              Messages.showInputDialog(
-                  getRootPane(),
-                  "Enter profile name:",
-                  "Save Profile",
-                  null,
-                  (String) profileComboBox.getSelectedItem(),
-                  null);
-          if (name != null && !name.trim().isEmpty()) {
-            name = name.trim();
-            final Project project = this.project;
-            if (project != null) {
-              ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
-              loadProfiles();
-              profileComboBox.setSelectedItem(name);
-            }
-          }
-        });
+    saveProfileBtn.addActionListener(e -> {
+      String name =
+          Messages.showInputDialog(
+              getRootPane(),
+              "Enter profile name:",
+              "Save Profile",
+              null,
+              (String) profileComboBox.getSelectedItem(),
+              null);
+      if (name != null && !name.trim().isEmpty()) {
+        name = name.trim();
+        final Project project = this.project;
+        if (project != null) {
+          ConnectionConfigPersistence.saveProfile(project, name, getConfiguration());
+          loadProfiles();
+          profileComboBox.setSelectedItem(name);
+        }
+      }
+    });
 
-    deleteProfileBtn.addActionListener(
-        e -> {
-          final String selected = (String) profileComboBox.getSelectedItem();
-          if (selected != null) {
-            final Project project = this.project;
-            if (project != null) {
-              ConnectionConfigPersistence.deleteProfile(project, selected);
-              loadProfiles();
-            }
-          }
-        });
+    deleteProfileBtn.addActionListener(e -> {
+      final String selected = (String) profileComboBox.getSelectedItem();
+      if (selected != null) {
+        final Project project = this.project;
+        if (project != null) {
+          ConnectionConfigPersistence.deleteProfile(project, selected);
+          loadProfiles();
+        }
+      }
+    });
   }
 
   private void loadProfiles() {
@@ -440,14 +437,13 @@ public final class SeedDialog extends DialogWrapper {
     showPasswordButton.setBorderPainted(false);
     showPasswordButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
     showPasswordButton.setToolTipText("Toggle password visibility");
-    showPasswordButton.addActionListener(
-        e -> {
-          if (showPasswordButton.isSelected()) {
-            passwordField.setEchoChar((char) 0);
-          } else {
-            passwordField.setEchoChar('•');
-          }
-        });
+    showPasswordButton.addActionListener(e -> {
+      if (showPasswordButton.isSelected()) {
+        passwordField.setEchoChar((char) 0);
+      } else {
+        passwordField.setEchoChar('•');
+      }
+    });
     return showPasswordButton;
   }
 

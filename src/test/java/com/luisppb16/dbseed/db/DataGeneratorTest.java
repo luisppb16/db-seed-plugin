@@ -138,10 +138,9 @@ class DataGeneratorTest {
             .orElseThrow();
     // With deferred=true, FK values are always resolved directly
     assertThat(childRows)
-        .allSatisfy(
-            r -> {
-              assertThat(r.values().get("parent_id")).isNotNull();
-            });
+        .allSatisfy(r -> {
+          assertThat(r.values().get("parent_id")).isNotNull();
+        });
   }
 
   @Test
@@ -872,12 +871,11 @@ class DataGeneratorTest {
       assertThat(result.rows().get(products).getFirst().values())
           .containsEntry("description", "__AI_VALUE__");
       assertThat(result.aiReport().columns())
-          .anySatisfy(
-              stat -> {
-                assertThat(stat.columnName()).isEqualTo("bio");
-                assertThat(stat.appliedAiValues()).isZero();
-                assertThat(stat.lastError()).contains("overloaded");
-              });
+          .anySatisfy(stat -> {
+            assertThat(stat.columnName()).isEqualTo("bio");
+            assertThat(stat.appliedAiValues()).isZero();
+            assertThat(stat.lastError()).contains("overloaded");
+          });
     } finally {
       if (Objects.nonNull(server)) {
         server.stop(0);
@@ -1077,11 +1075,10 @@ class DataGeneratorTest {
           .anySatisfy(
               progress -> assertThat(progress.stage()).isEqualTo(AiBatchProgress.Stage.TIMING));
       assertThat(batches)
-          .anySatisfy(
-              progress -> {
-                assertThat(progress.stage()).isEqualTo(AiBatchProgress.Stage.VALUES);
-                assertThat(progress.done()).isGreaterThanOrEqualTo(1);
-              });
+          .anySatisfy(progress -> {
+            assertThat(progress.stage()).isEqualTo(AiBatchProgress.Stage.VALUES);
+            assertThat(progress.done()).isGreaterThanOrEqualTo(1);
+          });
     } finally {
       if (Objects.nonNull(server)) {
         server.stop(0);

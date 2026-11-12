@@ -42,30 +42,29 @@ class DriverRegistryTest {
   @Test
   void everyDriver_hasMandatoryMetadata() {
     assertThat(DriverRegistry.getDrivers())
-        .allSatisfy(
-            driver -> {
-              assertThat(driver.name()).as("name of %s", driver).isNotNull().isNotEmpty();
-              assertThat(driver.mavenGroupId())
-                  .as("mavenGroupId of driver '%s'", driver.name())
-                  .isNotNull()
-                  .isNotEmpty();
-              assertThat(driver.mavenArtifactId())
-                  .as("mavenArtifactId of driver '%s'", driver.name())
-                  .isNotNull()
-                  .isNotEmpty();
-              assertThat(driver.version())
-                  .as("version of driver '%s'", driver.name())
-                  .isNotNull()
-                  .isNotEmpty();
-              assertThat(driver.driverClass())
-                  .as("driverClass of driver '%s'", driver.name())
-                  .isNotNull()
-                  .isNotEmpty();
-              assertThat(driver.urlTemplate())
-                  .as("urlTemplate of driver '%s'", driver.name())
-                  .isNotNull()
-                  .isNotEmpty();
-            });
+        .allSatisfy(driver -> {
+          assertThat(driver.name()).as("name of %s", driver).isNotNull().isNotEmpty();
+          assertThat(driver.mavenGroupId())
+              .as("mavenGroupId of driver '%s'", driver.name())
+              .isNotNull()
+              .isNotEmpty();
+          assertThat(driver.mavenArtifactId())
+              .as("mavenArtifactId of driver '%s'", driver.name())
+              .isNotNull()
+              .isNotEmpty();
+          assertThat(driver.version())
+              .as("version of driver '%s'", driver.name())
+              .isNotNull()
+              .isNotEmpty();
+          assertThat(driver.driverClass())
+              .as("driverClass of driver '%s'", driver.name())
+              .isNotNull()
+              .isNotEmpty();
+          assertThat(driver.urlTemplate())
+              .as("urlTemplate of driver '%s'", driver.name())
+              .isNotNull()
+              .isNotEmpty();
+        });
   }
 
   @Test
@@ -76,11 +75,10 @@ class DriverRegistryTest {
   @Test
   void everyUrlTemplate_startsWithJdbcPrefix() {
     assertThat(DriverRegistry.getDrivers())
-        .allSatisfy(
-            driver ->
-                assertThat(driver.urlTemplate())
-                    .as("urlTemplate of driver '%s'", driver.name())
-                    .startsWith("jdbc:"));
+        .allSatisfy(driver ->
+            assertThat(driver.urlTemplate())
+                .as("urlTemplate of driver '%s'", driver.name())
+                .startsWith("jdbc:"));
   }
 
   @Test

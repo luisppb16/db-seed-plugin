@@ -468,14 +468,13 @@ public class DriverLoader {
     LOADED_DRIVERS.clear();
     LOADED_CLASSLOADERS
         .values()
-        .forEach(
-            cl -> {
-              try {
-                cl.close();
-              } catch (final IOException e) {
-                log.warn("Could not close classloader", e);
-              }
-            });
+        .forEach(cl -> {
+          try {
+            cl.close();
+          } catch (final IOException e) {
+            log.warn("Could not close classloader", e);
+          }
+        });
     LOADED_CLASSLOADERS.clear();
   }
 

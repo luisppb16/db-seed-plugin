@@ -269,11 +269,9 @@ class AiBatchDetailLineTest {
     final List<JLabel> digits = numericSlotsOf(line);
     assertThat(digits).hasSize(6);
     assertThat(digits)
-        .allSatisfy(
-            slot ->
-                assertThat(slot.getPreferredSize().width)
-                    .isGreaterThan(
-                        slot.getFontMetrics(slot.getFont()).stringWidth(slot.getText())));
+        .allSatisfy(slot ->
+            assertThat(slot.getPreferredSize().width)
+                .isGreaterThan(slot.getFontMetrics(slot.getFont()).stringWidth(slot.getText())));
     assertThat(digits.stream().map(slot -> slot.getPreferredSize().width).distinct()).hasSize(1);
   }
 

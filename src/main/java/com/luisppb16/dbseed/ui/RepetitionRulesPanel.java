@@ -109,13 +109,12 @@ public class RepetitionRulesPanel extends JPanel {
 
     tables.stream()
         .sorted((t1, t2) -> t1.name().compareToIgnoreCase(t2.name()))
-        .forEach(
-            table -> {
-              listModel.addElement(table);
-              table.columns().stream()
-                  .sorted((c1, c2) -> c1.name().compareToIgnoreCase(c2.name()))
-                  .forEach(column -> listModel.addElement(new ColumnItem(column)));
-            });
+        .forEach(table -> {
+          listModel.addElement(table);
+          table.columns().stream()
+              .sorted((c1, c2) -> c1.name().compareToIgnoreCase(c2.name()))
+              .forEach(column -> listModel.addElement(new ColumnItem(column)));
+        });
 
     tableList = new JBList<>(listModel);
     tableList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -147,20 +146,19 @@ public class RepetitionRulesPanel extends JPanel {
           }
         });
 
-    tableList.addListSelectionListener(
-        e -> {
-          if (!e.getValueIsAdjusting()) {
-            final Object selectedValue = tableList.getSelectedValue();
-            if (selectedValue instanceof final Table table) {
-              rightPanelLayout.show(rightPanelContainer, table.name());
-            } else if (selectedValue instanceof ColumnItem(Column column)) {
-              final Table parentTable = findParentTable(tables, column);
-              if (parentTable != null) {
-                rightPanelLayout.show(rightPanelContainer, parentTable.name());
-              }
-            }
+    tableList.addListSelectionListener(e -> {
+      if (!e.getValueIsAdjusting()) {
+        final Object selectedValue = tableList.getSelectedValue();
+        if (selectedValue instanceof final Table table) {
+          rightPanelLayout.show(rightPanelContainer, table.name());
+        } else if (selectedValue instanceof ColumnItem(Column column)) {
+          final Table parentTable = findParentTable(tables, column);
+          if (parentTable != null) {
+            rightPanelLayout.show(rightPanelContainer, parentTable.name());
           }
-        });
+        }
+      }
+    });
 
     for (final Table table : tables) {
       rulesByTable.put(table.name(), new ArrayList<>());
@@ -214,19 +212,18 @@ public class RepetitionRulesPanel extends JPanel {
     panel.add(scrollPane, BorderLayout.CENTER);
 
     final JButton addRuleButton = new JButton("Add Repetition Rule", AllIcons.General.Add);
-    addRuleButton.addActionListener(
-        e -> {
-          // Remove the empty-state label on first rule addition
-          if (rulesContainer.getComponentCount() == 1
-              && rulesContainer.getComponent(0) instanceof JLabel) {
-            rulesContainer.remove(0);
-          }
-          final RuleUiModel ruleModel = new RuleUiModel();
-          rulesByTable.get(table.name()).add(ruleModel);
-          addRuleUi(rulesContainer, table, ruleModel);
-          rulesContainer.revalidate();
-          rulesContainer.repaint();
-        });
+    addRuleButton.addActionListener(e -> {
+      // Remove the empty-state label on first rule addition
+      if (rulesContainer.getComponentCount() == 1
+          && rulesContainer.getComponent(0) instanceof JLabel) {
+        rulesContainer.remove(0);
+      }
+      final RuleUiModel ruleModel = new RuleUiModel();
+      rulesByTable.get(table.name()).add(ruleModel);
+      addRuleUi(rulesContainer, table, ruleModel);
+      rulesContainer.revalidate();
+      rulesContainer.repaint();
+    });
 
     final JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
     topPanel.add(addRuleButton);
@@ -260,28 +257,27 @@ public class RepetitionRulesPanel extends JPanel {
 
     final JButton removeRuleButton = new JButton(AllIcons.Actions.Cancel);
     removeRuleButton.setToolTipText("Remove Rule");
-    removeRuleButton.addActionListener(
-        e -> {
-          rulesByTable.get(table.name()).remove(ruleModel);
-          container.remove(rulePanel);
-          // Also remove the trailing vertical strut
-          if (container.getComponentCount() > 0) {
-            final Component last = container.getComponent(container.getComponentCount() - 1);
-            if (last instanceof Box.Filler) {
-              container.remove(last);
-            }
-          }
-          // Restore empty-state label if no rules remain
-          if (rulesByTable.get(table.name()).isEmpty()) {
-            final JLabel emptyLabel = new JLabel("No repetition rules defined");
-            emptyLabel.setForeground(UIManager.getColor("Label.infoForeground"));
-            emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC));
-            emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
-            container.add(emptyLabel);
-          }
-          container.revalidate();
-          container.repaint();
-        });
+    removeRuleButton.addActionListener(e -> {
+      rulesByTable.get(table.name()).remove(ruleModel);
+      container.remove(rulePanel);
+      // Also remove the trailing vertical strut
+      if (container.getComponentCount() > 0) {
+        final Component last = container.getComponent(container.getComponentCount() - 1);
+        if (last instanceof Box.Filler) {
+          container.remove(last);
+        }
+      }
+      // Restore empty-state label if no rules remain
+      if (rulesByTable.get(table.name()).isEmpty()) {
+        final JLabel emptyLabel = new JLabel("No repetition rules defined");
+        emptyLabel.setForeground(UIManager.getColor("Label.infoForeground"));
+        emptyLabel.setFont(emptyLabel.getFont().deriveFont(Font.ITALIC));
+        emptyLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        container.add(emptyLabel);
+      }
+      container.revalidate();
+      container.repaint();
+    });
 
     final JPanel headerRight = new JPanel(new FlowLayout(FlowLayout.RIGHT));
     headerRight.add(removeRuleButton);
@@ -296,13 +292,12 @@ public class RepetitionRulesPanel extends JPanel {
     overridesListPanel.setLayout(new BoxLayout(overridesListPanel, BoxLayout.Y_AXIS));
 
     final JButton addOverrideButton = new JButton("Add Column Override");
-    addOverrideButton.addActionListener(
-        e -> {
-          ensureDialogWidthForOverride();
-          addOverrideRow(overridesListPanel, table, ruleModel);
-          overridesListPanel.revalidate();
-          overridesListPanel.repaint();
-        });
+    addOverrideButton.addActionListener(e -> {
+      ensureDialogWidthForOverride();
+      addOverrideRow(overridesListPanel, table, ruleModel);
+      overridesListPanel.revalidate();
+      overridesListPanel.repaint();
+    });
 
     rulePanel.add(overridesListPanel, BorderLayout.CENTER);
     rulePanel.add(addOverrideButton, BorderLayout.SOUTH);
@@ -377,34 +372,31 @@ public class RepetitionRulesPanel extends JPanel {
           updateRegexPresentation(regexButton, overrideModel.regexPattern);
         };
 
-    colCombo.addActionListener(
-        e -> {
-          overrideModel.columnName = (String) colCombo.getSelectedItem();
-          syncRowState.run();
-        });
-    strategyCombo.addActionListener(
-        e -> {
-          overrideModel.strategy = (String) strategyCombo.getSelectedItem();
-          syncRowState.run();
-        });
+    colCombo.addActionListener(e -> {
+      overrideModel.columnName = (String) colCombo.getSelectedItem();
+      syncRowState.run();
+    });
+    strategyCombo.addActionListener(e -> {
+      overrideModel.strategy = (String) strategyCombo.getSelectedItem();
+      syncRowState.run();
+    });
 
-    regexButton.addActionListener(
-        e -> {
-          final RegexPatternDialog dialog = new RegexPatternDialog(overrideModel.regexPattern);
-          if (!dialog.showAndGet()) {
-            return;
-          }
+    regexButton.addActionListener(e -> {
+      final RegexPatternDialog dialog = new RegexPatternDialog(overrideModel.regexPattern);
+      if (!dialog.showAndGet()) {
+        return;
+      }
 
-          final String trimmedPattern = dialog.getPattern().trim();
-          // doOKAction() has already refused invalid patterns, so the pattern is valid or empty.
-          if (trimmedPattern.isEmpty()) {
-            overrideModel.regexPattern = "";
-          } else {
-            overrideModel.regexPattern = trimmedPattern;
-          }
-          updateRegexPresentation(regexButton, overrideModel.regexPattern);
-          syncRowState.run();
-        });
+      final String trimmedPattern = dialog.getPattern().trim();
+      // doOKAction() has already refused invalid patterns, so the pattern is valid or empty.
+      if (trimmedPattern.isEmpty()) {
+        overrideModel.regexPattern = "";
+      } else {
+        overrideModel.regexPattern = trimmedPattern;
+      }
+      updateRegexPresentation(regexButton, overrideModel.regexPattern);
+      syncRowState.run();
+    });
 
     updateRegexPresentation(regexButton, overrideModel.regexPattern);
     syncRowState.run();
@@ -441,13 +433,12 @@ public class RepetitionRulesPanel extends JPanel {
               }
             });
 
-    removeBtn.addActionListener(
-        e -> {
-          ruleModel.overrides.remove(overrideModel);
-          container.remove(row);
-          container.revalidate();
-          container.repaint();
-        });
+    removeBtn.addActionListener(e -> {
+      ruleModel.overrides.remove(overrideModel);
+      container.remove(row);
+      container.revalidate();
+      container.repaint();
+    });
 
     row.add(colCombo);
     row.add(strategyCombo);

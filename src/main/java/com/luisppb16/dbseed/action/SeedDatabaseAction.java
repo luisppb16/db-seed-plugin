@@ -176,15 +176,14 @@ public final class SeedDatabaseAction extends AnAction implements DumbAware {
       final String summary =
           report.columns().stream()
               .filter(DataGenerator.AiColumnStat::hasDeficit)
-              .map(
-                  col ->
-                      "• %s.%s: %d/%d AI values%s"
-                          .formatted(
-                              col.tableName(),
-                              col.columnName(),
-                              col.appliedAiValues(),
-                              col.requestedRows(),
-                              Objects.nonNull(col.lastError()) ? " (" + col.lastError() + ")" : ""))
+              .map(col ->
+                  "• %s.%s: %d/%d AI values%s"
+                      .formatted(
+                          col.tableName(),
+                          col.columnName(),
+                          col.appliedAiValues(),
+                          col.requestedRows(),
+                          Objects.nonNull(col.lastError()) ? " (" + col.lastError() + ")" : ""))
               .collect(Collectors.joining("\n"));
       NotificationHelper.notifyWarning(
           project, "AI generation partially failed", "Rows filled with DataFaker:\n" + summary);

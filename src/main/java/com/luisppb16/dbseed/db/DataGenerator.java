@@ -154,10 +154,9 @@ public class DataGenerator {
     final long aiWork =
         Objects.nonNull(aiClient)
             ? orderedTables.stream()
-                .mapToLong(
-                    t ->
-                        (long) aiColumns.getOrDefault(t.name(), Set.of()).size()
-                            * params.rowsPerTable())
+                .mapToLong(t ->
+                    (long) aiColumns.getOrDefault(t.name(), Set.of()).size()
+                        * params.rowsPerTable())
                 .sum()
             : 0;
     // 1 unit per table for constraint validation
@@ -246,27 +245,25 @@ public class DataGenerator {
   private static List<Table> applyPkUuidOverrides(
       final List<Table> tables, final Map<String, Map<String, String>> pkUuidOverrides) {
     final Map<String, Table> overridden = new LinkedHashMap<>();
-    tables.forEach(
-        t -> {
-          final Map<String, String> pkOverridesForTable =
-              Objects.nonNull(pkUuidOverrides) ? pkUuidOverrides.get(t.name()) : null;
-          if (Objects.isNull(pkOverridesForTable) || pkOverridesForTable.isEmpty()) {
-            overridden.put(t.name(), t);
-            return;
-          }
-          final List<Column> newCols =
-              t.columns().stream()
-                  .map(
-                      c -> {
-                        final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
-                        return forceUuid && !c.uuid() ? c.withUuid(true) : c;
-                      })
-                  .toList();
-          overridden.put(
-              t.name(),
-              new Table(
-                  t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
-        });
+    tables.forEach(t -> {
+      final Map<String, String> pkOverridesForTable =
+          Objects.nonNull(pkUuidOverrides) ? pkUuidOverrides.get(t.name()) : null;
+      if (Objects.isNull(pkOverridesForTable) || pkOverridesForTable.isEmpty()) {
+        overridden.put(t.name(), t);
+        return;
+      }
+      final List<Column> newCols =
+          t.columns().stream()
+              .map(c -> {
+                final boolean forceUuid = pkOverridesForTable.containsKey(c.name());
+                return forceUuid && !c.uuid() ? c.withUuid(true) : c;
+              })
+              .toList();
+      overridden.put(
+          t.name(),
+          new Table(
+              t.name(), newCols, t.primaryKey(), t.foreignKeys(), t.checks(), t.uniqueKeys()));
+    });
     return List.copyOf(overridden.values());
   }
 
@@ -307,65 +304,64 @@ public class DataGenerator {
     final List<RowGenerator> generators = new ArrayList<>();
 
     IntStream.range(0, totalTables)
-        .forEach(
-            i -> {
-              final Table table = orderedTables.get(i);
-              tracker.setText(
-                  "Phase 1/4 (Rows): Table "
-                      .concat(String.valueOf(i + 1))
-                      .concat("/")
-                      .concat(String.valueOf(totalTables))
-                      .concat(" - ")
-                      .concat(table.name()));
-              tracker.setText2(
-                  table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
+        .forEach(i -> {
+          final Table table = orderedTables.get(i);
+          tracker.setText(
+              "Phase 1/4 (Rows): Table "
+                  .concat(String.valueOf(i + 1))
+                  .concat("/")
+                  .concat(String.valueOf(totalTables))
+                  .concat(" - ")
+                  .concat(table.name()));
+          tracker.setText2(
+              table.columns().size() + " columns, " + rowsPerTable + " rows to generate");
 
-              if (table.columns().isEmpty()) {
-                data.put(table, Collections.emptyList());
-                // count the rows-worth of work as done even for empty tables
-                tracker.advance(rowsPerTable);
-                tracker.getProgressListener().onTableCompleted(table.name(), i + 1, totalTables);
-                return;
-              }
+          if (table.columns().isEmpty()) {
+            data.put(table, Collections.emptyList());
+            // count the rows-worth of work as done even for empty tables
+            tracker.advance(rowsPerTable);
+            tracker.getProgressListener().onTableCompleted(table.name(), i + 1, totalTables);
+            return;
+          }
 
-              final RowGenerator rowGenerator =
-                  new RowGenerator(
-                      table,
-                      rowsPerTable,
-                      excludedColumns.getOrDefault(table.name(), Set.of()),
-                      Objects.nonNull(repetitionRules)
-                          ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
-                          : Collections.emptyList(),
-                      faker,
-                      usedUuids,
-                      dictionaryWords,
-                      useLatinDictionary,
-                      softDeleteCols,
-                      softDeleteUseSchemaDefault,
-                      softDeleteValue,
-                      numericScale,
-                      aiColumns.getOrDefault(table.name(), Set.of()),
-                      aiWordCount,
-                      aiClient,
-                      applicationContext,
-                      tracker);
+          final RowGenerator rowGenerator =
+              new RowGenerator(
+                  table,
+                  rowsPerTable,
+                  excludedColumns.getOrDefault(table.name(), Set.of()),
+                  Objects.nonNull(repetitionRules)
+                      ? repetitionRules.getOrDefault(table.name(), Collections.emptyList())
+                      : Collections.emptyList(),
+                  faker,
+                  usedUuids,
+                  dictionaryWords,
+                  useLatinDictionary,
+                  softDeleteCols,
+                  softDeleteUseSchemaDefault,
+                  softDeleteValue,
+                  numericScale,
+                  aiColumns.getOrDefault(table.name(), Set.of()),
+                  aiWordCount,
+                  aiClient,
+                  applicationContext,
+                  tracker);
 
-              final List<Row> rows = rowGenerator.generate();
-              data.put(table, rows);
-              tableConstraints.put(table.name(), rowGenerator.getConstraints());
-              generators.add(rowGenerator);
+          final List<Row> rows = rowGenerator.generate();
+          data.put(table, rows);
+          tableConstraints.put(table.name(), rowGenerator.getConstraints());
+          generators.add(rowGenerator);
 
-              // Advance by however many rows were actually generated (the RowGenerator
-              // already advanced per-row; reconcile any gap if fewer rows were produced).
-              final int gap = rowsPerTable - rows.size();
-              if (gap > 0) {
-                tracker.advance(gap);
-              }
+          // Advance by however many rows were actually generated (the RowGenerator
+          // already advanced per-row; reconcile any gap if fewer rows were produced).
+          final int gap = rowsPerTable - rows.size();
+          if (gap > 0) {
+            tracker.advance(gap);
+          }
 
-              final long elapsed = System.currentTimeMillis() - startTime;
-              tracker.setText2(rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
-              tracker.getProgressListener().onTableCompleted(table.name(), i + 1, totalTables);
-            });
+          final long elapsed = System.currentTimeMillis() - startTime;
+          tracker.setText2(rows.size() + " rows generated — " + (elapsed / 1000) + "s elapsed");
+          tracker.getProgressListener().onTableCompleted(table.name(), i + 1, totalTables);
+        });
 
     return generators;
   }
@@ -436,32 +432,31 @@ public class DataGenerator {
     final ExecutorService aiExecutor = newAiColumnExecutor(aiThreadCount);
     futures.addAll(
         aiTargets.stream()
-            .map(
-                entry ->
-                    CompletableFuture.runAsync(
-                        () -> {
-                          if (tracker.isCanceled()) return;
+            .map(entry ->
+                CompletableFuture.runAsync(
+                    () -> {
+                      if (tracker.isCanceled()) return;
 
-                          try {
-                            entry.getKey().generateAiValuesForColumn(entry.getValue());
-                          } catch (final Exception ex) {
-                            log.warn(
-                                "AI generation failed for column "
-                                    + entry.getValue().name()
-                                    + ": "
-                                    + ex.getMessage());
-                          } finally {
-                            final int completed = completedColumns.incrementAndGet();
-                            tracker
-                                .getProgressListener()
-                                .onAiColumnCompleted(
-                                    entry.getKey().getTable().name(),
-                                    entry.getValue().name(),
-                                    completed,
-                                    (int) totalAiColumns);
-                          }
-                        },
-                        aiExecutor))
+                      try {
+                        entry.getKey().generateAiValuesForColumn(entry.getValue());
+                      } catch (final Exception ex) {
+                        log.warn(
+                            "AI generation failed for column "
+                                + entry.getValue().name()
+                                + ": "
+                                + ex.getMessage());
+                      } finally {
+                        final int completed = completedColumns.incrementAndGet();
+                        tracker
+                            .getProgressListener()
+                            .onAiColumnCompleted(
+                                entry.getKey().getTable().name(),
+                                entry.getValue().name(),
+                                completed,
+                                (int) totalAiColumns);
+                      }
+                    },
+                    aiExecutor))
             .toList());
 
     try {
@@ -496,19 +491,17 @@ public class DataGenerator {
     final List<AiColumnStat> stats =
         generators.stream()
             .filter(RowGenerator::hasAiColumns)
-            .flatMap(
-                gen ->
-                    gen.getValidAiColumns().stream()
-                        .map(
-                            col ->
-                                new AiColumnStat(
-                                    gen.getTable().name(),
-                                    col.name(),
-                                    rowsPerTable,
-                                    gen.getAiAppliedCounts().getOrDefault(col.name(), 0),
-                                    gen.getAiColumnErrors().containsKey(col.name())
-                                        ? gen.getAiColumnErrors().get(col.name())
-                                        : warmUpError)))
+            .flatMap(gen ->
+                gen.getValidAiColumns().stream()
+                    .map(col ->
+                        new AiColumnStat(
+                            gen.getTable().name(),
+                            col.name(),
+                            rowsPerTable,
+                            gen.getAiAppliedCounts().getOrDefault(col.name(), 0),
+                            gen.getAiColumnErrors().containsKey(col.name())
+                                ? gen.getAiColumnErrors().get(col.name())
+                                : warmUpError)))
             .toList();
     return new AiGenerationReport(modelConfigured, warmUpError, stats);
   }
@@ -523,16 +516,15 @@ public class DataGenerator {
 
     final ValueGenerator vg = new ValueGenerator(faker, null, false, Set.of(), numericScale);
 
-    orderedTables.forEach(
-        table -> {
-          final Map<String, ConstraintParser.ParsedConstraint> constraints =
-              tableConstraints.getOrDefault(table.name(), Map.of());
-          final List<Row> rows = data.get(table);
-          if (Objects.nonNull(rows)) {
-            rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
-          }
-          tracker.advance(); // 1 unit per table
-        });
+    orderedTables.forEach(table -> {
+      final Map<String, ConstraintParser.ParsedConstraint> constraints =
+          tableConstraints.getOrDefault(table.name(), Map.of());
+      final List<Row> rows = data.get(table);
+      if (Objects.nonNull(rows)) {
+        rows.forEach(row -> validateRowNumericConstraints(table, row, constraints, vg));
+      }
+      tracker.advance(); // 1 unit per table
+    });
   }
 
   private static void validateRowNumericConstraints(
@@ -543,31 +535,30 @@ public class DataGenerator {
 
     table
         .columns()
-        .forEach(
-            col -> {
-              final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
-              Object val = row.values().get(col.name());
-              if (ValueGenerator.isNumericJdbc(col.jdbcType())
-                  && Objects.nonNull(pc)
-                  && (Objects.nonNull(pc.min()) || Objects.nonNull(pc.max()))) {
-                if (Objects.nonNull(val)
-                    && Objects.nonNull(pc.allowedValues())
-                    && !pc.allowedValues().isEmpty()
-                    && pc.allowedValues().contains(String.valueOf(val))) {
-                  return;
-                }
-                int attempts = 0;
-                while (ValueGenerator.isNumericOutsideBounds(val, pc)
-                    && attempts < MAX_GENERATE_ATTEMPTS) {
-                  val = vg.generateNumericWithinBounds(col, pc);
-                  attempts++;
-                }
-                if (ValueGenerator.isNumericOutsideBounds(val, pc)) {
-                  val = vg.clampToNearestBound(val, pc);
-                }
-                row.values().put(col.name(), val);
-              }
-            });
+        .forEach(col -> {
+          final ConstraintParser.ParsedConstraint pc = constraints.get(col.name());
+          Object val = row.values().get(col.name());
+          if (ValueGenerator.isNumericJdbc(col.jdbcType())
+              && Objects.nonNull(pc)
+              && (Objects.nonNull(pc.min()) || Objects.nonNull(pc.max()))) {
+            if (Objects.nonNull(val)
+                && Objects.nonNull(pc.allowedValues())
+                && !pc.allowedValues().isEmpty()
+                && pc.allowedValues().contains(String.valueOf(val))) {
+              return;
+            }
+            int attempts = 0;
+            while (ValueGenerator.isNumericOutsideBounds(val, pc)
+                && attempts < MAX_GENERATE_ATTEMPTS) {
+              val = vg.generateNumericWithinBounds(col, pc);
+              attempts++;
+            }
+            if (ValueGenerator.isNumericOutsideBounds(val, pc)) {
+              val = vg.clampToNearestBound(val, pc);
+            }
+            row.values().put(col.name(), val);
+          }
+        });
   }
 
   public record GenerationParameters(

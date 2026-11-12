@@ -157,19 +157,18 @@ class OpenAiCompatibleClientHttpTest {
 
   /** Serves raw SSE lines verbatim, for heartbeat comments and out-of-contract frames. */
   private static void respondWithRawSse(final String... frames) {
-    HANDLER.set(
-        exchange -> {
-          capture(exchange);
-          exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
-          exchange.sendResponseHeaders(200, 0);
-          try (OutputStream os = exchange.getResponseBody()) {
-            for (final String frame : frames) {
-              os.write((frame + "\n\n").getBytes(StandardCharsets.UTF_8));
-              os.flush();
-            }
-          }
-          exchange.close();
-        });
+    HANDLER.set(exchange -> {
+      capture(exchange);
+      exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+      exchange.sendResponseHeaders(200, 0);
+      try (OutputStream os = exchange.getResponseBody()) {
+        for (final String frame : frames) {
+          os.write((frame + "\n\n").getBytes(StandardCharsets.UTF_8));
+          os.flush();
+        }
+      }
+      exchange.close();
+    });
   }
 
   private static JsonObject lastRequestBody() {
@@ -550,34 +549,31 @@ class OpenAiCompatibleClientHttpTest {
 
     @Test
     void stall_midStream_watchdogAborts_withStalledMessage() {
-      HANDLER.set(
-          exchange -> {
-            try {
-              capture(exchange);
-              exchange.sendResponseHeaders(200, 0);
-              final OutputStream os = exchange.getResponseBody();
-              os.write(
-                  (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n")
-                      .getBytes(StandardCharsets.UTF_8));
-              os.flush();
-              // Stall: keep the exchange open, never send another token, never close.
-              Thread.sleep(4000);
-            } catch (final IOException | InterruptedException ignored) {
-              // The client aborted or the test finished; nothing to recover.
-            }
-          });
+      HANDLER.set(exchange -> {
+        try {
+          capture(exchange);
+          exchange.sendResponseHeaders(200, 0);
+          final OutputStream os = exchange.getResponseBody();
+          os.write(
+              (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n").getBytes(StandardCharsets.UTF_8));
+          os.flush();
+          // Stall: keep the exchange open, never send another token, never close.
+          Thread.sleep(4000);
+        } catch (final IOException | InterruptedException ignored) {
+          // The client aborted or the test finished; nothing to recover.
+        }
+      });
 
-      assertThatThrownBy(
-              () ->
-                  new OpenAiCompatibleClient(
-                          AiProvider.UNSLOTH_STUDIO,
-                          baseUrl,
-                          MODEL_NAME,
-                          API_KEY,
-                          REQUEST_TIMEOUT_SECONDS,
-                          500L)
-                      .generateBatchValues("tienda online", "users", "city", "varchar", 1, 2)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              new OpenAiCompatibleClient(
+                      AiProvider.UNSLOTH_STUDIO,
+                      baseUrl,
+                      MODEL_NAME,
+                      API_KEY,
+                      REQUEST_TIMEOUT_SECONDS,
+                      500L)
+                  .generateBatchValues("tienda online", "users", "city", "varchar", 1, 2)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
@@ -586,32 +582,28 @@ class OpenAiCompatibleClientHttpTest {
 
     @Test
     void reasoningFramesWithoutContent_keepTheWatchdogAlive() throws Exception {
-      HANDLER.set(
-          exchange -> {
-            try {
-              capture(exchange);
-              exchange.sendResponseHeaders(200, 0);
-              final OutputStream os = exchange.getResponseBody();
-              // Reasoning deltas carry no value, but each arrives well inside the 2s window while
-              // the whole reasoning phase outlasts it: the watchdog must not abort the stream.
-              for (int i = 0; i < 4; i++) {
-                os.write(
-                    ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"step "
-                            + i
-                            + "\"}}]}\n\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                os.flush();
-                Thread.sleep(700);
-              }
-              os.write(
-                  (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n")
-                      .getBytes(StandardCharsets.UTF_8));
-              os.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
-              os.flush();
-            } catch (final IOException | InterruptedException ignored) {
-              // The client aborted or the test finished; nothing to recover.
-            }
-          });
+      HANDLER.set(exchange -> {
+        try {
+          capture(exchange);
+          exchange.sendResponseHeaders(200, 0);
+          final OutputStream os = exchange.getResponseBody();
+          // Reasoning deltas carry no value, but each arrives well inside the 2s window while
+          // the whole reasoning phase outlasts it: the watchdog must not abort the stream.
+          for (int i = 0; i < 4; i++) {
+            os.write(
+                ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"step " + i + "\"}}]}\n\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            Thread.sleep(700);
+          }
+          os.write(
+              (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n").getBytes(StandardCharsets.UTF_8));
+          os.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+          os.flush();
+        } catch (final IOException | InterruptedException ignored) {
+          // The client aborted or the test finished; nothing to recover.
+        }
+      });
 
       final List<String> values =
           new OpenAiCompatibleClient(
@@ -629,22 +621,20 @@ class OpenAiCompatibleClientHttpTest {
 
     @Test
     void cancel_midStream_cancellationException() throws Exception {
-      HANDLER.set(
-          exchange -> {
-            try {
-              capture(exchange);
-              exchange.sendResponseHeaders(200, 0);
-              final OutputStream os = exchange.getResponseBody();
-              os.write(
-                  (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n")
-                      .getBytes(StandardCharsets.UTF_8));
-              os.flush();
-              // Stall with the exchange open so the test can cancel mid-stream.
-              Thread.sleep(2000);
-            } catch (final IOException | InterruptedException ignored) {
-              // The client aborted or the test finished; nothing to recover.
-            }
-          });
+      HANDLER.set(exchange -> {
+        try {
+          capture(exchange);
+          exchange.sendResponseHeaders(200, 0);
+          final OutputStream os = exchange.getResponseBody();
+          os.write(
+              (deltaFrame("{\"values\":[\"Madrid\"]}") + "\n\n").getBytes(StandardCharsets.UTF_8));
+          os.flush();
+          // Stall with the exchange open so the test can cancel mid-stream.
+          Thread.sleep(2000);
+        } catch (final IOException | InterruptedException ignored) {
+          // The client aborted or the test finished; nothing to recover.
+        }
+      });
 
       final AtomicInteger addedCalls = new AtomicInteger();
       final CompletableFuture<List<String>> future =

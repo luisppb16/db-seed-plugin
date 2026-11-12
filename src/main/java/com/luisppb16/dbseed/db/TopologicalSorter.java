@@ -85,15 +85,13 @@ public class TopologicalSorter {
     Map<String, Set<String>> graph = new LinkedHashMap<>();
     tables.forEach(t -> graph.put(t.name(), new LinkedHashSet<>()));
 
-    tables.forEach(
-        t ->
-            t.foreignKeys()
-                .forEach(
-                    fk -> {
-                      if (graph.containsKey(fk.pkTable())) {
-                        graph.get(fk.pkTable()).add(t.name());
-                      }
-                    }));
+    tables.forEach(t ->
+        t.foreignKeys()
+            .forEach(fk -> {
+              if (graph.containsKey(fk.pkTable())) {
+                graph.get(fk.pkTable()).add(t.name());
+              }
+            }));
 
     Tarjan tarjan = new Tarjan(graph);
     List<Set<String>> sccs = tarjan.run();
@@ -102,17 +100,15 @@ public class TopologicalSorter {
     IntStream.range(0, sccs.size()).forEach(i -> sccs.get(i).forEach(n -> idx.put(n, i)));
 
     Map<Integer, Set<Integer>> sccGraph = new HashMap<>();
-    graph.forEach(
-        (fromNode, targets) -> {
-          int from = idx.get(fromNode);
-          targets.forEach(
-              toNode -> {
-                int to = idx.get(toNode);
-                if (from != to) {
-                  sccGraph.computeIfAbsent(from, k -> new HashSet<>()).add(to);
-                }
-              });
-        });
+    graph.forEach((fromNode, targets) -> {
+      int from = idx.get(fromNode);
+      targets.forEach(toNode -> {
+        int to = idx.get(toNode);
+        if (from != to) {
+          sccGraph.computeIfAbsent(from, k -> new HashSet<>()).add(to);
+        }
+      });
+    });
 
     Map<Integer, Integer> inDegree = new HashMap<>();
     IntStream.range(0, sccs.size()).forEach(i -> inDegree.put(i, 0));
@@ -130,23 +126,21 @@ public class TopologicalSorter {
       orderScc.add(scc);
       sccGraph
           .getOrDefault(scc, Collections.emptySet())
-          .forEach(
-              v -> {
-                int deg = inDegree.merge(v, -1, Integer::sum);
-                if (deg == 0) queue.add(v);
-              });
+          .forEach(v -> {
+            int deg = inDegree.merge(v, -1, Integer::sum);
+            if (deg == 0) queue.add(v);
+          });
     }
 
     List<String> ordered = orderScc.stream().flatMap(id -> sccs.get(id).stream().sorted()).toList();
 
     List<Set<String>> cycles =
         sccs.stream()
-            .filter(
-                g ->
-                    g.size() > 1
-                        || graph
-                            .getOrDefault(g.iterator().next(), Collections.emptySet())
-                            .contains(g.iterator().next()))
+            .filter(g ->
+                g.size() > 1
+                    || graph
+                        .getOrDefault(g.iterator().next(), Collections.emptySet())
+                        .contains(g.iterator().next()))
             .map(Collections::unmodifiableSet)
             .toList();
 
@@ -157,21 +151,18 @@ public class TopologicalSorter {
       final SortResult sort, final Map<String, Table> tableMap) {
 
     return sort.cycles().stream()
-        .anyMatch(
-            cycle ->
-                cycle.stream()
-                    .map(tableMap::get)
-                    .filter(Objects::nonNull)
-                    .anyMatch(
-                        table ->
-                            table.foreignKeys().stream()
-                                .filter(fk -> cycle.contains(fk.pkTable()))
-                                .anyMatch(
-                                    fk ->
-                                        fk.columnMapping().keySet().stream()
-                                            .map(table::column)
-                                            .filter(Objects::nonNull)
-                                            .anyMatch(c -> !c.nullable()))));
+        .anyMatch(cycle ->
+            cycle.stream()
+                .map(tableMap::get)
+                .filter(Objects::nonNull)
+                .anyMatch(table ->
+                    table.foreignKeys().stream()
+                        .filter(fk -> cycle.contains(fk.pkTable()))
+                        .anyMatch(fk ->
+                            fk.columnMapping().keySet().stream()
+                                .map(table::column)
+                                .filter(Objects::nonNull)
+                                .anyMatch(c -> !c.nullable()))));
   }
 
   public record SortResult(List<String> ordered, List<Set<String>> cycles) {}
@@ -192,10 +183,9 @@ public class TopologicalSorter {
     List<Set<String>> run() {
       graph
           .keySet()
-          .forEach(
-              v -> {
-                if (!indexMap.containsKey(v)) strongConnectIterative(v);
-              });
+          .forEach(v -> {
+            if (!indexMap.containsKey(v)) strongConnectIterative(v);
+          });
       return result;
     }
 

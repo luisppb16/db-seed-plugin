@@ -247,11 +247,10 @@ class OllamaClientHttpTest {
     void emptyResponse_failsWithAiClientException() {
       respondWith(200, "{\"response\":\"\"}");
 
-      assertThatThrownBy(
-              () ->
-                  newClient()
-                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              newClient()
+                  .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
@@ -262,11 +261,10 @@ class OllamaClientHttpTest {
     void onlyPreambleResponse_errorIncludesModelOutputSnippet() {
       respondWith(200, "{\"response\":\"Aquí están los valores:\"}");
 
-      assertThatThrownBy(
-              () ->
-                  newClient()
-                      .generateBatchValues("online store", "users", "tags", "text[]", 1, 3)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              newClient()
+                  .generateBatchValues("online store", "users", "tags", "text[]", 1, 3)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
@@ -278,11 +276,10 @@ class OllamaClientHttpTest {
     void serverError_failsWithAiClientException() {
       respondWith(500, "{\"error\":\"model not found\"}");
 
-      assertThatThrownBy(
-              () ->
-                  newClient()
-                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              newClient()
+                  .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage("Ollama returned status code: 500 — model not found");
@@ -292,11 +289,10 @@ class OllamaClientHttpTest {
     void modelNotFound_includesServerErrorMessage() {
       respondWith(404, "{\"error\":\"model \\\"test-model\\\" not found, try pulling it first\"}");
 
-      assertThatThrownBy(
-              () ->
-                  newClient()
-                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              newClient()
+                  .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
@@ -399,11 +395,10 @@ class OllamaClientHttpTest {
       respondWithNdjson(
           THINK_OPEN + "The user wants twelve city names but the token budget ran out");
 
-      assertThatThrownBy(
-              () ->
-                  newClient()
-                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              newClient()
+                  .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
@@ -416,13 +411,12 @@ class OllamaClientHttpTest {
     void requestBody_containsModelAndEnablesStreaming() throws Exception {
       final AtomicReference<String> capturedPath = new AtomicReference<>();
       final AtomicReference<String> capturedBody = new AtomicReference<>();
-      HANDLER.set(
-          exchange -> {
-            capturedPath.set(exchange.getRequestURI().getPath());
-            capturedBody.set(
-                new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            respondNdjson(exchange, "valor1\n");
-          });
+      HANDLER.set(exchange -> {
+        capturedPath.set(exchange.getRequestURI().getPath());
+        capturedBody.set(
+            new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+        respondNdjson(exchange, "valor1\n");
+      });
 
       newClient()
           .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
@@ -527,22 +521,21 @@ class OllamaClientHttpTest {
     @Test
     void separateThinkingField_ignored() throws Exception {
       // Ollama may split reasoning into its own `thinking` field: it is never a seed value.
-      HANDLER.set(
-          exchange -> {
-            exchange.getRequestBody().readAllBytes();
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, 0);
-            try (OutputStream os = exchange.getResponseBody()) {
-              os.write(
-                  ("{\"thinking\":\"The user wants three city names.\",\"response\":\"\"}\n"
-                          + "{\"response\":\"{\\\"values\\\": [\\\"valor1\\\"]}\","
-                          + "\"done\":false}\n"
-                          + "{\"response\":\"\",\"done\":true}\n")
-                      .getBytes(StandardCharsets.UTF_8));
-              os.flush();
-            }
-            exchange.close();
-          });
+      HANDLER.set(exchange -> {
+        exchange.getRequestBody().readAllBytes();
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, 0);
+        try (OutputStream os = exchange.getResponseBody()) {
+          os.write(
+              ("{\"thinking\":\"The user wants three city names.\",\"response\":\"\"}\n"
+                      + "{\"response\":\"{\\\"values\\\": [\\\"valor1\\\"]}\","
+                      + "\"done\":false}\n"
+                      + "{\"response\":\"\",\"done\":true}\n")
+                  .getBytes(StandardCharsets.UTF_8));
+          os.flush();
+        }
+        exchange.close();
+      });
 
       final List<String> values =
           newClient()
@@ -682,26 +675,24 @@ class OllamaClientHttpTest {
 
     @Test
     void stall_midStream_watchdogAborts_withStalledMessage() {
-      HANDLER.set(
-          exchange -> {
-            try {
-              exchange.getRequestBody().readAllBytes();
-              exchange.sendResponseHeaders(200, 0);
-              final OutputStream os = exchange.getResponseBody();
-              os.write((chunkLine("valor1\n") + "\n").getBytes(StandardCharsets.UTF_8));
-              os.flush();
-              // Stall: keep the exchange open, never send another token, never close.
-              Thread.sleep(4000);
-            } catch (final IOException | InterruptedException ignored) {
-              // The client aborted or the test finished; nothing to recover.
-            }
-          });
+      HANDLER.set(exchange -> {
+        try {
+          exchange.getRequestBody().readAllBytes();
+          exchange.sendResponseHeaders(200, 0);
+          final OutputStream os = exchange.getResponseBody();
+          os.write((chunkLine("valor1\n") + "\n").getBytes(StandardCharsets.UTF_8));
+          os.flush();
+          // Stall: keep the exchange open, never send another token, never close.
+          Thread.sleep(4000);
+        } catch (final IOException | InterruptedException ignored) {
+          // The client aborted or the test finished; nothing to recover.
+        }
+      });
 
-      assertThatThrownBy(
-              () ->
-                  new OllamaClient(baseUrl, MODEL_NAME, REQUEST_TIMEOUT_SECONDS, 500L)
-                      .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
-                      .get(AWAIT_SECONDS, TimeUnit.SECONDS))
+      assertThatThrownBy(() ->
+              new OllamaClient(baseUrl, MODEL_NAME, REQUEST_TIMEOUT_SECONDS, 500L)
+                  .generateBatchValues("online store", "users", "city", "varchar", 1, 3)
+                  .get(AWAIT_SECONDS, TimeUnit.SECONDS))
           .isInstanceOf(ExecutionException.class)
           .hasCauseInstanceOf(AiClientException.class)
           .hasRootCauseMessage(
@@ -710,29 +701,28 @@ class OllamaClientHttpTest {
 
     @Test
     void thinkingFramesWithoutResponse_keepTheWatchdogAlive() throws Exception {
-      HANDLER.set(
-          exchange -> {
-            try {
-              exchange.getRequestBody().readAllBytes();
-              exchange.sendResponseHeaders(200, 0);
-              final OutputStream os = exchange.getResponseBody();
-              // Reasoning-only frames arrive inside the 2s window while the phase as a whole
-              // outlasts it: the watchdog must not abort the stream mid-thought.
-              for (int i = 0; i < 4; i++) {
-                os.write(
-                    ("{\"thinking\":\"step " + i + "\",\"response\":\"\"}\n")
-                        .getBytes(StandardCharsets.UTF_8));
-                os.flush();
-                Thread.sleep(700);
-              }
-              os.write(
-                  (chunkLine("{\"values\":[\"Madrid\"]}") + "\n").getBytes(StandardCharsets.UTF_8));
-              os.write("{\"response\":\"\",\"done\":true}\n".getBytes(StandardCharsets.UTF_8));
-              os.flush();
-            } catch (final IOException | InterruptedException ignored) {
-              // The client aborted or the test finished; nothing to recover.
-            }
-          });
+      HANDLER.set(exchange -> {
+        try {
+          exchange.getRequestBody().readAllBytes();
+          exchange.sendResponseHeaders(200, 0);
+          final OutputStream os = exchange.getResponseBody();
+          // Reasoning-only frames arrive inside the 2s window while the phase as a whole
+          // outlasts it: the watchdog must not abort the stream mid-thought.
+          for (int i = 0; i < 4; i++) {
+            os.write(
+                ("{\"thinking\":\"step " + i + "\",\"response\":\"\"}\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            Thread.sleep(700);
+          }
+          os.write(
+              (chunkLine("{\"values\":[\"Madrid\"]}") + "\n").getBytes(StandardCharsets.UTF_8));
+          os.write("{\"response\":\"\",\"done\":true}\n".getBytes(StandardCharsets.UTF_8));
+          os.flush();
+        } catch (final IOException | InterruptedException ignored) {
+          // The client aborted or the test finished; nothing to recover.
+        }
+      });
 
       final List<String> values =
           new OllamaClient(baseUrl, MODEL_NAME, REQUEST_TIMEOUT_SECONDS, 2000L)
@@ -744,20 +734,19 @@ class OllamaClientHttpTest {
 
     @Test
     void cancel_midStream_cancellationException() throws Exception {
-      HANDLER.set(
-          exchange -> {
-            try {
-              exchange.getRequestBody().readAllBytes();
-              exchange.sendResponseHeaders(200, 0);
-              final OutputStream os = exchange.getResponseBody();
-              os.write((chunkLine("valor1\n") + "\n").getBytes(StandardCharsets.UTF_8));
-              os.flush();
-              // Stall with the exchange open so the test can cancel mid-stream.
-              Thread.sleep(2000);
-            } catch (final IOException | InterruptedException ignored) {
-              // The client aborted or the test finished; nothing to recover.
-            }
-          });
+      HANDLER.set(exchange -> {
+        try {
+          exchange.getRequestBody().readAllBytes();
+          exchange.sendResponseHeaders(200, 0);
+          final OutputStream os = exchange.getResponseBody();
+          os.write((chunkLine("valor1\n") + "\n").getBytes(StandardCharsets.UTF_8));
+          os.flush();
+          // Stall with the exchange open so the test can cancel mid-stream.
+          Thread.sleep(2000);
+        } catch (final IOException | InterruptedException ignored) {
+          // The client aborted or the test finished; nothing to recover.
+        }
+      });
 
       final AtomicInteger addedCalls = new AtomicInteger();
       final CompletableFuture<List<String>> future =

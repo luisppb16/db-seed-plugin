@@ -166,11 +166,10 @@ public final class RowGenerator {
     final List<CheckExpression> checkExpressions =
         table.checks().stream()
             .filter(c -> Objects.nonNull(c) && !c.isBlank())
-            .map(
-                c -> {
-                  final String noParens = SchemaIntrospector.stripParensOutsideStrings(c);
-                  return new CheckExpression(c, noParens, noParens.toLowerCase(Locale.ROOT));
-                })
+            .map(c -> {
+              final String noParens = SchemaIntrospector.stripParensOutsideStrings(c);
+              return new CheckExpression(c, noParens, noParens.toLowerCase(Locale.ROOT));
+            })
             .toList();
 
     this.constraints =
@@ -274,75 +273,69 @@ public final class RowGenerator {
   }
 
   private void processRepetitionRules() {
-    repetitionRules.forEach(
-        rule -> {
-          final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
+    repetitionRules.forEach(rule -> {
+      final Map<String, Object> baseValues = new HashMap<>(rule.fixedValues());
 
-          baseValues.putAll(buildRegexBasedFixedValues(rule.regexPatterns()));
+      baseValues.putAll(buildRegexBasedFixedValues(rule.regexPatterns()));
 
-          // Normalize column names to match the actual table column case
-          final Map<String, Object> normalized = new HashMap<>(baseValues.size());
-          baseValues.forEach(
-              (key, value) -> {
-                final Column col = table.column(key);
-                normalized.put(col != null ? col.name() : key, value);
-              });
-          baseValues.clear();
-          baseValues.putAll(normalized);
+      // Normalize column names to match the actual table column case
+      final Map<String, Object> normalized = new HashMap<>(baseValues.size());
+      baseValues.forEach((key, value) -> {
+        final Column col = table.column(key);
+        normalized.put(col != null ? col.name() : key, value);
+      });
+      baseValues.clear();
+      baseValues.putAll(normalized);
 
-          // Skip stale repetition-rule keys: an entry whose column no longer resolves to one of
-          // the table's columns must be ignored, not crash parseValue with a null column.
-          baseValues.entrySet().removeIf(entry -> Objects.isNull(table.column(entry.getKey())));
+      // Skip stale repetition-rule keys: an entry whose column no longer resolves to one of
+      // the table's columns must be ignored, not crash parseValue with a null column.
+      baseValues.entrySet().removeIf(entry -> Objects.isNull(table.column(entry.getKey())));
 
-          baseValues
-              .entrySet()
-              .forEach(
-                  entry -> {
-                    if (entry.getValue() instanceof String strValue) {
-                      final Column col = table.column(entry.getKey());
-                      entry.setValue(parseValue(strValue, col));
-                    }
-                  });
+      baseValues
+          .entrySet()
+          .forEach(entry -> {
+            if (entry.getValue() instanceof String strValue) {
+              final Column col = table.column(entry.getKey());
+              entry.setValue(parseValue(strValue, col));
+            }
+          });
 
-          // Remove null values for NOT NULL columns so they get generated later
-          baseValues
-              .entrySet()
-              .removeIf(
-                  entry -> {
-                    if (entry.getValue() == null) {
-                      final Column col = table.column(entry.getKey());
-                      return col != null && !col.nullable();
-                    }
-                    return false;
-                  });
+      // Remove null values for NOT NULL columns so they get generated later
+      baseValues
+          .entrySet()
+          .removeIf(entry -> {
+            if (entry.getValue() == null) {
+              final Column col = table.column(entry.getKey());
+              return col != null && !col.nullable();
+            }
+            return false;
+          });
 
-          rule.randomConstantColumns()
-              .forEach(
-                  colName -> {
-                    final Column col = table.column(colName);
-                    if (col == null) return;
-                    final Object val =
-                        valueGenerator.generateValue(
-                            col, constraints.get(col.name()), generatedCount.get());
-                    baseValues.put(col.name(), val);
-                  });
+      rule.randomConstantColumns()
+          .forEach(colName -> {
+            final Column col = table.column(colName);
+            if (col == null) return;
+            final Object val =
+                valueGenerator.generateValue(
+                    col, constraints.get(col.name()), generatedCount.get());
+            baseValues.put(col.name(), val);
+          });
 
-          IntStream.range(0, rule.count())
-              .forEach(
-                  i -> {
-                    int attempts = 0;
-                    while (attempts < MAX_GENERATE_ATTEMPTS) {
-                      final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
-                      if (generatedRow.isPresent()) {
-                        rows.add(generatedRow.get());
-                        generatedCount.incrementAndGet();
-                        tracker.advance();
-                        break;
-                      }
-                      attempts++;
-                    }
-                  });
-        });
+      IntStream.range(0, rule.count())
+          .forEach(i -> {
+            int attempts = 0;
+            while (attempts < MAX_GENERATE_ATTEMPTS) {
+              final Optional<Row> generatedRow = generateAndValidateRowWithBase(baseValues);
+              if (generatedRow.isPresent()) {
+                rows.add(generatedRow.get());
+                generatedCount.incrementAndGet();
+                tracker.advance();
+                break;
+              }
+              attempts++;
+            }
+          });
+    });
   }
 
   private Map<String, Object> buildRegexBasedFixedValues(final Map<String, String> regexPatterns) {
@@ -351,23 +344,22 @@ public final class RowGenerator {
     }
 
     final Map<String, Object> generatedValues = new HashMap<>();
-    regexPatterns.forEach(
-        (columnName, regexPattern) -> {
-          final Column column = table.column(columnName);
-          if (Objects.isNull(column)
-              || Objects.isNull(regexPattern)
-              || regexPattern.isBlank()
-              || !supportsRegexGeneration(column)) {
-            return;
-          }
+    regexPatterns.forEach((columnName, regexPattern) -> {
+      final Column column = table.column(columnName);
+      if (Objects.isNull(column)
+          || Objects.isNull(regexPattern)
+          || regexPattern.isBlank()
+          || !supportsRegexGeneration(column)) {
+        return;
+      }
 
-          final String generated =
-              valueGenerator.generateStringFromRegex(
-                  regexPattern, column.length() > 0 ? column.length() : null, column.jdbcType());
-          if (Objects.nonNull(generated)) {
-            generatedValues.put(columnName, generated);
-          }
-        });
+      final String generated =
+          valueGenerator.generateStringFromRegex(
+              regexPattern, column.length() > 0 ? column.length() : null, column.jdbcType());
+      if (Objects.nonNull(generated)) {
+        generatedValues.put(columnName, generated);
+      }
+    });
 
     return generatedValues;
   }
@@ -380,20 +372,17 @@ public final class RowGenerator {
     final long maxAttempts = (long) rowsPerTable * MAX_GENERATE_ATTEMPTS;
     LongStream.range(0, maxAttempts)
         .takeWhile(i -> generatedCount.get() < rowsPerTable)
-        .forEach(
-            i -> {
-              generateAndValidateRow()
-                  .ifPresent(
-                      row -> {
-                        rows.add(row);
-                        final int count = generatedCount.incrementAndGet();
-                        tracker.advance(); // 1 work unit per row generated
-                        if (count % 50 == 0) {
-                          tracker.setText2(
-                              "Row " + count + "/" + rowsPerTable + " for " + table.name());
-                        }
-                      });
-            });
+        .forEach(i -> {
+          generateAndValidateRow()
+              .ifPresent(row -> {
+                rows.add(row);
+                final int count = generatedCount.incrementAndGet();
+                tracker.advance(); // 1 work unit per row generated
+                if (count % 50 == 0) {
+                  tracker.setText2("Row " + count + "/" + rowsPerTable + " for " + table.name());
+                }
+              });
+        });
     if (generatedCount.get() < rowsPerTable) {
       log.warn(
           "Could only generate "
@@ -486,14 +475,13 @@ public final class RowGenerator {
   private void generateRemainingColumnValues(final Map<String, Object> values) {
     table
         .columns()
-        .forEach(
-            column -> {
-              if (!values.containsKey(column.name())) {
-                values.put(column.name(), generateColumnValue(column));
-              } else if (values.get(column.name()) == null && !column.nullable()) {
-                values.put(column.name(), generateColumnValue(column));
-              }
-            });
+        .forEach(column -> {
+          if (!values.containsKey(column.name())) {
+            values.put(column.name(), generateColumnValue(column));
+          } else if (values.get(column.name()) == null && !column.nullable()) {
+            values.put(column.name(), generateColumnValue(column));
+          }
+        });
   }
 
   private void generateAiValuesForColumnInternal(
@@ -514,71 +502,133 @@ public final class RowGenerator {
     final AtomicInteger batchesDone = new AtomicInteger(0);
 
     IntStream.range(0, totalBatches)
-        .forEach(
-            b -> {
+        .forEach(b -> {
+          if (tracker.isCanceled()) return;
+
+          // Improvement #3: relax dedup for non-UNIQUE columns — clear per batch
+          if (!columnUnique) {
+            seenAiValues.clear();
+          }
+
+          final int batchStart = b * AI_BATCH_SIZE;
+          final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
+          final int batchCount = batchEnd - batchStart;
+          final long batchStartNanos = System.nanoTime();
+
+          final long avgBatchMillis =
+              batchesDone.get() > 0 ? batchesTotalMillis.get() / batchesDone.get() : 0L;
+          tracker.setAiBatchProgress(
+              new AiBatchProgress(
+                  batchStart + 1,
+                  batchEnd,
+                  totalRows,
+                  AiBatchProgress.Stage.TIMING,
+                  0,
+                  0,
+                  ABSENT_SECONDS,
+                  lastBatchMillis.get() > 0 ? lastBatchMillis.get() / 1000 : ABSENT_SECONDS,
+                  (avgBatchMillis * (totalBatches - b)) / 1000,
+                  table.name(),
+                  colName));
+
+          // Improvement #2: over-request to absorb dedup losses
+          final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
+
+          // Live per-value progress: every sanitized, distinct value arriving from the stream
+          // advances the bar (capped at batchCount — over-requested surplus values must not
+          // push the bar past this batch's share). The end-of-batch reconcile below covers
+          // deficits filled with fallback data. The elapsed seconds of the current attempt are
+          // published alongside so the waiting segment is always present and never blinks.
+          final AtomicInteger advancedInBatch = new AtomicInteger(0);
+          final AtomicLong attemptStartNanos = new AtomicLong(batchStartNanos);
+          final Runnable onValueAdded =
+              () -> {
+                final int before =
+                    advancedInBatch.getAndUpdate(cur -> Math.min(cur + 1, batchCount));
+                if (before < batchCount) {
+                  tracker.advance(1);
+                  tracker.setAiBatchProgress(
+                      new AiBatchProgress(
+                          batchStart + 1,
+                          batchEnd,
+                          totalRows,
+                          AiBatchProgress.Stage.VALUES,
+                          advancedInBatch.get(),
+                          batchCount,
+                          elapsedSecondsSince(attemptStartNanos.get()),
+                          ABSENT_SECONDS,
+                          ABSENT_SECONDS,
+                          table.name(),
+                          colName));
+                }
+              };
+
+          final List<String> allValues = new ArrayList<>();
+          final AtomicInteger retries = new AtomicInteger(0);
+
+          try {
+            final List<String> batchValues =
+                AbstractAiClient.awaitCancellable(
+                    ollamaClient.generateBatchValues(
+                        applicationContext,
+                        table.name(),
+                        colName,
+                        sqlType,
+                        wordCount,
+                        requestCount,
+                        onValueAdded),
+                    tracker::isCanceled,
+                    waitMillis ->
+                        tracker.setAiBatchProgress(
+                            new AiBatchProgress(
+                                batchStart + 1,
+                                batchEnd,
+                                totalRows,
+                                AiBatchProgress.Stage.VALUES,
+                                advancedInBatch.get(),
+                                batchCount,
+                                waitMillis / 1000,
+                                ABSENT_SECONDS,
+                                ABSENT_SECONDS,
+                                table.name(),
+                                colName)));
+            batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
+          } catch (final CancellationException canceled) {
+            // User-requested cancellation must not surface as an AI failure; the remaining
+            // batches of this column are skipped by the isCanceled() guard at the top.
+            return;
+          } catch (final Exception ex) {
+            log.warn(
+                "Batch AI generation failed for "
+                    + table.name()
+                    + "."
+                    + colName
+                    + ": "
+                    + Errors.messageOf(ex));
+            aiColumnErrors.put(colName, Errors.messageOf(ex));
+            retries.incrementAndGet();
+          }
+
+          // Improvement #2: recycle existing values if deficit is small and column is not
+          // UNIQUE
+          final int deficit = batchCount - allValues.size();
+          if (deficit > 0
+              && deficit <= AI_RECYCLE_THRESHOLD
+              && !columnUnique
+              && !allValues.isEmpty()) {
+            IntStream.range(0, deficit)
+                .forEach(i -> allValues.add(allValues.get(i % allValues.size())));
+          } else {
+            // Full retry loop only when deficit is large or column requires uniqueness.
+            // On a streaming inactivity-stall, halve the requested count before retrying so
+            // the next request targets a smaller num_predict budget and is more likely to
+            // complete within the inactivity window.
+            int stallSplitFactor = 1;
+            while (allValues.size() < batchCount && retries.get() < AI_MAX_RETRIES) {
               if (tracker.isCanceled()) return;
 
-              // Improvement #3: relax dedup for non-UNIQUE columns — clear per batch
-              if (!columnUnique) {
-                seenAiValues.clear();
-              }
-
-              final int batchStart = b * AI_BATCH_SIZE;
-              final int batchEnd = Math.min(batchStart + AI_BATCH_SIZE, totalRows);
-              final int batchCount = batchEnd - batchStart;
-              final long batchStartNanos = System.nanoTime();
-
-              final long avgBatchMillis =
-                  batchesDone.get() > 0 ? batchesTotalMillis.get() / batchesDone.get() : 0L;
-              tracker.setAiBatchProgress(
-                  new AiBatchProgress(
-                      batchStart + 1,
-                      batchEnd,
-                      totalRows,
-                      AiBatchProgress.Stage.TIMING,
-                      0,
-                      0,
-                      ABSENT_SECONDS,
-                      lastBatchMillis.get() > 0 ? lastBatchMillis.get() / 1000 : ABSENT_SECONDS,
-                      (avgBatchMillis * (totalBatches - b)) / 1000,
-                      table.name(),
-                      colName));
-
-              // Improvement #2: over-request to absorb dedup losses
-              final int requestCount = (int) Math.ceil(batchCount * AI_OVER_REQUEST_FACTOR);
-
-              // Live per-value progress: every sanitized, distinct value arriving from the stream
-              // advances the bar (capped at batchCount — over-requested surplus values must not
-              // push the bar past this batch's share). The end-of-batch reconcile below covers
-              // deficits filled with fallback data. The elapsed seconds of the current attempt are
-              // published alongside so the waiting segment is always present and never blinks.
-              final AtomicInteger advancedInBatch = new AtomicInteger(0);
-              final AtomicLong attemptStartNanos = new AtomicLong(batchStartNanos);
-              final Runnable onValueAdded =
-                  () -> {
-                    final int before =
-                        advancedInBatch.getAndUpdate(cur -> Math.min(cur + 1, batchCount));
-                    if (before < batchCount) {
-                      tracker.advance(1);
-                      tracker.setAiBatchProgress(
-                          new AiBatchProgress(
-                              batchStart + 1,
-                              batchEnd,
-                              totalRows,
-                              AiBatchProgress.Stage.VALUES,
-                              advancedInBatch.get(),
-                              batchCount,
-                              elapsedSecondsSince(attemptStartNanos.get()),
-                              ABSENT_SECONDS,
-                              ABSENT_SECONDS,
-                              table.name(),
-                              colName));
-                    }
-                  };
-
-              final List<String> allValues = new ArrayList<>();
-              final AtomicInteger retries = new AtomicInteger(0);
-
+              final int remaining = Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
+              attemptStartNanos.set(System.nanoTime());
               try {
                 final List<String> batchValues =
                     AbstractAiClient.awaitCancellable(
@@ -588,7 +638,7 @@ public final class RowGenerator {
                             colName,
                             sqlType,
                             wordCount,
-                            requestCount,
+                            remaining,
                             onValueAdded),
                         tracker::isCanceled,
                         waitMillis ->
@@ -597,22 +647,33 @@ public final class RowGenerator {
                                     batchStart + 1,
                                     batchEnd,
                                     totalRows,
-                                    AiBatchProgress.Stage.VALUES,
-                                    advancedInBatch.get(),
-                                    batchCount,
+                                    AiBatchProgress.Stage.RETRY,
+                                    retries.get(),
+                                    AI_MAX_RETRIES,
                                     waitMillis / 1000,
                                     ABSENT_SECONDS,
                                     ABSENT_SECONDS,
                                     table.name(),
                                     colName)));
-                batchValues.stream().filter(v -> seenAiValues.add(v)).forEach(allValues::add);
+
+                if (batchValues.isEmpty()) {
+                  retries.incrementAndGet();
+                  continue;
+                }
+                boolean addedAny =
+                    batchValues.stream()
+                        .filter(v -> seenAiValues.add(v))
+                        .peek(allValues::add)
+                        .findAny()
+                        .isPresent();
+                if (!addedAny) {
+                  retries.incrementAndGet();
+                }
               } catch (final CancellationException canceled) {
-                // User-requested cancellation must not surface as an AI failure; the remaining
-                // batches of this column are skipped by the isCanceled() guard at the top.
                 return;
               } catch (final Exception ex) {
                 log.warn(
-                    "Batch AI generation failed for "
+                    "Batch AI retry failed for "
                         + table.name()
                         + "."
                         + colName
@@ -620,114 +681,39 @@ public final class RowGenerator {
                         + Errors.messageOf(ex));
                 aiColumnErrors.put(colName, Errors.messageOf(ex));
                 retries.incrementAndGet();
-              }
-
-              // Improvement #2: recycle existing values if deficit is small and column is not
-              // UNIQUE
-              final int deficit = batchCount - allValues.size();
-              if (deficit > 0
-                  && deficit <= AI_RECYCLE_THRESHOLD
-                  && !columnUnique
-                  && !allValues.isEmpty()) {
-                IntStream.range(0, deficit)
-                    .forEach(i -> allValues.add(allValues.get(i % allValues.size())));
-              } else {
-                // Full retry loop only when deficit is large or column requires uniqueness.
-                // On a streaming inactivity-stall, halve the requested count before retrying so
-                // the next request targets a smaller num_predict budget and is more likely to
-                // complete within the inactivity window.
-                int stallSplitFactor = 1;
-                while (allValues.size() < batchCount && retries.get() < AI_MAX_RETRIES) {
-                  if (tracker.isCanceled()) return;
-
-                  final int remaining =
-                      Math.max(1, (batchCount - allValues.size()) / stallSplitFactor);
-                  attemptStartNanos.set(System.nanoTime());
-                  try {
-                    final List<String> batchValues =
-                        AbstractAiClient.awaitCancellable(
-                            ollamaClient.generateBatchValues(
-                                applicationContext,
-                                table.name(),
-                                colName,
-                                sqlType,
-                                wordCount,
-                                remaining,
-                                onValueAdded),
-                            tracker::isCanceled,
-                            waitMillis ->
-                                tracker.setAiBatchProgress(
-                                    new AiBatchProgress(
-                                        batchStart + 1,
-                                        batchEnd,
-                                        totalRows,
-                                        AiBatchProgress.Stage.RETRY,
-                                        retries.get(),
-                                        AI_MAX_RETRIES,
-                                        waitMillis / 1000,
-                                        ABSENT_SECONDS,
-                                        ABSENT_SECONDS,
-                                        table.name(),
-                                        colName)));
-
-                    if (batchValues.isEmpty()) {
-                      retries.incrementAndGet();
-                      continue;
-                    }
-                    boolean addedAny =
-                        batchValues.stream()
-                            .filter(v -> seenAiValues.add(v))
-                            .peek(allValues::add)
-                            .findAny()
-                            .isPresent();
-                    if (!addedAny) {
-                      retries.incrementAndGet();
-                    }
-                  } catch (final CancellationException canceled) {
-                    return;
-                  } catch (final Exception ex) {
-                    log.warn(
-                        "Batch AI retry failed for "
-                            + table.name()
-                            + "."
-                            + colName
-                            + ": "
-                            + Errors.messageOf(ex));
-                    aiColumnErrors.put(colName, Errors.messageOf(ex));
-                    retries.incrementAndGet();
-                    if (isStreamStall(ex)) {
-                      stallSplitFactor = Math.min(stallSplitFactor * 2, batchCount);
-                    }
-                  }
+                if (isStreamStall(ex)) {
+                  stallSplitFactor = Math.min(stallSplitFactor * 2, batchCount);
                 }
               }
+            }
+          }
 
-              if (allValues.size() < batchCount) {
-                log.warn(
-                    "AI generation only filled "
-                        + allValues.size()
-                        + "/"
-                        + batchCount
-                        + " values for column '"
-                        + table.name()
-                        + "."
-                        + colName
-                        + "', remaining rows will use random data");
-              }
+          if (allValues.size() < batchCount) {
+            log.warn(
+                "AI generation only filled "
+                    + allValues.size()
+                    + "/"
+                    + batchCount
+                    + " values for column '"
+                    + table.name()
+                    + "."
+                    + colName
+                    + "', remaining rows will use random data");
+          }
 
-              applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
+          applyAiValuesToRows(allValues, batchStart, batchCount, colName, col, isArray);
 
-              // Advance any remaining work units for values filled with fallback data so each
-              // batch always accounts for exactly batchCount units.
-              final int gap = batchCount - advancedInBatch.get();
-              if (gap > 0) {
-                tracker.advance(gap);
-              }
+          // Advance any remaining work units for values filled with fallback data so each
+          // batch always accounts for exactly batchCount units.
+          final int gap = batchCount - advancedInBatch.get();
+          if (gap > 0) {
+            tracker.advance(gap);
+          }
 
-              lastBatchMillis.set((System.nanoTime() - batchStartNanos) / 1_000_000L);
-              batchesTotalMillis.addAndGet(lastBatchMillis.get());
-              batchesDone.incrementAndGet();
-            });
+          lastBatchMillis.set((System.nanoTime() - batchStartNanos) / 1_000_000L);
+          batchesTotalMillis.addAndGet(lastBatchMillis.get());
+          batchesDone.incrementAndGet();
+        });
   }
 
   /**
@@ -748,33 +734,32 @@ public final class RowGenerator {
       final Column col,
       final boolean isArray) {
     IntStream.range(0, Math.min(allValues.size(), batchCount))
-        .forEach(
-            i -> {
-              final Row row = rows.get(batchStart + i);
-              if (row.explicitColumns().contains(colName)) {
-                return;
-              }
+        .forEach(i -> {
+          final Row row = rows.get(batchStart + i);
+          if (row.explicitColumns().contains(colName)) {
+            return;
+          }
 
-              final String val = allValues.get(i);
-              if (Objects.nonNull(val) && !val.isBlank()) {
-                String finalTrimmed = val.trim();
-                final Object finalValue;
+          final String val = allValues.get(i);
+          if (Objects.nonNull(val) && !val.isBlank()) {
+            String finalTrimmed = val.trim();
+            final Object finalValue;
 
-                if (isArray) {
-                  finalValue = parseAiArray(finalTrimmed);
-                } else {
-                  if (col.length() > 0 && finalTrimmed.length() > col.length()) {
-                    finalTrimmed = finalTrimmed.substring(0, col.length());
-                  }
-                  final Object parsed = parseValue(finalTrimmed, col);
-                  finalValue = parsed != null ? parsed : finalTrimmed;
-                }
-                synchronized (row) {
-                  row.values().put(colName, finalValue);
-                  aiAppliedCounts.merge(colName, 1, Integer::sum);
-                }
+            if (isArray) {
+              finalValue = parseAiArray(finalTrimmed);
+            } else {
+              if (col.length() > 0 && finalTrimmed.length() > col.length()) {
+                finalTrimmed = finalTrimmed.substring(0, col.length());
               }
-            });
+              final Object parsed = parseValue(finalTrimmed, col);
+              finalValue = parsed != null ? parsed : finalTrimmed;
+            }
+            synchronized (row) {
+              row.values().put(colName, finalValue);
+              aiAppliedCounts.merge(colName, 1, Integer::sum);
+            }
+          }
+        });
   }
 
   private boolean isArrayType(final Column col) {
@@ -862,17 +847,16 @@ public final class RowGenerator {
 
   private boolean areUniqueKeysUnique(final Map<String, Object> values) {
     return relevantUniqueKeys.stream()
-        .allMatch(
-            uniqueKeyColumns -> {
-              final String combination =
-                  uniqueKeyColumns.stream()
-                      .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
-                      .collect(Collectors.joining("|"));
-              final Set<String> seenCombinations =
-                  seenUniqueKeyCombinations.computeIfAbsent(
-                      String.join("__", uniqueKeyColumns), k -> new HashSet<>());
-              return seenCombinations.add(combination);
-            });
+        .allMatch(uniqueKeyColumns -> {
+          final String combination =
+              uniqueKeyColumns.stream()
+                  .map(ukCol -> Objects.toString(values.get(ukCol), "NULL"))
+                  .collect(Collectors.joining("|"));
+          final Set<String> seenCombinations =
+              seenUniqueKeyCombinations.computeIfAbsent(
+                  String.join("__", uniqueKeyColumns), k -> new HashSet<>());
+          return seenCombinations.add(combination);
+        });
   }
 
   private boolean reconcileMultiColumnConstraints(final Map<String, Object> values) {
@@ -906,12 +890,11 @@ public final class RowGenerator {
         final List<Map.Entry<String, String>> selectedCombination =
             compatibleCombinations.get(
                 ThreadLocalRandom.current().nextInt(compatibleCombinations.size()));
-        selectedCombination.forEach(
-            entry -> {
-              if (resolvedColumns.contains(entry.getKey())) {
-                fillCombinationValue(entry, values);
-              }
-            });
+        selectedCombination.forEach(entry -> {
+          if (resolvedColumns.contains(entry.getKey())) {
+            fillCombinationValue(entry, values);
+          }
+        });
       }
     }
     return allResolved;
@@ -921,16 +904,15 @@ public final class RowGenerator {
       final List<Map.Entry<String, String>> combination,
       final Set<String> resolvedColumns,
       final Map<String, Object> values) {
-    combination.forEach(
-        entry -> {
-          final String colName = entry.getKey();
-          if (resolvedColumns.contains(colName)) {
-            final Column col = table.column(colName);
-            if (col != null) {
-              values.put(colName, parseValue(entry.getValue(), col));
-            }
-          }
-        });
+    combination.forEach(entry -> {
+      final String colName = entry.getKey();
+      if (resolvedColumns.contains(colName)) {
+        final Column col = table.column(colName);
+        if (col != null) {
+          values.put(colName, parseValue(entry.getValue(), col));
+        }
+      }
+    });
   }
 
   /**
@@ -978,12 +960,10 @@ public final class RowGenerator {
     return new ResolvedMultiColumnConstraint(
         mcc.columns().stream().map(this::resolveColumnName).collect(Collectors.toUnmodifiableSet()),
         mcc.allowedCombinations().stream()
-            .map(
-                combination ->
-                    combination.entrySet().stream()
-                        .map(
-                            entry -> Map.entry(resolveColumnName(entry.getKey()), entry.getValue()))
-                        .toList())
+            .map(combination ->
+                combination.entrySet().stream()
+                    .map(entry -> Map.entry(resolveColumnName(entry.getKey()), entry.getValue()))
+                    .toList())
             .toList());
   }
 

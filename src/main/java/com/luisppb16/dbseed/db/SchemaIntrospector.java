@@ -136,21 +136,20 @@ public class SchemaIntrospector {
         loadAllForeignKeys(meta, schema, rawTables, allUniqueKeys);
 
     return rawTables.stream()
-        .map(
-            tableData -> {
-              final String tableName = tableData.name();
-              final String tableSchema = tableData.schema();
-              final TableKey key = new TableKey(tableSchema, tableName);
-              final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
-              final List<ColumnRawData> tableCols =
-                  rawColumns.getOrDefault(key, Collections.emptyList());
-              final List<String> pkCols = allPks.getOrDefault(key, Collections.emptyList());
-              final List<Column> columns = buildColumns(tableCols, pkCols, checks);
-              final List<List<String>> uniqueKeys =
-                  allUniqueKeys.getOrDefault(key, Collections.emptyList());
-              final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
-              return new Table(tableName, columns, pkCols, fks, checks, uniqueKeys);
-            })
+        .map(tableData -> {
+          final String tableName = tableData.name();
+          final String tableSchema = tableData.schema();
+          final TableKey key = new TableKey(tableSchema, tableName);
+          final List<String> checks = allChecks.getOrDefault(key, Collections.emptyList());
+          final List<ColumnRawData> tableCols =
+              rawColumns.getOrDefault(key, Collections.emptyList());
+          final List<String> pkCols = allPks.getOrDefault(key, Collections.emptyList());
+          final List<Column> columns = buildColumns(tableCols, pkCols, checks);
+          final List<List<String>> uniqueKeys =
+              allUniqueKeys.getOrDefault(key, Collections.emptyList());
+          final List<ForeignKey> fks = allFks.getOrDefault(key, Collections.emptyList());
+          return new Table(tableName, columns, pkCols, fks, checks, uniqueKeys);
+        })
         .toList();
   }
 
@@ -198,11 +197,8 @@ public class SchemaIntrospector {
     final Set<String> pkSet = new LinkedHashSet<>(pkCols);
     final List<String> strippedChecks =
         checkConstraints.stream()
-            .map(
-                check ->
-                    Objects.isNull(check) || check.isBlank()
-                        ? check
-                        : stripParensOutsideStrings(check))
+            .map(check ->
+                Objects.isNull(check) || check.isBlank() ? check : stripParensOutsideStrings(check))
             .toList();
 
     for (final ColumnRawData raw : rawColumns) {
@@ -340,23 +336,21 @@ public class SchemaIntrospector {
       final Map<TableKey, Map<String, String>> fkToPkTable,
       final Map<TableKey, List<List<String>>> allUniqueKeys) {
     final Map<TableKey, List<ForeignKey>> result = new LinkedHashMap<>();
-    groupedMappings.forEach(
-        (key, fksForTable) -> {
-          final List<List<String>> uniqueKeys =
-              allUniqueKeys.getOrDefault(key, Collections.emptyList());
-          final List<ForeignKey> fks =
-              fksForTable.entrySet().stream()
-                  .map(
-                      fkEntry -> {
-                        final String fkName = fkEntry.getKey();
-                        final Map<String, String> mapping = Map.copyOf(fkEntry.getValue());
-                        final String pkTableName = fkToPkTable.get(key).get(fkName);
-                        final boolean uniqueOnFk = isUniqueForeignKey(mapping.keySet(), uniqueKeys);
-                        return new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk);
-                      })
-                  .toList();
-          result.put(key, fks);
-        });
+    groupedMappings.forEach((key, fksForTable) -> {
+      final List<List<String>> uniqueKeys =
+          allUniqueKeys.getOrDefault(key, Collections.emptyList());
+      final List<ForeignKey> fks =
+          fksForTable.entrySet().stream()
+              .map(fkEntry -> {
+                final String fkName = fkEntry.getKey();
+                final Map<String, String> mapping = Map.copyOf(fkEntry.getValue());
+                final String pkTableName = fkToPkTable.get(key).get(fkName);
+                final boolean uniqueOnFk = isUniqueForeignKey(mapping.keySet(), uniqueKeys);
+                return new ForeignKey(fkName, pkTableName, mapping, uniqueOnFk);
+              })
+              .toList();
+      result.put(key, fks);
+    });
     return result;
   }
 
@@ -387,11 +381,10 @@ public class SchemaIntrospector {
       }
     }
     final Map<TableKey, List<List<String>>> result = new LinkedHashMap<>();
-    idxCols.forEach(
-        (key, value) -> {
-          final List<List<String>> list = value.values().stream().map(List::copyOf).toList();
-          result.put(key, list);
-        });
+    idxCols.forEach((key, value) -> {
+      final List<List<String>> list = value.values().stream().map(List::copyOf).toList();
+      result.put(key, list);
+    });
     return result;
   }
 
@@ -422,14 +415,13 @@ public class SchemaIntrospector {
         Arrays.stream(inside.split(","))
             .map(String::trim)
             .filter(s -> !s.isEmpty())
-            .map(
-                s -> {
-                  if ((s.startsWith("'") && s.endsWith("'"))
-                      || (s.startsWith("\"") && s.endsWith("\""))) {
-                    return s.substring(1, s.length() - 1);
-                  }
-                  return s;
-                })
+            .map(s -> {
+              if ((s.startsWith("'") && s.endsWith("'"))
+                  || (s.startsWith("\"") && s.endsWith("\""))) {
+                return s.substring(1, s.length() - 1);
+              }
+              return s;
+            })
             .forEach(allowed::add);
       }
 
@@ -441,14 +433,13 @@ public class SchemaIntrospector {
             .map(String::trim)
             .filter(s -> !s.isEmpty())
             .map(s -> s.replaceAll("(?i)::[a-z ]+", ""))
-            .map(
-                s -> {
-                  if ((s.startsWith("'") && s.endsWith("'"))
-                      || (s.startsWith("\"") && s.endsWith("\""))) {
-                    return s.substring(1, s.length() - 1);
-                  }
-                  return s;
-                })
+            .map(s -> {
+              if ((s.startsWith("'") && s.endsWith("'"))
+                  || (s.startsWith("\"") && s.endsWith("\""))) {
+                return s.substring(1, s.length() - 1);
+              }
+              return s;
+            })
             .forEach(allowed::add);
       }
 

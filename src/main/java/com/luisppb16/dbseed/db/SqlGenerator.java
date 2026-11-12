@@ -144,25 +144,24 @@ public class SqlGenerator {
       final Map<Table, List<Row>> data,
       final AbstractDialect dialect,
       @Nullable final ProgressTracker tracker) {
-    data.forEach(
-        (table, rows) -> {
-          if (Objects.nonNull(tracker)) {
-            tracker.setText2("Writing INSERTs for ".concat(table.name()));
-            tracker.advance();
-          }
-          if (Objects.isNull(rows) || rows.isEmpty()) {
-            return;
-          }
+    data.forEach((table, rows) -> {
+      if (Objects.nonNull(tracker)) {
+        tracker.setText2("Writing INSERTs for ".concat(table.name()));
+        tracker.advance();
+      }
+      if (Objects.isNull(rows) || rows.isEmpty()) {
+        return;
+      }
 
-          final List<String> columnOrder = table.columns().stream().map(Column::name).toList();
-          final String tableName = qualified(table.name(), dialect);
-          final String columnList =
-              columnOrder.stream()
-                  .map(col -> qualified(col, dialect))
-                  .collect(Collectors.joining(SQL_COMMA_SPACE));
+      final List<String> columnOrder = table.columns().stream().map(Column::name).toList();
+      final String tableName = qualified(table.name(), dialect);
+      final String columnList =
+          columnOrder.stream()
+              .map(col -> qualified(col, dialect))
+              .collect(Collectors.joining(SQL_COMMA_SPACE));
 
-          dialect.appendBatch(sb, tableName, columnList, rows, columnOrder);
-        });
+      dialect.appendBatch(sb, tableName, columnList, rows, columnOrder);
+    });
   }
 
   private static void generateUpdateStatements(
@@ -173,49 +172,42 @@ public class SqlGenerator {
     if (updates == null || updates.isEmpty()) {
       return;
     }
-    updates.forEach(
-        update -> {
-          if (Objects.nonNull(tracker)) {
-            tracker.setText2("Writing deferred UPDATEs for ".concat(update.table()));
-            tracker.advance();
-          }
-          if (update.fkValues().isEmpty() || update.pkValues().isEmpty()) {
-            return;
-          }
-          final String tableName = qualified(update.table(), dialect);
+    updates.forEach(update -> {
+      if (Objects.nonNull(tracker)) {
+        tracker.setText2("Writing deferred UPDATEs for ".concat(update.table()));
+        tracker.advance();
+      }
+      if (update.fkValues().isEmpty() || update.pkValues().isEmpty()) {
+        return;
+      }
+      final String tableName = qualified(update.table(), dialect);
 
-          final String setPart =
-              update.fkValues().entrySet().stream()
-                  .map(
-                      e -> {
-                        StringBuilder valSb = new StringBuilder();
-                        dialect.formatValue(e.getValue(), valSb);
-                        return qualified(e.getKey(), dialect)
-                            .concat(SQL_EQUALS)
-                            .concat(valSb.toString());
-                      })
-                  .collect(Collectors.joining(SQL_COMMA_SPACE));
+      final String setPart =
+          update.fkValues().entrySet().stream()
+              .map(e -> {
+                StringBuilder valSb = new StringBuilder();
+                dialect.formatValue(e.getValue(), valSb);
+                return qualified(e.getKey(), dialect).concat(SQL_EQUALS).concat(valSb.toString());
+              })
+              .collect(Collectors.joining(SQL_COMMA_SPACE));
 
-          final String wherePart =
-              update.pkValues().entrySet().stream()
-                  .map(
-                      e -> {
-                        StringBuilder valSb = new StringBuilder();
-                        dialect.formatValue(e.getValue(), valSb);
-                        return qualified(e.getKey(), dialect)
-                            .concat(SQL_EQUALS)
-                            .concat(valSb.toString());
-                      })
-                  .collect(Collectors.joining(SQL_AND));
+      final String wherePart =
+          update.pkValues().entrySet().stream()
+              .map(e -> {
+                StringBuilder valSb = new StringBuilder();
+                dialect.formatValue(e.getValue(), valSb);
+                return qualified(e.getKey(), dialect).concat(SQL_EQUALS).concat(valSb.toString());
+              })
+              .collect(Collectors.joining(SQL_AND));
 
-          sb.append(SQL_UPDATE)
-              .append(tableName)
-              .append(SQL_SET)
-              .append(setPart)
-              .append(SQL_WHERE)
-              .append(wherePart)
-              .append(SQL_STATEMENT_END);
-        });
+      sb.append(SQL_UPDATE)
+          .append(tableName)
+          .append(SQL_SET)
+          .append(setPart)
+          .append(SQL_WHERE)
+          .append(wherePart)
+          .append(SQL_STATEMENT_END);
+    });
   }
 
   private static String qualified(final String identifier, final AbstractDialect dialect) {

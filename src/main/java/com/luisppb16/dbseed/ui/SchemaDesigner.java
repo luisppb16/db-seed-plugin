@@ -180,10 +180,8 @@ public final class SchemaDesigner extends AnAction implements DumbAware {
             protected String doInBackground() {
               final SchemaDsl.Table[] tablesArray =
                   tables.stream()
-                      .map(
-                          t ->
-                              SchemaDsl.table(
-                                  t.name(), t.columns().toArray(SchemaDsl.Column[]::new)))
+                      .map(t ->
+                          SchemaDsl.table(t.name(), t.columns().toArray(SchemaDsl.Column[]::new)))
                       .toArray(SchemaDsl.Table[]::new);
               final SchemaDsl.Schema schema = SchemaDsl.schema(tablesArray);
               return SchemaDsl.toSql(schema);
@@ -264,11 +262,10 @@ public final class SchemaDesigner extends AnAction implements DumbAware {
       }
       final boolean hasValidColumn =
           IntStream.range(0, tableModel.getRowCount())
-              .anyMatch(
-                  i -> {
-                    final Object name = tableModel.getValueAt(i, 0);
-                    return Objects.nonNull(name) && !name.toString().isBlank();
-                  });
+              .anyMatch(i -> {
+                final Object name = tableModel.getValueAt(i, 0);
+                return Objects.nonNull(name) && !name.toString().isBlank();
+              });
       return !hasValidColumn
           ? new ValidationInfo("At least one column with a name is required.")
           : null;
@@ -301,13 +298,12 @@ public final class SchemaDesigner extends AnAction implements DumbAware {
           e -> tableModel.addRow(new Object[] {"", SqlType.INT, Boolean.FALSE}));
 
       final JButton removeRowButton = new JButton("Remove", AllIcons.General.Remove);
-      removeRowButton.addActionListener(
-          e -> {
-            final int selected = table.getSelectedRow();
-            if (selected >= 0) {
-              tableModel.removeRow(selected);
-            }
-          });
+      removeRowButton.addActionListener(e -> {
+        final int selected = table.getSelectedRow();
+        if (selected >= 0) {
+          tableModel.removeRow(selected);
+        }
+      });
 
       final JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
       buttonsPanel.add(addRowButton);
@@ -328,18 +324,17 @@ public final class SchemaDesigner extends AnAction implements DumbAware {
 
     List<SchemaDsl.Column> getColumns() {
       return IntStream.range(0, tableModel.getRowCount())
-          .mapToObj(
-              i -> {
-                final Object nameObj = tableModel.getValueAt(i, 0);
-                if (Objects.isNull(nameObj) || nameObj.toString().isBlank()) {
-                  return null;
-                }
-                final String name = nameObj.toString().trim();
-                final Object typeObj = tableModel.getValueAt(i, 1);
-                final SqlType type = (typeObj instanceof SqlType st) ? st : SqlType.INT;
-                final boolean isPk = Boolean.TRUE.equals(tableModel.getValueAt(i, 2));
-                return isPk ? SchemaDsl.pk(name, type) : SchemaDsl.column(name, type);
-              })
+          .mapToObj(i -> {
+            final Object nameObj = tableModel.getValueAt(i, 0);
+            if (Objects.isNull(nameObj) || nameObj.toString().isBlank()) {
+              return null;
+            }
+            final String name = nameObj.toString().trim();
+            final Object typeObj = tableModel.getValueAt(i, 1);
+            final SqlType type = (typeObj instanceof SqlType st) ? st : SqlType.INT;
+            final boolean isPk = Boolean.TRUE.equals(tableModel.getValueAt(i, 2));
+            return isPk ? SchemaDsl.pk(name, type) : SchemaDsl.column(name, type);
+          })
           .filter(Objects::nonNull)
           .toList();
     }

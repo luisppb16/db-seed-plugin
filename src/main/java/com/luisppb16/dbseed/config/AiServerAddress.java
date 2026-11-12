@@ -67,21 +67,6 @@ final class AiServerAddress {
     return new AiServerAddress(parsed.url, explicitPort.isEmpty() ? parsed.port : explicitPort);
   }
 
-  String url() {
-    return url;
-  }
-
-  String port() {
-    return port;
-  }
-
-  String composed() {
-    if (url.isBlank()) {
-      return "";
-    }
-    return port.isBlank() ? url : url + ":" + port;
-  }
-
   private static int authorityEnd(final String rest) {
     int end = rest.length();
     final int slash = rest.indexOf('/');
@@ -119,5 +104,20 @@ final class AiServerAddress {
 
   private static boolean isPort(final String candidate) {
     return !candidate.isEmpty() && candidate.chars().allMatch(Character::isDigit);
+  }
+
+  String url() {
+    return url;
+  }
+
+  String port() {
+    return port;
+  }
+
+  String composed() {
+    if (url.isBlank()) {
+      return "";
+    }
+    return port.isBlank() ? url : url + ":" + port;
   }
 }

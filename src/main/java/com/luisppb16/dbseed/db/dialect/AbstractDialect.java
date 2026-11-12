@@ -164,11 +164,10 @@ public sealed class AbstractDialect permits StandardDialect {
 
     StringBuilder valuesSb = new StringBuilder();
     IntStream.range(0, array.length)
-        .forEach(
-            i -> {
-              formatValue(array[i], valuesSb);
-              if (i < array.length - 1) valuesSb.append(valueSeparator);
-            });
+        .forEach(i -> {
+          formatValue(array[i], valuesSb);
+          if (i < array.length - 1) valuesSb.append(valueSeparator);
+        });
     sb.append(arrayFormat.replace("{values}", valuesSb.toString()));
   }
 

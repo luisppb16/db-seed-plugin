@@ -98,20 +98,18 @@ class AiBatchProgressTest {
   @Test
   void constructor_nullTableName_failsFast() {
     assertThatNullPointerException()
-        .isThrownBy(
-            () ->
-                new AiBatchProgress(
-                    1, 50, 61, AiBatchProgress.Stage.VALUES, 7, 50, 12L, -1L, -1L, null, "email"))
+        .isThrownBy(() ->
+            new AiBatchProgress(
+                1, 50, 61, AiBatchProgress.Stage.VALUES, 7, 50, 12L, -1L, -1L, null, "email"))
         .withMessage("Table name cannot be null");
   }
 
   @Test
   void constructor_nullColumnName_failsFast() {
     assertThatNullPointerException()
-        .isThrownBy(
-            () ->
-                new AiBatchProgress(
-                    1, 50, 61, AiBatchProgress.Stage.VALUES, 7, 50, 12L, -1L, -1L, "users", null))
+        .isThrownBy(() ->
+            new AiBatchProgress(
+                1, 50, 61, AiBatchProgress.Stage.VALUES, 7, 50, 12L, -1L, -1L, "users", null))
         .withMessage("Column name cannot be null");
   }
 }

@@ -292,14 +292,13 @@ public record ValueGenerator(
   private UUID tryParseUuidFromAllowedValues(final Set<String> allowedValues) {
     return allowedValues.stream()
         .map(String::trim)
-        .map(
-            s -> {
-              try {
-                return UUID.fromString(s);
-              } catch (final IllegalArgumentException e) {
-                return null;
-              }
-            })
+        .map(s -> {
+          try {
+            return UUID.fromString(s);
+          } catch (final IllegalArgumentException e) {
+            return null;
+          }
+        })
         .filter(Objects::nonNull)
         .filter(usedUuids::add)
         .findFirst()

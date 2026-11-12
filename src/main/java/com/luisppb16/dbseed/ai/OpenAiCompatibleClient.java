@@ -314,15 +314,14 @@ public class OpenAiCompatibleClient extends AbstractAiClient {
 
       return HTTP_CLIENT
           .sendAsync(request, HttpResponse.BodyHandlers.ofString())
-          .thenAccept(
-              response -> {
-                if (response.statusCode() == 200) {
-                  log.info("Model '{}' warmed up successfully", modelName);
-                } else {
-                  throw new AiClientException(
-                      extractErrorMessage(response.statusCode(), response.body()));
-                }
-              });
+          .thenAccept(response -> {
+            if (response.statusCode() == 200) {
+              log.info("Model '{}' warmed up successfully", modelName);
+            } else {
+              throw new AiClientException(
+                  extractErrorMessage(response.statusCode(), response.body()));
+            }
+          });
     } catch (final Exception e) {
       return CompletableFuture.failedFuture(e);
     }

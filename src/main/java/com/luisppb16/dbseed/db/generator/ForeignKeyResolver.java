@@ -110,11 +110,10 @@ public final class ForeignKeyResolver {
   public List<PendingUpdate> resolve(final ProgressTracker tracker) {
     tableMap
         .values()
-        .forEach(
-            table -> {
-              resolveForeignKeysForTable(table);
-              tracker.advance(); // 1 unit per table
-            });
+        .forEach(table -> {
+          resolveForeignKeysForTable(table);
+          tracker.advance(); // 1 unit per table
+        });
     return updates;
   }
 
@@ -157,17 +156,14 @@ public final class ForeignKeyResolver {
     if (!uniqueKeysOnFks.isEmpty()) {
       handleUniqueFkResolution(table, rows, uniqueKeysOnFks, circularFks);
     } else {
-      rows.forEach(
-          row ->
-              table
-                  .foreignKeys()
-                  .forEach(
-                      fk -> {
-                        if (!circularFks.contains(fk)) {
-                          resolveSingleForeignKey(
-                              fk, table, row, fkNullableCache.getOrDefault(fk, false));
-                        }
-                      }));
+      rows.forEach(row ->
+          table
+              .foreignKeys()
+              .forEach(fk -> {
+                if (!circularFks.contains(fk)) {
+                  resolveSingleForeignKey(fk, table, row, fkNullableCache.getOrDefault(fk, false));
+                }
+              }));
     }
 
     inserted.add(table.name());
@@ -209,11 +205,10 @@ public final class ForeignKeyResolver {
           table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
           final Map<String, Object> fkVals = new LinkedHashMap<>();
           fk.columnMapping()
-              .forEach(
-                  (fkCol, pkCol) -> {
-                    fkVals.put(fkCol, parentRow.values().get(pkCol));
-                    row.values().put(fkCol, null);
-                  });
+              .forEach((fkCol, pkCol) -> {
+                fkVals.put(fkCol, parentRow.values().get(pkCol));
+                row.values().put(fkCol, null);
+              });
           updates.add(new PendingUpdate(table.name(), fkVals, pkVals));
         }
       }
@@ -229,14 +224,13 @@ public final class ForeignKeyResolver {
                 .toList());
     table.foreignKeys().stream()
         .filter(ForeignKey::uniqueOnFk)
-        .forEach(
-            fk -> {
-              final List<String> fkCols = new ArrayList<>(fk.columnMapping().keySet());
-              if (uniqueKeysOnFks.stream()
-                  .noneMatch(uk -> new HashSet<>(uk).equals(new HashSet<>(fkCols)))) {
-                uniqueKeysOnFks.add(fkCols);
-              }
-            });
+        .forEach(fk -> {
+          final List<String> fkCols = new ArrayList<>(fk.columnMapping().keySet());
+          if (uniqueKeysOnFks.stream()
+              .noneMatch(uk -> new HashSet<>(uk).equals(new HashSet<>(fkCols)))) {
+            uniqueKeysOnFks.add(fkCols);
+          }
+        });
     return uniqueKeysOnFks;
   }
 
@@ -252,17 +246,15 @@ public final class ForeignKeyResolver {
     final Set<String> usedCombinations = new HashSet<>();
     final int maxAttempts = MAX_UNIQUE_FK_ATTEMPTS_FACTOR * rows.size();
 
-    rows.forEach(
-        row -> {
-          if (!circularFkCols.isEmpty()) {
-            final Map<String, Object> circularValues = new LinkedHashMap<>();
-            circularFkCols.forEach(col -> circularValues.put(col, row.values().get(col)));
-            addUniqueCombinationsToSet(uniqueKeysOnFks, circularValues, usedCombinations);
-          }
-          findUniqueFkCombination(
-                  table, uniqueKeysOnFks, usedCombinations, maxAttempts, circularFkCols)
-              .ifPresent(fkValues -> row.values().putAll(fkValues));
-        });
+    rows.forEach(row -> {
+      if (!circularFkCols.isEmpty()) {
+        final Map<String, Object> circularValues = new LinkedHashMap<>();
+        circularFkCols.forEach(col -> circularValues.put(col, row.values().get(col)));
+        addUniqueCombinationsToSet(uniqueKeysOnFks, circularValues, usedCombinations);
+      }
+      findUniqueFkCombination(table, uniqueKeysOnFks, usedCombinations, maxAttempts, circularFkCols)
+          .ifPresent(fkValues -> row.values().putAll(fkValues));
+    });
   }
 
   private Optional<Map<String, Object>> findUniqueFkCombination(
@@ -290,37 +282,34 @@ public final class ForeignKeyResolver {
     final Map<String, Object> result = new LinkedHashMap<>();
     table.foreignKeys().stream()
         .filter(fk -> !circularFkCols.containsAll(fk.columnMapping().keySet()))
-        .map(
-            fk -> {
-              final Table parent = tableMap.get(fk.pkTable());
-              final List<Row> parentRows = Objects.nonNull(parent) ? data.get(parent) : null;
+        .map(fk -> {
+          final Table parent = tableMap.get(fk.pkTable());
+          final List<Row> parentRows = Objects.nonNull(parent) ? data.get(parent) : null;
 
-              if (Objects.isNull(parent) || Objects.isNull(parentRows) || parentRows.isEmpty()) {
-                return Map.<String, Object>of();
-              }
+          if (Objects.isNull(parent) || Objects.isNull(parentRows) || parentRows.isEmpty()) {
+            return Map.<String, Object>of();
+          }
 
-              final Row parentRow =
-                  getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), false);
-              if (Objects.isNull(parentRow)) {
-                return Map.<String, Object>of();
-              }
+          final Row parentRow =
+              getParentRowForForeignKey(fk, parentRows, table.name(), parent.name(), false);
+          if (Objects.isNull(parentRow)) {
+            return Map.<String, Object>of();
+          }
 
-              Map<String, Object> values = new HashMap<>();
-              fk.columnMapping()
-                  .forEach((fkCol, pkCol) -> values.put(fkCol, parentRow.values().get(pkCol)));
-              return values;
-            })
+          Map<String, Object> values = new HashMap<>();
+          fk.columnMapping()
+              .forEach((fkCol, pkCol) -> values.put(fkCol, parentRow.values().get(pkCol)));
+          return values;
+        })
         .filter(m -> !m.isEmpty())
-        .forEach(
-            m ->
-                m.forEach(
-                    (col, val) -> {
-                      if (result.containsKey(col)) {
-                        log.warn("Multiple FKs map to column '{}'; keeping first value.", col);
-                      } else {
-                        result.put(col, val);
-                      }
-                    }));
+        .forEach(m ->
+            m.forEach((col, val) -> {
+              if (result.containsKey(col)) {
+                log.warn("Multiple FKs map to column '{}'; keeping first value.", col);
+              } else {
+                result.put(col, val);
+              }
+            }));
     return result;
   }
 
@@ -329,11 +318,10 @@ public final class ForeignKeyResolver {
       final Map<String, Object> potentialFkValues,
       final Set<String> usedCombinations) {
     return uniqueKeysOnFks.stream()
-        .map(
-            ukColumns ->
-                ukColumns.stream()
-                    .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
-                    .collect(Collectors.joining(COMBINATION_DELIMITER)))
+        .map(ukColumns ->
+            ukColumns.stream()
+                .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
+                .collect(Collectors.joining(COMBINATION_DELIMITER)))
         .anyMatch(usedCombinations::contains);
   }
 
@@ -342,11 +330,10 @@ public final class ForeignKeyResolver {
       final Map<String, Object> potentialFkValues,
       final Set<String> usedCombinations) {
     uniqueKeysOnFks.stream()
-        .map(
-            ukColumns ->
-                ukColumns.stream()
-                    .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
-                    .collect(Collectors.joining(COMBINATION_DELIMITER)))
+        .map(ukColumns ->
+            ukColumns.stream()
+                .map(c -> Objects.toString(potentialFkValues.get(c), NULL_VALUE))
+                .collect(Collectors.joining(COMBINATION_DELIMITER)))
         .forEach(usedCombinations::add);
   }
 
@@ -433,11 +420,10 @@ public final class ForeignKeyResolver {
       table.primaryKey().forEach(pkCol -> pkVals.put(pkCol, row.values().get(pkCol)));
       final Map<String, Object> fkVals = new LinkedHashMap<>();
       fk.columnMapping()
-          .forEach(
-              (fkCol, pkCol) -> {
-                fkVals.put(fkCol, parentRow.values().get(pkCol));
-                row.values().put(fkCol, null);
-              });
+          .forEach((fkCol, pkCol) -> {
+            fkVals.put(fkCol, parentRow.values().get(pkCol));
+            row.values().put(fkCol, null);
+          });
       updates.add(new PendingUpdate(table.name(), fkVals, pkVals));
     }
   }

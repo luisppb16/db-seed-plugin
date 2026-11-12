@@ -287,10 +287,9 @@ class ConstraintParserTest {
         ConstraintParser.parseMultiColumnConstraints(
             List.of("x = 1 OR something_unparsable > 5 AND y"));
     // Should either be empty or have partial results - not crash
-    assertThatCode(
-            () ->
-                ConstraintParser.parseMultiColumnConstraints(
-                    List.of("x = 1 OR something_unparsable > 5 AND y")))
+    assertThatCode(() ->
+            ConstraintParser.parseMultiColumnConstraints(
+                List.of("x = 1 OR something_unparsable > 5 AND y")))
         .doesNotThrowAnyException();
   }
 }

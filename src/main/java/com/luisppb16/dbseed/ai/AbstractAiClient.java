@@ -152,12 +152,11 @@ public abstract class AbstractAiClient implements AiClient {
    * is cancelled when the stream completes normally.
    */
   private static final ScheduledExecutorService STREAMING_WATCHDOG =
-      Executors.newSingleThreadScheduledExecutor(
-          r -> {
-            final Thread thread = new Thread(r, "ai-stream-watchdog");
-            thread.setDaemon(true);
-            return thread;
-          });
+      Executors.newSingleThreadScheduledExecutor(r -> {
+        final Thread thread = new Thread(r, "ai-stream-watchdog");
+        thread.setDaemon(true);
+        return thread;
+      });
 
   // The negative lookahead keeps decimals/ranges like "3.14" or "5-10" intact.
   private static final Pattern NUMBERED_PREFIX = Pattern.compile("^\\d+[.)\\-]\\s*(?![0-9])");
@@ -885,13 +884,12 @@ public abstract class AbstractAiClient implements AiClient {
 
       return HTTP_CLIENT
           .sendAsync(request, HttpResponse.BodyHandlers.ofString())
-          .thenAccept(
-              response -> {
-                if (response.statusCode() != 200) {
-                  throw new AiClientException(
-                      extractErrorMessage(response.statusCode(), response.body()));
-                }
-              });
+          .thenAccept(response -> {
+            if (response.statusCode() != 200) {
+              throw new AiClientException(
+                  extractErrorMessage(response.statusCode(), response.body()));
+            }
+          });
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
@@ -915,14 +913,13 @@ public abstract class AbstractAiClient implements AiClient {
 
       return HTTP_CLIENT
           .sendAsync(request, HttpResponse.BodyHandlers.ofString())
-          .thenApply(
-              response -> {
-                if (response.statusCode() != 200) {
-                  throw new AiClientException(
-                      extractErrorMessage(response.statusCode(), response.body()));
-                }
-                return response.body();
-              })
+          .thenApply(response -> {
+            if (response.statusCode() != 200) {
+              throw new AiClientException(
+                  extractErrorMessage(response.statusCode(), response.body()));
+            }
+            return response.body();
+          })
           .thenApply(this::parseModelsResponse);
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
@@ -1271,18 +1268,17 @@ public abstract class AbstractAiClient implements AiClient {
             HTTP_EXECUTOR);
 
     // Propagate external cancellation to the in-flight request.
-    result.whenComplete(
-        (ignored, throwable) -> {
-          cancelWatchdog(watchdog);
-          if (throwable instanceof CancellationException) {
-            final CompletableFuture<HttpResponse<InputStream>> inFlight = pending.get();
-            if (Objects.nonNull(inFlight)) {
-              inFlight.cancel(true);
-            }
-            // Abort a blocking body read that the future cancellation cannot interrupt.
-            abortBody(bodyRef.get());
-          }
-        });
+    result.whenComplete((ignored, throwable) -> {
+      cancelWatchdog(watchdog);
+      if (throwable instanceof CancellationException) {
+        final CompletableFuture<HttpResponse<InputStream>> inFlight = pending.get();
+        if (Objects.nonNull(inFlight)) {
+          inFlight.cancel(true);
+        }
+        // Abort a blocking body read that the future cancellation cannot interrupt.
+        abortBody(bodyRef.get());
+      }
+    });
 
     return result;
   }
@@ -1311,10 +1307,8 @@ public abstract class AbstractAiClient implements AiClient {
       lineBuffer.setLength(0);
     }
     if (scanner.hasSeenValuesKey()) {
-      scanner.scan(
-          value ->
-              addSanitizedValue(
-                  value, columnName, expectedArrayElements, values, true, onValueAdded));
+      scanner.scan(value ->
+          addSanitizedValue(value, columnName, expectedArrayElements, values, true, onValueAdded));
       return;
     }
     appendPlainTextChunk(

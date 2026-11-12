@@ -155,13 +155,13 @@ Instead of relying solely on random/faker values, you can leverage AI to produce
 columns.
 
 - **Choose Your Engine**: In **Settings → DBSeed4SQL → AI**, pick the engine with the radio buttons. Selecting one
-  applies its own configuration — the *Server URL* field is pre-filled with that engine's default address and the
-  *Password / API key* row is shown only for the engines that use a credential — it is not displayed at all for
-  Ollama, which has none, and it stays disabled while AI generation is off. Each engine keeps its **own**
-  credential: switching engines shows what that engine has stored — and hides the row for Ollama, which has none —
-  instead of leaving the previous engine's secret on screen, and switching back brings its credential back. A
-  credential saved by an older version, when there was only one, is moved to the engine that was configured at the
-  time.
+  applies its own configuration — the *Server URL* and *Port* fields are pre-filled with that engine's default
+  address, and the *Password / API key* row is shown only for the engines that use a credential — it is not
+  displayed at all for Ollama, which has none, and it stays disabled while AI generation is off. Each engine keeps
+  its **own** credential: switching engines shows what that engine has stored — and hides the row for Ollama, which
+  has none — instead of leaving the previous engine's secret on screen, and switching back brings its credential
+  back. A credential saved by an older version, when there was only one, is moved to the engine that was configured
+  at the time.
     - **Ollama** — native API, default `http://localhost:11434`, no API key at all (so its credential row is not
     shown).
     - **Unsloth Studio** — OpenAI-compatible API, default `http://localhost:8888` (**the port is the one Studio
@@ -178,7 +178,8 @@ columns.
       access* is turned on in Studio's own settings. Thinking is switched off per request (`enable_thinking: false`),
       since Studio leaves it on by default and a chain of thought is never a seed
       value.
-    - **OpenAI-compatible server** — LM Studio, vLLM, llama.cpp, OpenRouter and similar; type your own URL and API key.
+    - **OpenAI-compatible server** — LM Studio, vLLM, llama.cpp, OpenRouter and similar; type your own URL (and port,
+      when the server does not use the scheme's default) and API key.
 
 - **AI Columns Selection**: A dedicated tab in the generation dialog lets you choose which string columns receive
   AI-generated content.
@@ -212,8 +213,9 @@ columns.
   hides the window without cancelling the generation and leaves a notification whose *Show progress* link brings it
   back to the front; a **DBSeed4SQL** entry also appears in the IDE status bar while the window is hidden, so the
   window can always be reopened even after the notification fades away.
-- **Global AI Settings**: Enable/disable AI generation, pick the engine, set its URL, model and (when it uses one)
-  API key, provide domain context, and test connectivity with the *Get models* button from **Settings → DBSeed4SQL**.
+- **Global AI Settings**: Enable/disable AI generation, pick the engine, set its URL and port, model and (when it
+  uses one) API key, provide domain context, and test connectivity with the *Get models* button from
+  **Settings → DBSeed4SQL**.
 - **Model Required**: With AI generation enabled, a model must be selected before settings can be saved, and the seed
   dialog blocks the run when no model is configured.
 - **Visible Fallback**: If the AI generation fails (server down, model not found, …), rows are filled with DataFaker

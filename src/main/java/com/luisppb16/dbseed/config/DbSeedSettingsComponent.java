@@ -42,7 +42,6 @@ import java.awt.BorderLayout;
 import java.awt.FlowLayout;
 import java.awt.event.ItemEvent;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +55,10 @@ import javax.swing.JSpinner;
 import javax.swing.ListSelectionModel;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 
 /**
  * Redesigned UI component for configuring global settings of the DBSeed plugin.
@@ -89,6 +92,7 @@ public class DbSeedSettingsComponent {
       new JBCheckBox("Generate AI columns in parallel");
   private final JSpinner myAiGenerationThreads = new JSpinner(new SpinnerNumberModel(2, 1, 16, 1));
   private final JBTextField myAiUrl = new JBTextField();
+  private final JBTextField myAiPort = new JBTextField(6);
   private final ComboBox<String> myAiModelDropdown = new ComboBox<>();
   private final JButton myRefreshModelsButton = new JButton("Get models");
   private final AsyncProcessIcon myLoadingIcon = new AsyncProcessIcon("AiLoading");
@@ -126,6 +130,7 @@ public class DbSeedSettingsComponent {
     myAiApplicationContext.setLineWrap(true);
     myAiApplicationContext.setWrapStyleWord(true);
     myAiApplicationContext.setBorder(JBUI.Borders.empty(4));
+    ((AbstractDocument) myAiPort.getDocument()).setDocumentFilter(digitsOnly(5));
     configureAiProviderButtons();
     setAiProvider(settings.getAiProvider());
     setAiUrl(settings.getAiUrl());
@@ -393,6 +398,9 @@ public class DbSeedSettingsComponent {
     urlPanel.add(myAiUrl, BorderLayout.CENTER);
     urlPanel.add(buttonPanel, BorderLayout.EAST);
 
+    final JPanel portPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+    portPanel.add(myAiPort);
+
     final JBScrollPane contextScrollPane = new JBScrollPane(myAiApplicationContext);
     contextScrollPane.setPreferredSize(JBUI.size(0, 80));
     contextScrollPane.setMinimumSize(JBUI.size(0, 60));
@@ -416,6 +424,7 @@ public class DbSeedSettingsComponent {
         FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("Engine:"), myAiProviderPanel, 1, false)
             .addLabeledComponent(new JBLabel("Server URL:"), urlPanel, 1, false)
+            .addLabeledComponent(new JBLabel("Port:"), portPanel, 1, false)
             .addLabeledComponent(new JBLabel("Model:"), myAiModelDropdown, 1, false)
             .addLabeledComponent(myAiApiKeyLabel, myAiApiKey, 1, false)
             .addComponent(myAiApiKeyHint, 0)
@@ -488,6 +497,7 @@ public class DbSeedSettingsComponent {
     myAiWordCount.setEnabled(enabled);
     myAiRequestTimeout.setEnabled(enabled);
     myAiUrl.setEnabled(enabled);
+    myAiPort.setEnabled(enabled);
     myAiModelDropdown.setEnabled(enabled);
     myRefreshModelsButton.setEnabled(enabled);
     myAiParallelGeneration.setEnabled(enabled);
@@ -532,21 +542,14 @@ public class DbSeedSettingsComponent {
   }
 
   /**
-   * Applies the newly selected engine's configuration: the URL is replaced by that engine's default
-   * when the field is empty or still holds another engine's default, so switching away from Ollama
-   * does not leave a pointed-at-the-wrong-port URL behind, and the credential field shows what that
-   * engine has stored — empty when it has none — so one engine's secret is never left on screen for
-   * the next one. With Ollama, which carries no credential, the whole credential row is hidden
-   * instead of shown empty.
+   * Applies the newly selected engine's configuration: the URL and port are replaced by that
+   * engine's defaults, so switching engines never leaves a pointed-at-the-wrong-port address
+   * behind, and the credential field shows what that engine has stored — empty when it has none —
+   * so one engine's secret is never left on screen for the next one. With Ollama, which carries no
+   * credential, the whole credential row is hidden instead of shown empty.
    */
   private void onAiProviderChanged(final AiProvider provider) {
-    final String currentUrl = myAiUrl.getText().trim();
-    final boolean holdsAnotherDefault =
-        Arrays.stream(AiProvider.values())
-            .anyMatch(other -> other != provider && other.getDefaultUrl().equals(currentUrl));
-    if (currentUrl.isEmpty() || holdsAnotherDefault) {
-      myAiUrl.setText(provider.getDefaultUrl());
-    }
+    setAiUrl(provider.getDefaultUrl());
     myAiApiKey.setText(AiApiKeyStore.load(provider));
     updateAiFieldsEnabled(myUseAiGeneration.isSelected());
   }
@@ -555,8 +558,38 @@ public class DbSeedSettingsComponent {
     myAiGenerationThreads.setEnabled(enabled);
   }
 
+  private static DocumentFilter digitsOnly(final int maxLength) {
+    return new DocumentFilter() {
+
+      @Override
+      public void insertString(
+          final FilterBypass bypass,
+          final int offset,
+          final String text,
+          final AttributeSet attributes)
+          throws BadLocationException {
+        replace(bypass, offset, 0, text, attributes);
+      }
+
+      @Override
+      public void replace(
+          final FilterBypass bypass,
+          final int offset,
+          final int length,
+          final String text,
+          final AttributeSet attributes)
+          throws BadLocationException {
+        final String insertion = Objects.requireNonNullElse(text, "");
+        final int remaining = maxLength - (bypass.getDocument().getLength() - length);
+        if (insertion.chars().allMatch(Character::isDigit) && insertion.length() <= remaining) {
+          super.replace(bypass, offset, length, insertion, attributes);
+        }
+      }
+    };
+  }
+
   private void refreshModels() {
-    final String url = myAiUrl.getText().trim();
+    final String url = getAiUrl().trim();
     final AiProvider provider = getAiProvider();
     if (url.isEmpty()) {
       Messages.showErrorDialog(myMainPanel, "Please enter a valid server URL.", "Invalid URL");
@@ -831,11 +864,13 @@ public class DbSeedSettingsComponent {
   }
 
   public String getAiUrl() {
-    return myAiUrl.getText();
+    return AiServerAddress.of(myAiUrl.getText(), myAiPort.getText()).composed();
   }
 
   public void setAiUrl(final String url) {
-    myAiUrl.setText(url);
+    final AiServerAddress address = AiServerAddress.parse(url);
+    myAiUrl.setText(address.url());
+    myAiPort.setText(address.port());
   }
 
   public String getAiModel() {

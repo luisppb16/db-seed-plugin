@@ -39,6 +39,7 @@ import com.luisppb16.dbseed.ai.AiClientFactory;
 import com.luisppb16.dbseed.ai.AiProvider;
 import com.luisppb16.dbseed.ui.util.ComponentUtils;
 import java.awt.BorderLayout;
+import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.event.ItemEvent;
 import java.util.ArrayList;
@@ -149,10 +150,9 @@ public class DbSeedSettingsComponent {
 
     updateAiFieldsEnabled(settings.isUseAiGeneration());
     myUseAiGeneration.addActionListener(e -> updateAiFieldsEnabled(myUseAiGeneration.isSelected()));
-    myAiParallelGeneration.addActionListener(
-        e ->
-            updateAiParallelFieldsEnabled(
-                myAiParallelGeneration.isSelected() && myUseAiGeneration.isSelected()));
+    myAiParallelGeneration.addActionListener(e ->
+        updateAiParallelFieldsEnabled(
+            myAiParallelGeneration.isSelected() && myUseAiGeneration.isSelected()));
 
     configureFolderChooser(myDefaultOutputDirectory);
 
@@ -194,6 +194,17 @@ public class DbSeedSettingsComponent {
     return createIndentedDescriptionLabel("");
   }
 
+  private static void alignLabelWidths(final JBLabel... labels) {
+    int width = 0;
+    for (final JBLabel label : labels) {
+      width = Math.max(width, label.getPreferredSize().width);
+    }
+    for (final JBLabel label : labels) {
+      final Dimension current = label.getPreferredSize();
+      label.setPreferredSize(new Dimension(width, current.height));
+    }
+  }
+
   /**
    * What the credential field expects from the selected engine, and where that engine hands it out.
    * The Ollama branch is empty because that engine has no credential at all and its row is hidden;
@@ -210,6 +221,36 @@ public class DbSeedSettingsComponent {
       case OPENAI_COMPATIBLE ->
           "<html>Only if the server asks for one; LM Studio and llama.cpp usually accept an empty "
               + "key.</html>";
+    };
+  }
+
+  private static DocumentFilter digitsOnly(final int maxLength) {
+    return new DocumentFilter() {
+
+      @Override
+      public void insertString(
+          final FilterBypass bypass,
+          final int offset,
+          final String text,
+          final AttributeSet attributes)
+          throws BadLocationException {
+        replace(bypass, offset, 0, text, attributes);
+      }
+
+      @Override
+      public void replace(
+          final FilterBypass bypass,
+          final int offset,
+          final int length,
+          final String text,
+          final AttributeSet attributes)
+          throws BadLocationException {
+        final String insertion = Objects.requireNonNullElse(text, "");
+        final int remaining = maxLength - (bypass.getDocument().getLength() - length);
+        if (insertion.chars().allMatch(Character::isDigit) && insertion.length() <= remaining) {
+          super.replace(bypass, offset, length, insertion, attributes);
+        }
+      }
     };
   }
 
@@ -244,24 +285,22 @@ public class DbSeedSettingsComponent {
             .filter(Objects::nonNull)
             .filter(ConnectionProfile::hasValidName)
             .map(p -> p.getName().trim())
-            .forEach(
-                name -> {
-                  originalProfiles.add(name);
-                  myProfilesModel.add(name);
-                });
+            .forEach(name -> {
+              originalProfiles.add(name);
+              myProfilesModel.add(name);
+            });
       }
     }
 
     final JPanel listPanel =
         ToolbarDecorator.createDecorator(myProfilesList)
             .disableAddAction()
-            .setRemoveAction(
-                button -> {
-                  final int selectedIndex = myProfilesList.getSelectedIndex();
-                  if (selectedIndex >= 0) {
-                    myProfilesModel.remove(selectedIndex);
-                  }
-                })
+            .setRemoveAction(button -> {
+              final int selectedIndex = myProfilesList.getSelectedIndex();
+              if (selectedIndex >= 0) {
+                myProfilesModel.remove(selectedIndex);
+              }
+            })
             .createPanel();
 
     final JBLabel description =
@@ -420,12 +459,18 @@ public class DbSeedSettingsComponent {
                 + "answers more than one request at a time; otherwise the requests just queue "
                 + "up.</html>");
 
+    final JBLabel engineLabel = new JBLabel("Engine:");
+    final JBLabel urlLabel = new JBLabel("Server URL:");
+    final JBLabel portLabel = new JBLabel("Port:");
+    final JBLabel modelLabel = new JBLabel("Model:");
+    alignLabelWidths(engineLabel, urlLabel, portLabel, modelLabel, myAiApiKeyLabel);
+
     final JPanel serverConfigPanel =
         FormBuilder.createFormBuilder()
-            .addLabeledComponent(new JBLabel("Engine:"), myAiProviderPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Server URL:"), urlPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Port:"), portPanel, 1, false)
-            .addLabeledComponent(new JBLabel("Model:"), myAiModelDropdown, 1, false)
+            .addLabeledComponent(engineLabel, myAiProviderPanel, 1, false)
+            .addLabeledComponent(urlLabel, urlPanel, 1, false)
+            .addLabeledComponent(portLabel, portPanel, 1, false)
+            .addLabeledComponent(modelLabel, myAiModelDropdown, 1, false)
             .addLabeledComponent(myAiApiKeyLabel, myAiApiKey, 1, false)
             .addComponent(myAiApiKeyHint, 0)
             .getPanel();
@@ -529,12 +574,11 @@ public class DbSeedSettingsComponent {
     final ButtonGroup group = new ButtonGroup();
     for (final AiProvider provider : AiProvider.values()) {
       final JRadioButton button = new JRadioButton(provider.getDisplayName());
-      button.addItemListener(
-          e -> {
-            if (e.getStateChange() == ItemEvent.SELECTED) {
-              onAiProviderChanged(provider);
-            }
-          });
+      button.addItemListener(e -> {
+        if (e.getStateChange() == ItemEvent.SELECTED) {
+          onAiProviderChanged(provider);
+        }
+      });
       group.add(button);
       myAiProviderPanel.add(button);
       myProviderButtons.put(provider, button);
@@ -556,36 +600,6 @@ public class DbSeedSettingsComponent {
 
   private void updateAiParallelFieldsEnabled(final boolean enabled) {
     myAiGenerationThreads.setEnabled(enabled);
-  }
-
-  private static DocumentFilter digitsOnly(final int maxLength) {
-    return new DocumentFilter() {
-
-      @Override
-      public void insertString(
-          final FilterBypass bypass,
-          final int offset,
-          final String text,
-          final AttributeSet attributes)
-          throws BadLocationException {
-        replace(bypass, offset, 0, text, attributes);
-      }
-
-      @Override
-      public void replace(
-          final FilterBypass bypass,
-          final int offset,
-          final int length,
-          final String text,
-          final AttributeSet attributes)
-          throws BadLocationException {
-        final String insertion = Objects.requireNonNullElse(text, "");
-        final int remaining = maxLength - (bypass.getDocument().getLength() - length);
-        if (insertion.chars().allMatch(Character::isDigit) && insertion.length() <= remaining) {
-          super.replace(bypass, offset, length, insertion, attributes);
-        }
-      }
-    };
   }
 
   private void refreshModels() {
@@ -624,78 +638,76 @@ public class DbSeedSettingsComponent {
       final ModalityState currentModality) {
     client
         .ping()
-        .whenComplete(
-            (ignored, pingEx) -> {
-              if (disposed) return;
-              if (Objects.nonNull(pingEx)) {
+        .whenComplete((ignored, pingEx) -> {
+          if (disposed) return;
+          if (Objects.nonNull(pingEx)) {
+            ApplicationManager.getApplication()
+                .invokeLater(
+                    () -> {
+                      if (disposed) return;
+                      final Throwable cause =
+                          Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
+                      Messages.showErrorDialog(
+                          myMainPanel,
+                          "No "
+                              + provider.getDisplayName()
+                              + " server found at "
+                              + url
+                              + ".\n"
+                              + "Ensure the server is running and the URL is correct.\n\n"
+                              + "Error: "
+                              + cause.getMessage(),
+                          "Server Not Reachable");
+                      resetRefreshButton();
+                    },
+                    currentModality);
+            return;
+          }
+          client
+              .listModels()
+              .whenComplete((models, ex) -> {
+                if (disposed) return;
                 ApplicationManager.getApplication()
                     .invokeLater(
                         () -> {
                           if (disposed) return;
-                          final Throwable cause =
-                              Objects.nonNull(pingEx.getCause()) ? pingEx.getCause() : pingEx;
-                          Messages.showErrorDialog(
-                              myMainPanel,
-                              "No "
-                                  + provider.getDisplayName()
-                                  + " server found at "
-                                  + url
-                                  + ".\n"
-                                  + "Ensure the server is running and the URL is correct.\n\n"
-                                  + "Error: "
-                                  + cause.getMessage(),
-                              "Server Not Reachable");
+                          if (Objects.nonNull(ex)) {
+                            final Throwable cause =
+                                Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
+                            Messages.showErrorDialog(
+                                myMainPanel,
+                                "Could not fetch models from "
+                                    + provider.getDisplayName()
+                                    + " at "
+                                    + url
+                                    + ".\n"
+                                    + "Error: "
+                                    + cause.getMessage(),
+                                "Connection Error");
+                          } else {
+                            final String currentSelection =
+                                (String) myAiModelDropdown.getSelectedItem();
+                            myAiModelDropdown.removeAllItems();
+                            if (models.isEmpty()) {
+                              Messages.showWarningDialog(
+                                  myMainPanel,
+                                  "No models found on "
+                                      + provider.getDisplayName()
+                                      + ". Load or pull at least one model first.",
+                                  "No Models Found");
+                            } else {
+                              models.forEach(myAiModelDropdown::addItem);
+                              if (Objects.nonNull(currentSelection)
+                                  && models.contains(currentSelection)) {
+                                myAiModelDropdown.setSelectedItem(currentSelection);
+                              }
+                            }
+                          }
                           resetRefreshButton();
                         },
                         currentModality);
-                return;
-              }
-              client
-                  .listModels()
-                  .whenComplete(
-                      (models, ex) -> {
-                        if (disposed) return;
-                        ApplicationManager.getApplication()
-                            .invokeLater(
-                                () -> {
-                                  if (disposed) return;
-                                  if (Objects.nonNull(ex)) {
-                                    final Throwable cause =
-                                        Objects.nonNull(ex.getCause()) ? ex.getCause() : ex;
-                                    Messages.showErrorDialog(
-                                        myMainPanel,
-                                        "Could not fetch models from "
-                                            + provider.getDisplayName()
-                                            + " at "
-                                            + url
-                                            + ".\n"
-                                            + "Error: "
-                                            + cause.getMessage(),
-                                        "Connection Error");
-                                  } else {
-                                    final String currentSelection =
-                                        (String) myAiModelDropdown.getSelectedItem();
-                                    myAiModelDropdown.removeAllItems();
-                                    if (models.isEmpty()) {
-                                      Messages.showWarningDialog(
-                                          myMainPanel,
-                                          "No models found on "
-                                              + provider.getDisplayName()
-                                              + ". Load or pull at least one model first.",
-                                          "No Models Found");
-                                    } else {
-                                      models.forEach(myAiModelDropdown::addItem);
-                                      if (Objects.nonNull(currentSelection)
-                                          && models.contains(currentSelection)) {
-                                        myAiModelDropdown.setSelectedItem(currentSelection);
-                                      }
-                                    }
-                                  }
-                                  resetRefreshButton();
-                                },
-                                currentModality);
-                      });
-            });
+              });
+        });
   }
 
   private void resetRefreshButton() {
@@ -709,23 +721,20 @@ public class DbSeedSettingsComponent {
     final FileChooserDescriptor folderDescriptor =
         FileChooserDescriptorFactory.createSingleFolderDescriptor()
             .withTitle("Select Default Output Directory");
-    field.addActionListener(
-        e -> {
-          final String currentPath = field.getText();
-          final VirtualFile currentFile =
-              currentPath.isEmpty()
-                  ? null
-                  : LocalFileSystem.getInstance().findFileByPath(currentPath);
-          FileChooser.chooseFile(
-              folderDescriptor,
-              myProject,
-              currentFile,
-              file -> {
-                if (Objects.nonNull(file)) {
-                  field.setText(file.getPath());
-                }
-              });
-        });
+    field.addActionListener(e -> {
+      final String currentPath = field.getText();
+      final VirtualFile currentFile =
+          currentPath.isEmpty() ? null : LocalFileSystem.getInstance().findFileByPath(currentPath);
+      FileChooser.chooseFile(
+          folderDescriptor,
+          myProject,
+          currentFile,
+          file -> {
+            if (Objects.nonNull(file)) {
+              field.setText(file.getPath());
+            }
+          });
+    });
   }
 
   public JPanel getPanel() {
